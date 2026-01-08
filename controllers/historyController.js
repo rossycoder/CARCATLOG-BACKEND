@@ -50,6 +50,11 @@ async function getVehicleHistory(req, res) {
  * POST /api/vehicle-history/check
  * Body: { vrm: string, forceRefresh?: boolean }
  */
+/**
+ * Check vehicle history
+ * POST /api/vehicle-history/check
+ * Body: { vrm: string, forceRefresh?: boolean }
+ */
 async function checkVehicleHistory(req, res) {
   // Extract vrm outside try block so it's available in catch
   const { vrm, forceRefresh = false } = req.body;
@@ -72,58 +77,12 @@ async function checkVehicleHistory(req, res) {
   } catch (error) {
     console.error('Error in checkVehicleHistory:', error);
     
-    // Handle API unavailability with fallback - return mock data instead of error
-    if (isAPIUnavailable(error) || error.isNetworkError) {
-      console.log('History API unavailable, returning mock data for:', vrm || 'UNKNOWN');
-      return res.json({
-        success: true,
-        data: getMockHistoryData(vrm || 'UNKNOWN'),
-        isMockData: true,
-        message: 'Using demonstration data - History API temporarily unavailable'
-      });
-    }
-
-    // Handle other errors with user-friendly messages
+    // Return error - no mock data fallback
     const errorResponse = formatErrorResponse(error, 'history');
     const statusCode = error.message.includes('Invalid VRM') ? 400 : 500;
     
     res.status(statusCode).json(errorResponse);
   }
-}
-
-/**
- * Generate mock history data for fallback
- */
-function getMockHistoryData(vrm) {
-  const currentDate = new Date();
-  return {
-    vrm: vrm.toUpperCase(),
-    checkDate: currentDate,
-    stolen: false,
-    scrapped: false,
-    imported: false,
-    exported: false,
-    writeOff: false,
-    colourChanges: 0,
-    plateChanges: 0,
-    previousKeepers: 2,
-    outstandingFinance: false,
-    motHistory: {
-      currentStatus: 'Valid',
-      expiryDate: new Date(currentDate.getFullYear() + 1, currentDate.getMonth(), currentDate.getDate()),
-      tests: [
-        {
-          testDate: new Date(currentDate.getFullYear() - 1, currentDate.getMonth(), 15),
-          result: 'PASSED',
-          mileage: 45000,
-          advisories: ['Nearside Front Tyre worn close to legal limit']
-        }
-      ]
-    },
-    taxStatus: 'Taxed',
-    taxDueDate: new Date(currentDate.getFullYear(), currentDate.getMonth() + 6, 1),
-    isMockData: true
-  };
 }
 
 /**
