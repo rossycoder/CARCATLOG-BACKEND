@@ -55,9 +55,32 @@ function loadAPICredentials() {
   if (!valuationAPITestBaseUrl) missingCredentials.push('VALUATION_API_TEST_BASE_URL');
 
   if (missingCredentials.length > 0) {
-    throw new APICredentialsError(
-      `Missing required API credentials: ${missingCredentials.join(', ')}`
-    );
+    // In production, log warning but don't crash if optional API credentials are missing
+    const errorMessage = `Missing API credentials: ${missingCredentials.join(', ')}`;
+    
+    if (process.env.NODE_ENV === 'production') {
+      console.warn(`⚠️  ${errorMessage}`);
+      console.warn('   Vehicle history and valuation features will be disabled');
+      // Return partial credentials - services will handle missing keys gracefully
+      return {
+        historyAPI: {
+          liveKey: historyAPILiveKey || '',
+          testKey: historyAPITestKey || '',
+          baseUrl: historyAPIBaseUrl || '',
+          testBaseUrl: historyAPITestBaseUrl || '',
+        },
+        valuationAPI: {
+          liveKey: valuationAPILiveKey || '',
+          testKey: valuationAPITestKey || '',
+          baseUrl: valuationAPIBaseUrl || '',
+          testBaseUrl: valuationAPITestBaseUrl || '',
+        },
+        environment,
+        credentialsIncomplete: true,
+      };
+    }
+    
+    throw new APICredentialsError(errorMessage);
   }
 
   // Return credentials object

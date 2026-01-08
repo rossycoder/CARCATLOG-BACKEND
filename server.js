@@ -11,12 +11,14 @@ dotenv.config();
 // Initialize Passport configuration
 require('./config/passport');
 
-// Validate API credentials on startup
+// Validate API credentials on startup (non-blocking)
 try {
   validateAndInitialize();
 } catch (error) {
-  console.error('Failed to start server: Invalid API credentials');
-  process.exit(1);
+  console.warn('⚠️  Warning: API credentials validation failed');
+  console.warn('   Some features (vehicle history/valuation) may not work');
+  console.warn('   Error:', error.message);
+  // Don't exit - allow server to start without these optional features
 }
 
 // Connect to MongoDB
