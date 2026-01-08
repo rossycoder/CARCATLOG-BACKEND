@@ -51,9 +51,10 @@ async function getVehicleHistory(req, res) {
  * Body: { vrm: string, forceRefresh?: boolean }
  */
 async function checkVehicleHistory(req, res) {
+  // Extract vrm outside try block so it's available in catch
+  const { vrm, forceRefresh = false } = req.body;
+  
   try {
-    const { vrm, forceRefresh = false } = req.body;
-    
     if (!vrm) {
       return res.status(400).json({
         success: false,
@@ -73,10 +74,10 @@ async function checkVehicleHistory(req, res) {
     
     // Handle API unavailability with fallback - return mock data instead of error
     if (isAPIUnavailable(error) || error.isNetworkError) {
-      console.log('History API unavailable, returning mock data for:', vrm);
+      console.log('History API unavailable, returning mock data for:', vrm || 'UNKNOWN');
       return res.json({
         success: true,
-        data: getMockHistoryData(vrm),
+        data: getMockHistoryData(vrm || 'UNKNOWN'),
         isMockData: true,
         message: 'Using demonstration data - History API temporarily unavailable'
       });
