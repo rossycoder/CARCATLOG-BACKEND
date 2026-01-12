@@ -61,6 +61,16 @@ function isAPIUnavailable(error) {
  * @returns {string} User-friendly error message
  */
 function getUserFriendlyMessage(error, context) {
+  // 404 - Vehicle not found in database
+  if (error.details?.status === 404 || error.response?.status === 404 || error.message.includes('404')) {
+    if (context === 'history' || context === 'MOT history') {
+      return 'No vehicle history data found for this registration. This vehicle may not be in our database yet.';
+    } else if (context === 'valuation') {
+      return 'No valuation data available for this vehicle. You can enter your own price based on market research.';
+    }
+    return 'No data found for this vehicle registration.';
+  }
+
   // API unavailability
   if (isAPIUnavailable(error)) {
     if (context === 'history') {
@@ -102,6 +112,21 @@ function getUserFriendlyMessage(error, context) {
  */
 function getActionableSteps(error, context) {
   const steps = [];
+
+  // 404 - Vehicle not found
+  if (error.details?.status === 404 || error.response?.status === 404 || error.message.includes('404')) {
+    steps.push('Verify the registration number is correct');
+    steps.push('Try again later as data may be updated');
+    
+    if (context === 'history' || context === 'MOT history') {
+      steps.push('Request vehicle history documents from the seller');
+      steps.push('Check MOT history on the official DVSA website');
+    } else if (context === 'valuation') {
+      steps.push('Research similar vehicles to determine a fair price');
+      steps.push('Enter your own asking price based on market research');
+    }
+    return steps;
+  }
 
   if (isAPIUnavailable(error)) {
     steps.push('Wait a few minutes and try again');

@@ -79,7 +79,14 @@ async function checkVehicleHistory(req, res) {
     
     // Return error - no mock data fallback
     const errorResponse = formatErrorResponse(error, 'history');
-    const statusCode = error.message.includes('Invalid VRM') ? 400 : 500;
+    
+    // Determine appropriate status code
+    let statusCode = 500;
+    if (error.message.includes('Invalid VRM')) {
+      statusCode = 400;
+    } else if (error.details?.status === 404 || error.response?.status === 404) {
+      statusCode = 404;
+    }
     
     res.status(statusCode).json(errorResponse);
   }
@@ -116,7 +123,14 @@ async function getMOTHistory(req, res) {
     }
 
     const errorResponse = formatErrorResponse(error, 'MOT history');
-    const statusCode = error.message.includes('Invalid VRM') ? 400 : 500;
+    
+    // Determine appropriate status code
+    let statusCode = 500;
+    if (error.message.includes('Invalid VRM')) {
+      statusCode = 400;
+    } else if (error.details?.status === 404 || error.response?.status === 404) {
+      statusCode = 404;
+    }
     
     res.status(statusCode).json(errorResponse);
   }
