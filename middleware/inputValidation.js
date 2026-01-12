@@ -60,7 +60,8 @@ const tradeDealerRegistrationRules = () => {
     body('phone')
       .trim()
       .notEmpty().withMessage('Phone number is required')
-      .matches(/^(\+44|0)[0-9]{10}$/).withMessage('Invalid UK phone number format'),
+      .customSanitizer(value => value.replace(/\s/g, '')) // Remove spaces
+      .matches(/^(\+44|0)[0-9]{10}$/).withMessage('Invalid UK phone number format (e.g., 07123456789 or +447123456789)'),
     
     body('password')
       .notEmpty().withMessage('Password is required')

@@ -30,8 +30,9 @@ const upload = multer({
 router.use(preventInjection);
 
 // Public routes with rate limiting
-router.post('/register', rateLimitCheck(5, 60 * 60 * 1000), upload.single('logo'), validateTradeDealerRegistration, tradeDealerController.register);
-router.post('/login', rateLimitCheck(10, 15 * 60 * 1000), validateLoginCredentials, tradeDealerController.login);
+// Increased limits for development/testing
+router.post('/register', rateLimitCheck(20, 60 * 60 * 1000), upload.single('logo'), validateTradeDealerRegistration, tradeDealerController.register);
+router.post('/login', rateLimitCheck(20, 15 * 60 * 1000), validateLoginCredentials, tradeDealerController.login);
 router.post('/verify-email', rateLimitCheck(10, 15 * 60 * 1000), tradeDealerController.verifyEmail);
 router.post('/forgot-password', rateLimitCheck(5, 60 * 60 * 1000), tradeDealerController.forgotPassword);
 router.post('/reset-password', rateLimitCheck(5, 60 * 60 * 1000), tradeDealerController.resetPassword);
