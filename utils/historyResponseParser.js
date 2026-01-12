@@ -78,66 +78,67 @@ function parseFinanceDetails(financeData) {
 
 /**
  * Parse History API response into HistoryCheckResult format
- * @param {Object} apiResponse - Raw API response
+ * @param {Object} apiResponse - Raw API response from CheckCarDetails
  * @param {boolean} isTestMode - Whether in test mode
  * @returns {Object} Parsed HistoryCheckResult
  * @throws {Error} If response is malformed
  */
 function parseHistoryResponse(apiResponse, isTestMode = false) {
-  // Validate response structure
-  const validation = validateHistoryResponse(apiResponse);
+  // CheckCarDetails API returns data in VehicleRegistration and VehicleHistory objects
+  const vehicleReg = apiResponse.VehicleRegistration || {};
+  const vehicleHistory = apiResponse.VehicleHistory || {};
   
-  if (!validation.isValid) {
-    const error = new Error(
-      `Malformed History API response: missing fields ${validation.missingFields.join(', ')}`
-    );
-    error.malformedResponse = apiResponse;
-    error.missingFields = validation.missingFields;
-    
-    console.error('Malformed History API response:', {
-      missingFields: validation.missingFields,
-      receivedFields: Object.keys(apiResponse),
-    });
-    
-    throw error;
-  }
-
-  // Parse the response
+  // Extract VRM
+  const vrm = vehicleReg.Vrm || apiResponse.registrationNumber || apiResponse.vrm || 'unknown';
+  
+  // Parse the response from CheckCarDetails format
   const result = {
-    vrm: apiResponse.vrm,
+    vrm: vrm,
     checkDate: new Date(),
-    hasAccidentHistory: Boolean(apiResponse.hasAccidentHistory),
-    isStolen: Boolean(apiResponse.isStolen),
-    hasOutstandingFinance: Boolean(apiResponse.hasOutstandingFinance),
-    isScrapped: Boolean(apiResponse.isScrapped || apiResponse.scrapped),
-    isImported: Boolean(apiResponse.isImported || apiResponse.imported),
-    isExported: Boolean(apiResponse.isExported || apiResponse.exported),
-    isWrittenOff: Boolean(apiResponse.isWrittenOff || apiResponse.writtenOff),
-    previousOwners: apiResponse.previousOwners || apiResponse.numberOfOwners || 0,
-    numberOfOwners: apiResponse.numberOfOwners || apiResponse.previousOwners || 0,
-    numberOfKeys: apiResponse.numberOfKeys || apiResponse.keys || 1,
-    keys: apiResponse.keys || apiResponse.numberOfKeys || 1,
-    serviceHistory: apiResponse.serviceHistory || 'Contact seller',
-    motStatus: apiResponse.motStatus || apiResponse.mot?.status,
-    motExpiryDate: apiResponse.motExpiryDate || apiResponse.mot?.expiryDate,
+    // CheckCarDetails uses stolenRecord, financeRecord, writeOffRecord
+    hasAccidentHistory: Boolean(vehicleHistory.writeOffRecord || vehicleHistory.writeoff),
+    isStolen: Boolean(vehicleHistory.stolenRecord || vehicleHistory.stolen),
+    hasOutstandingFinance: Boolean(vehicleHistory.financeRecord || vehicleHistory.finance),
+    isScrapped: Boolean(vehicleReg.Scrapped),
+    isImported: Boolean(vehicleReg.Imported || vehicleReg.ImportNonEu),
+    isExported: Boolean(vehicleReg.Exported),
+    isWrittenOff: Boolean(vehicleHistory.writeOffRecord || vehicleHistory.writeoff),
+    previousOwners: vehicleHistory.NumberOfPreviousKeepers || 0,
+    numberOfOwners: vehicleHistory.NumberOfPreviousKeepers || 0,
+    numberOfKeys: 1, // Not provided by CheckCarDetails API
+    keys: 1,
+    serviceHistory: 'Contact seller', // Not provided by CheckCarDetails API
+    motStatus: apiResponse.mot?.motStatus || 'Unknown',
+    motExpiryDate: apiResponse.mot?.motDueDate || null,
     checkStatus: 'success',
-    apiProvider: apiResponse.provider || 'unknown',
+    apiProvider: 'CheckCarDetails',
     testMode: isTestMode,
   };
 
-  // Add accident details if present
-  if (apiResponse.hasAccidentHistory && apiResponse.accidentDetails) {
-    result.accidentDetails = parseAccidentDetails(apiResponse.accidentDetails);
+  // Add write-off details if present
+  if (vehicleHistory.writeOffRecord && vehicleHistory.writeoff) {
+    result.accidentDetails = {
+      count: 1,
+      severity: vehicleHistory.writeoff.category || 'unknown',
+      dates: vehicleHistory.writeoff.date ? [new Date(vehicleHistory.writeoff.date)] : [],
+    };
   }
 
   // Add theft details if present
-  if (apiResponse.isStolen && apiResponse.theftDetails) {
-    result.stolenDetails = parseTheftDetails(apiResponse.theftDetails);
+  if (vehicleHistory.stolenRecord && vehicleHistory.stolen) {
+    result.stolenDetails = {
+      reportedDate: vehicleHistory.stolen.date ? new Date(vehicleHistory.stolen.date) : new Date(),
+      status: vehicleHistory.stolen.status || 'active',
+    };
   }
 
   // Add finance details if present
-  if (apiResponse.hasOutstandingFinance && apiResponse.financeDetails) {
-    result.financeDetails = parseFinanceDetails(apiResponse.financeDetails);
+  if (vehicleHistory.financeRecord && vehicleHistory.finance) {
+    result.financeDetails = {
+      amount: vehicleHistory.finance.amount || 0,
+      lender: vehicleHistory.finance.lender || 'Unknown',
+      type: vehicleHistory.finance.type || 'unknown',
+    };
   }
 
   return result;

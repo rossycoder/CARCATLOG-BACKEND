@@ -53,6 +53,37 @@ exports.register = async (req, res) => {
       });
     }
 
+    // Handle logo upload if present
+    let logoUrl = null;
+    if (req.file) {
+      const cloudinary = require('../services/cloudinaryService');
+      const uploadResult = await cloudinary.uploadImage(req.file.buffer, {
+        folder: 'dealer-logos',
+        transformation: [
+          { width: 400, height: 400, crop: 'limit' },
+          { quality: 'auto' }
+        ]
+      });
+      logoUrl = uploadResult.secure_url;
+    }
+
+    // Parse businessAddress - handle both string and object formats
+    let addressData = {};
+    if (businessAddress) {
+      if (typeof businessAddress === 'string') {
+        // If it's a string, store it in the street field
+        addressData = {
+          street: businessAddress,
+          city: '',
+          postcode: '',
+          country: 'United Kingdom'
+        };
+      } else {
+        // If it's already an object, use it directly
+        addressData = businessAddress;
+      }
+    }
+
     // Create dealer
     const dealer = new TradeDealer({
       businessName,
@@ -61,9 +92,10 @@ exports.register = async (req, res) => {
       email: email.toLowerCase(),
       phone,
       password,
-      businessAddress,
+      businessAddress: addressData,
       businessRegistrationNumber,
       vatNumber,
+      logo: logoUrl,
       status: 'pending' // Will be activated after email verification
     });
 
@@ -143,6 +175,7 @@ exports.register = async (req, res) => {
         id: dealer._id,
         businessName: dealer.businessName,
         email: dealer.email,
+        logo: dealer.logo,
         status: dealer.status
       }
     });

@@ -106,12 +106,27 @@ class ValuationAPIClient {
         code: error.code,
         status: error.response?.status,
         statusText: error.response?.statusText,
+        data: error.response?.data,
         vrm,
         mileage,
         isTestMode: this.isTestMode,
       };
 
       console.error('Valuation API call failed:', errorDetails);
+      
+      // Check if this is a 404 (vehicle not found) wrapped in 500
+      const is404Error = error.response?.status === 500 && 
+                         error.response?.data?.message?.code === 404;
+      
+      if (is404Error) {
+        // Return a user-friendly error
+        const notFoundError = new Error('Valuation data not available for this vehicle');
+        notFoundError.code = 'VALUATION_NOT_FOUND';
+        notFoundError.vrm = vrm;
+        notFoundError.mileage = mileage;
+        notFoundError.userMessage = 'We could not find valuation data for this vehicle. Please try a different vehicle or check the registration number.';
+        throw notFoundError;
+      }
       
       // Re-throw with more context
       const enhancedError = new Error(

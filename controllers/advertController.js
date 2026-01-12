@@ -45,6 +45,18 @@ const createAdvert = async (req, res) => {
       return 'manual'; // default
     };
 
+    // Helper function to normalize fuel type
+    const normalizeFuelType = (value) => {
+      if (!value) return 'Petrol';
+      const lower = value.toString().toLowerCase();
+      // Map to valid enum values with proper capitalization
+      if (lower === 'petrol' || lower === 'gasoline') return 'Petrol';
+      if (lower === 'diesel') return 'Diesel';
+      if (lower === 'electric' || lower === 'battery electric vehicle') return 'Electric';
+      if (lower === 'hybrid' || lower.includes('hybrid')) return 'Hybrid';
+      return 'Petrol'; // default
+    };
+
     // Create car document in database immediately
     const car = new Car({
       advertId: advertId,
@@ -53,7 +65,7 @@ const createAdvert = async (req, res) => {
       year: vehicleData.year || new Date().getFullYear(),
       mileage: vehicleData.mileage || 0,
       color: vehicleData.color || 'Not specified',
-      fuelType: vehicleData.fuelType || 'Petrol',
+      fuelType: normalizeFuelType(vehicleData.fuelType),
       transmission: normalizeTransmission(vehicleData.transmission),
       price: vehicleData.estimatedValue || 0,
       description: '',

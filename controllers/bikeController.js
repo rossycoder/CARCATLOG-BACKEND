@@ -487,3 +487,179 @@ exports.getDealerBikes = async (req, res) => {
     });
   }
 };
+
+// Get filter options for bikes
+exports.getFilterOptions = async (req, res) => {
+  try {
+    console.log('[Bike Controller] Fetching filter options...');
+    
+    // Get unique makes (from active bikes only)
+    const makes = await Bike.distinct('make', { status: 'active' });
+    console.log('[Bike Controller] Found makes:', makes.length);
+    
+    // Get unique models
+    const models = await Bike.distinct('model', { status: 'active' });
+    console.log('[Bike Controller] Found models:', models.length);
+    
+    // Get unique fuel types
+    const fuelTypes = await Bike.distinct('fuelType', { status: 'active' });
+    console.log('[Bike Controller] Found fuelTypes:', fuelTypes.length);
+    
+    // Get unique bike types
+    const bikeTypes = await Bike.distinct('bikeType', { status: 'active' });
+    console.log('[Bike Controller] Found bikeTypes:', bikeTypes.length);
+    
+    // Get unique colours
+    const colours = await Bike.distinct('color', { status: 'active' });
+    console.log('[Bike Controller] Found colours:', colours.length);
+    
+    // Get year range
+    const years = await Bike.aggregate([
+      { $match: { status: 'active' } },
+      { $group: { _id: null, minYear: { $min: '$year' }, maxYear: { $max: '$year' } } }
+    ]);
+    
+    const yearRange = years.length > 0 ? years[0] : { minYear: 2000, maxYear: new Date().getFullYear() };
+
+    const result = {
+      success: true,
+      data: {
+        makes: makes.filter(Boolean).sort(),
+        models: models.filter(Boolean).sort(),
+        fuelTypes: fuelTypes.filter(Boolean).sort(),
+        bikeTypes: bikeTypes.filter(Boolean).sort(),
+        colours: colours.filter(Boolean).sort(),
+        yearRange: {
+          min: yearRange.minYear,
+          max: yearRange.maxYear
+        }
+      }
+    };
+    
+    console.log('[Bike Controller] Returning filter options:', JSON.stringify(result, null, 2));
+    
+    return res.json(result);
+
+  } catch (error) {
+    console.error('[Bike Controller] Error in getFilterOptions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching filter options',
+      error: error.message
+    });
+  }
+};
+
+// Search bikes with comprehensive filters
+exports.searchBikes = async (req, res) => {
+  try {
+    console.log('[Bike Controller] Search request received with params:', req.query);
+    
+    const { 
+      make, 
+      model, 
+      priceFrom,
+      priceTo,
+      yearFrom,
+      yearTo,
+      mileageFrom,
+      mileageTo,
+      bikeType,
+      colour,
+      fuelType,
+      sort,
+      limit = 50,
+      skip = 0 
+    } = req.query;
+
+    // Build query - only show active bikes
+    const query = { status: 'active' };
+
+    // Make and Model filters (case-insensitive exact match)
+    if (make) query.make = new RegExp(`^${make}$`, 'i');
+    if (model) query.model = new RegExp(`^${model}$`, 'i');
+    
+    // Price range filters
+    if (priceFrom || priceTo) {
+      query.price = {};
+      if (priceFrom) query.price.$gte = parseFloat(priceFrom);
+      if (priceTo) query.price.$lte = parseFloat(priceTo);
+    }
+    
+    // Year range filters
+    if (yearFrom || yearTo) {
+      query.year = {};
+      if (yearFrom) query.year.$gte = parseInt(yearFrom);
+      if (yearTo) query.year.$lte = parseInt(yearTo);
+    }
+    
+    // Mileage range filters
+    if (mileageFrom || mileageTo) {
+      query.mileage = {};
+      if (mileageFrom) query.mileage.$gte = parseInt(mileageFrom);
+      if (mileageTo) query.mileage.$lte = parseInt(mileageTo);
+    }
+    
+    // Exact match filters
+    if (bikeType) query.bikeType = bikeType;
+    if (colour) query.color = colour;
+    if (fuelType) query.fuelType = fuelType;
+    
+    console.log('[Bike Controller] Constructed query:', JSON.stringify(query, null, 2));
+
+    // Determine sort order
+    let sortOption = { createdAt: -1 }; // Default: newest first
+    
+    if (sort) {
+      switch (sort) {
+        case 'price-low':
+          sortOption = { price: 1 };
+          break;
+        case 'price-high':
+          sortOption = { price: -1 };
+          break;
+        case 'year-new':
+          sortOption = { year: -1 };
+          break;
+        case 'year-old':
+          sortOption = { year: 1 };
+          break;
+        case 'mileage-low':
+          sortOption = { mileage: 1 };
+          break;
+        case 'mileage-high':
+          sortOption = { mileage: -1 };
+          break;
+      }
+    }
+
+    // Execute query
+    const bikes = await Bike.find(query)
+      .limit(Math.min(parseInt(limit), 100)) // Cap at 100
+      .skip(parseInt(skip))
+      .sort(sortOption);
+
+    const total = await Bike.countDocuments(query);
+
+    console.log('[Bike Controller] Found', total, 'bikes matching filters');
+
+    return res.json({
+      success: true,
+      bikes: bikes,
+      total: total,
+      pagination: {
+        limit: parseInt(limit),
+        skip: parseInt(skip),
+        hasMore: total > parseInt(skip) + parseInt(limit)
+      }
+    });
+
+  } catch (error) {
+    console.error('[Bike Controller] Error in searchBikes:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to search bikes',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};

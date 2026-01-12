@@ -82,18 +82,26 @@ exports.getCurrentSubscription = async (req, res) => {
  */
 exports.createCheckoutSession = async (req, res) => {
   try {
+    console.log('\n🔍 CREATE CHECKOUT SESSION');
+    console.log('📝 Request body:', req.body);
+    console.log('👤 Dealer ID:', req.dealerId);
+    
     const { planSlug } = req.body;
 
     if (!planSlug) {
+      console.log('❌ No plan slug provided');
       return res.status(400).json({
         success: false,
         message: 'Plan slug is required'
       });
     }
 
+    console.log(`🔍 Looking for plan with slug: "${planSlug}"`);
+
     // Check if dealer already has active subscription
     const existingSubscription = await TradeSubscription.findActiveForDealer(req.dealerId);
     if (existingSubscription) {
+      console.log('❌ Dealer already has active subscription');
       return res.status(400).json({
         success: false,
         message: 'You already have an active subscription'
@@ -102,24 +110,36 @@ exports.createCheckoutSession = async (req, res) => {
 
     // Get plan by slug
     const plan = await SubscriptionPlan.findOne({ slug: planSlug, isActive: true });
+    console.log('📋 Plan lookup result:', plan ? `Found: ${plan.name}` : 'Not found');
+    
     if (!plan) {
+      console.log(`❌ Plan not found for slug: "${planSlug}"`);
+      console.log('   Checking all plans in database...');
+      const allPlans = await SubscriptionPlan.find({});
+      console.log(`   Total plans in DB: ${allPlans.length}`);
+      allPlans.forEach(p => {
+        console.log(`   - ${p.name} (slug: "${p.slug}", active: ${p.isActive})`);
+      });
+      
       return res.status(404).json({
         success: false,
         message: 'Plan not found'
       });
     }
 
+    console.log('✅ Plan found, creating checkout session...');
     const checkoutUrl = await stripeSubscriptionService.createCheckoutSession(
       req.dealerId,
       plan._id
     );
 
+    console.log('✅ Checkout session created');
     res.json({
       success: true,
       checkoutUrl
     });
   } catch (error) {
-    console.error('Create checkout session error:', error);
+    console.error('❌ Create checkout session error:', error);
     res.status(500).json({
       success: false,
       message: 'Error creating checkout session',

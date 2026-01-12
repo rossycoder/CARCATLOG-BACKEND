@@ -9,6 +9,12 @@ router.get('/', bikeController.getBikes);
 // GET /api/bikes/count - Get bike count
 router.get('/count', bikeController.getBikeCount);
 
+// GET /api/bikes/filter-options - Get filter options
+router.get('/filter-options', bikeController.getFilterOptions);
+
+// GET /api/bikes/search-filtered - Search bikes with comprehensive filters
+router.get('/search-filtered', bikeController.searchBikes);
+
 // GET /api/bikes/search - Search bikes by postcode
 router.get('/search', bikeController.searchByPostcode);
 

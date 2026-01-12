@@ -24,35 +24,7 @@ class ValuationService {
     console.log(`ValuationService initialized in ${environment} mode (Test Mode: ${isTestMode})`);
   }
 
-  /**
-   * Generate mock valuation data when API is unavailable
-   * @param {string} vrm - Vehicle Registration Mark
-   * @param {number} mileage - Current mileage
-   * @returns {Object} Mock valuation data
-   */
-  generateMockValuation(vrm, mileage) {
-    // Generate realistic-looking mock values based on mileage
-    const baseValue = 15000;
-    const mileageDeduction = Math.floor(mileage / 1000) * 100;
-    const retailValue = Math.max(5000, baseValue - mileageDeduction + 2000);
-    const privateValue = Math.max(4000, baseValue - mileageDeduction);
-    const tradeValue = Math.max(3000, baseValue - mileageDeduction - 1500);
 
-    return {
-      vrm: vrm.toUpperCase(),
-      mileage,
-      estimatedValue: {
-        retail: retailValue,
-        private: privateValue,
-        trade: tradeValue,
-      },
-      valuationDate: new Date(),
-      confidence: 'low',
-      dataSource: 'mock',
-      isMockData: true,
-      message: 'Valuation API is currently unavailable. This is estimated data only.',
-    };
-  }
 
 
 
@@ -81,20 +53,7 @@ class ValuationService {
       const responseTime = Date.now() - startTime;
       console.error(`Valuation API call failed after ${responseTime}ms:`, error.message);
 
-      // Check if this is a network/DNS error
-      const isNetworkError = error.code === 'ENOTFOUND' || 
-                             error.details?.code === 'ENOTFOUND' ||
-                             error.originalError?.code === 'ENOTFOUND' ||
-                             error.code === 'ECONNREFUSED' ||
-                             error.originalError?.code === 'ECONNREFUSED';
-      
-      if (isNetworkError) {
-        console.warn(`Valuation API unreachable for VRM ${vrm}, returning mock data`);
-        // Return mock data instead of throwing error
-        const mockData = this.generateMockValuation(vrm, mileage);
-        return mockData;
-      }
-
+      // Re-throw the error - no mock data fallback
       throw error;
     }
   }

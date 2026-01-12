@@ -3,52 +3,6 @@ const dvlaService = require('../services/dvlaService');
 const Car = require('../models/Car');
 const { createErrorFromCode, logError } = require('../utils/dvlaErrorHandler');
 
-// Generate mock vehicle data when DVLA API is unavailable
-const generateMockVehicleData = (registration) => {
-  // Extract year from registration (UK format: AB12CDE - 12 = 2012)
-  const yearMatch = registration.match(/[A-Z]{2}(\d{2})/i);
-  let year = 2020;
-  if (yearMatch) {
-    const regYear = parseInt(yearMatch[1]);
-    year = regYear >= 50 ? 1950 + regYear : 2000 + regYear;
-  }
-  
-  const makes = ['BMW', 'Audi', 'Mercedes-Benz', 'Volkswagen', 'Ford', 'Toyota', 'Honda'];
-  const models = {
-    'BMW': ['3 Series', '5 Series', 'X3', 'X5', 'M3'],
-    'Audi': ['A3', 'A4', 'A6', 'Q5', 'Q7'],
-    'Mercedes-Benz': ['C-Class', 'E-Class', 'GLC', 'GLE', 'A-Class'],
-    'Volkswagen': ['Golf', 'Polo', 'Tiguan', 'Passat', 'T-Roc'],
-    'Ford': ['Focus', 'Fiesta', 'Kuga', 'Puma', 'Mustang'],
-    'Toyota': ['Corolla', 'Yaris', 'RAV4', 'C-HR', 'Camry'],
-    'Honda': ['Civic', 'CR-V', 'Jazz', 'HR-V', 'Accord']
-  };
-  
-  const randomMake = makes[Math.floor(Math.random() * makes.length)];
-  const makeModels = models[randomMake];
-  const randomModel = makeModels[Math.floor(Math.random() * makeModels.length)];
-  
-  const colors = ['BLACK', 'WHITE', 'SILVER', 'BLUE', 'RED', 'GREY'];
-  const fuelTypes = ['PETROL', 'DIESEL', 'HYBRID'];
-  
-  return {
-    registrationNumber: registration.toUpperCase(),
-    make: randomMake.toUpperCase(),
-    model: randomModel,
-    yearOfManufacture: year,
-    colour: colors[Math.floor(Math.random() * colors.length)],
-    fuelType: fuelTypes[Math.floor(Math.random() * fuelTypes.length)],
-    engineCapacity: [1600, 2000, 2500, 3000][Math.floor(Math.random() * 4)],
-    co2Emissions: Math.floor(Math.random() * 100 + 100),
-    taxStatus: 'Taxed',
-    motStatus: 'Valid',
-    motExpiryDate: '2026-06-05',
-    taxDueDate: '2025-04-01',
-    euroStatus: 'Euro 6',
-    typeApproval: 'M1'
-  };
-};
-
 class VehicleController {
   /**
    * Validation rules for vehicle lookup
@@ -166,14 +120,41 @@ class VehicleController {
 
       // Step 1: Lookup vehicle from DVLA
       console.log(`[Vehicle Controller] Looking up vehicle: ${registrationNumber}`);
-      let dvlaData;
       
+      let dvlaData;
       try {
         dvlaData = await dvlaService.lookupVehicle(registrationNumber);
       } catch (error) {
-        // DVLA API unavailable - use mock data for development
-        console.log(`[Vehicle Controller] DVLA API unavailable, using mock data for: ${registrationNumber}`);
-        dvlaData = generateMockVehicleData(registrationNumber);
+        console.error(`[Vehicle Controller] DVLA lookup failed:`, error.message);
+        
+        // Return appropriate error
+        let statusCode = 500;
+        let errorMessage = 'Failed to lookup vehicle from DVLA';
+        
+        if (error.message === 'VEHICLE_NOT_FOUND') {
+          statusCode = 404;
+          errorMessage = 'Vehicle not found in DVLA database';
+        } else if (error.message === 'INVALID_REGISTRATION') {
+          statusCode = 400;
+          errorMessage = 'Invalid registration number format';
+        } else if (error.message === 'AUTH_ERROR') {
+          statusCode = 401;
+          errorMessage = 'DVLA API authentication failed';
+        } else if (error.message === 'RATE_LIMIT') {
+          statusCode = 429;
+          errorMessage = 'DVLA API rate limit exceeded';
+        } else if (error.message === 'NETWORK_ERROR') {
+          statusCode = 503;
+          errorMessage = 'Unable to connect to DVLA API';
+        }
+        
+        return res.status(statusCode).json({
+          success: false,
+          error: {
+            code: error.message,
+            message: errorMessage
+          }
+        });
       }
 
       // Step 2: Map DVLA data to Car schema
@@ -260,22 +241,48 @@ class VehicleController {
 
       // Lookup vehicle from DVLA
       console.log(`[Vehicle Controller] DVLA lookup for: ${registrationNumber}`);
-      let dvlaData;
       
       try {
-        dvlaData = await dvlaService.lookupVehicle(registrationNumber);
+        const dvlaData = await dvlaService.lookupVehicle(registrationNumber);
+        
+        // Return DVLA data directly
+        return res.json({
+          success: true,
+          data: dvlaData,
+          vehicle: dvlaData
+        });
       } catch (error) {
-        // DVLA API unavailable - return mock data for development
-        console.log(`[Vehicle Controller] DVLA API unavailable, using mock data for: ${registrationNumber}`);
-        dvlaData = generateMockVehicleData(registrationNumber);
+        console.error(`[Vehicle Controller] DVLA lookup failed for: ${registrationNumber}`, error.message);
+        
+        // Return appropriate error based on error type
+        let statusCode = 500;
+        let errorMessage = 'Failed to lookup vehicle';
+        
+        if (error.message === 'VEHICLE_NOT_FOUND') {
+          statusCode = 404;
+          errorMessage = 'Vehicle not found in DVLA database';
+        } else if (error.message === 'INVALID_REGISTRATION') {
+          statusCode = 400;
+          errorMessage = 'Invalid registration number format';
+        } else if (error.message === 'AUTH_ERROR') {
+          statusCode = 401;
+          errorMessage = 'DVLA API authentication failed - please check API key';
+        } else if (error.message === 'RATE_LIMIT') {
+          statusCode = 429;
+          errorMessage = 'DVLA API rate limit exceeded';
+        } else if (error.message === 'NETWORK_ERROR') {
+          statusCode = 503;
+          errorMessage = 'Unable to connect to DVLA API';
+        }
+        
+        return res.status(statusCode).json({
+          success: false,
+          error: {
+            code: error.message,
+            message: errorMessage
+          }
+        });
       }
-
-      // Return DVLA data directly
-      return res.json({
-        success: true,
-        data: dvlaData,
-        vehicle: dvlaData
-      });
 
     } catch (error) {
       next(error);
@@ -383,8 +390,8 @@ class VehicleController {
         vehicleType
       } = req.query;
 
-      // Build query - don't filter by advertStatus to show all cars
-      const query = {};
+      // Build query - only count active cars
+      const query = { advertStatus: 'active' };
 
       if (make) query.make = new RegExp(make, 'i');
       if (model) query.model = new RegExp(model, 'i');

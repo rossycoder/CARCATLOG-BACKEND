@@ -494,3 +494,179 @@ exports.getDealerVans = async (req, res) => {
     });
   }
 };
+
+// Get filter options for vans
+exports.getFilterOptions = async (req, res) => {
+  try {
+    console.log('[Van Controller] Fetching filter options...');
+    
+    // Get unique makes (from active vans only)
+    const makes = await Van.distinct('make', { status: 'active' });
+    console.log('[Van Controller] Found makes:', makes.length);
+    
+    // Get unique models
+    const models = await Van.distinct('model', { status: 'active' });
+    console.log('[Van Controller] Found models:', models.length);
+    
+    // Get unique fuel types
+    const fuelTypes = await Van.distinct('fuelType', { status: 'active' });
+    console.log('[Van Controller] Found fuelTypes:', fuelTypes.length);
+    
+    // Get unique van types
+    const vanTypes = await Van.distinct('vanType', { status: 'active' });
+    console.log('[Van Controller] Found vanTypes:', vanTypes.length);
+    
+    // Get unique colours
+    const colours = await Van.distinct('color', { status: 'active' });
+    console.log('[Van Controller] Found colours:', colours.length);
+    
+    // Get year range
+    const years = await Van.aggregate([
+      { $match: { status: 'active' } },
+      { $group: { _id: null, minYear: { $min: '$year' }, maxYear: { $max: '$year' } } }
+    ]);
+    
+    const yearRange = years.length > 0 ? years[0] : { minYear: 2000, maxYear: new Date().getFullYear() };
+
+    const result = {
+      success: true,
+      data: {
+        makes: makes.filter(Boolean).sort(),
+        models: models.filter(Boolean).sort(),
+        fuelTypes: fuelTypes.filter(Boolean).sort(),
+        vanTypes: vanTypes.filter(Boolean).sort(),
+        colours: colours.filter(Boolean).sort(),
+        yearRange: {
+          min: yearRange.minYear,
+          max: yearRange.maxYear
+        }
+      }
+    };
+    
+    console.log('[Van Controller] Returning filter options:', JSON.stringify(result, null, 2));
+    
+    return res.json(result);
+
+  } catch (error) {
+    console.error('[Van Controller] Error in getFilterOptions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching filter options',
+      error: error.message
+    });
+  }
+};
+
+// Search vans with comprehensive filters
+exports.searchVans = async (req, res) => {
+  try {
+    console.log('[Van Controller] Search request received with params:', req.query);
+    
+    const { 
+      make, 
+      model, 
+      priceFrom,
+      priceTo,
+      yearFrom,
+      yearTo,
+      mileageFrom,
+      mileageTo,
+      vanType,
+      colour,
+      fuelType,
+      sort,
+      limit = 50,
+      skip = 0 
+    } = req.query;
+
+    // Build query - only show active vans
+    const query = { status: 'active' };
+
+    // Make and Model filters (case-insensitive exact match)
+    if (make) query.make = new RegExp(`^${make}$`, 'i');
+    if (model) query.model = new RegExp(`^${model}$`, 'i');
+    
+    // Price range filters
+    if (priceFrom || priceTo) {
+      query.price = {};
+      if (priceFrom) query.price.$gte = parseFloat(priceFrom);
+      if (priceTo) query.price.$lte = parseFloat(priceTo);
+    }
+    
+    // Year range filters
+    if (yearFrom || yearTo) {
+      query.year = {};
+      if (yearFrom) query.year.$gte = parseInt(yearFrom);
+      if (yearTo) query.year.$lte = parseInt(yearTo);
+    }
+    
+    // Mileage range filters
+    if (mileageFrom || mileageTo) {
+      query.mileage = {};
+      if (mileageFrom) query.mileage.$gte = parseInt(mileageFrom);
+      if (mileageTo) query.mileage.$lte = parseInt(mileageTo);
+    }
+    
+    // Exact match filters
+    if (vanType) query.vanType = vanType;
+    if (colour) query.color = colour;
+    if (fuelType) query.fuelType = fuelType;
+    
+    console.log('[Van Controller] Constructed query:', JSON.stringify(query, null, 2));
+
+    // Determine sort order
+    let sortOption = { createdAt: -1 }; // Default: newest first
+    
+    if (sort) {
+      switch (sort) {
+        case 'price-low':
+          sortOption = { price: 1 };
+          break;
+        case 'price-high':
+          sortOption = { price: -1 };
+          break;
+        case 'year-new':
+          sortOption = { year: -1 };
+          break;
+        case 'year-old':
+          sortOption = { year: 1 };
+          break;
+        case 'mileage-low':
+          sortOption = { mileage: 1 };
+          break;
+        case 'mileage-high':
+          sortOption = { mileage: -1 };
+          break;
+      }
+    }
+
+    // Execute query
+    const vans = await Van.find(query)
+      .limit(Math.min(parseInt(limit), 100)) // Cap at 100
+      .skip(parseInt(skip))
+      .sort(sortOption);
+
+    const total = await Van.countDocuments(query);
+
+    console.log('[Van Controller] Found', total, 'vans matching filters');
+
+    return res.json({
+      success: true,
+      vans: vans,
+      total: total,
+      pagination: {
+        limit: parseInt(limit),
+        skip: parseInt(skip),
+        hasMore: total > parseInt(skip) + parseInt(limit)
+      }
+    });
+
+  } catch (error) {
+    console.error('[Van Controller] Error in searchVans:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to search vans',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};

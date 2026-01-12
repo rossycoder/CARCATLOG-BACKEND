@@ -126,6 +126,121 @@ class HistoryService {
   }
 
   /**
+   * Get vehicle registration details
+   * @param {string} vrm - Vehicle Registration Mark
+   * @returns {Promise<Object>} Vehicle registration data
+   */
+  async getVehicleRegistration(vrm) {
+    const startTime = Date.now();
+    
+    try {
+      console.log(`Fetching vehicle registration for VRM ${vrm}`);
+      const result = await this.client.getVehicleRegistration(vrm);
+      
+      const responseTime = Date.now() - startTime;
+      console.log(`Vehicle registration API call completed in ${responseTime}ms`);
+
+      return result;
+    } catch (error) {
+      const responseTime = Date.now() - startTime;
+      console.error(`Vehicle registration API call failed after ${responseTime}ms:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get vehicle specifications
+   * @param {string} vrm - Vehicle Registration Mark
+   * @returns {Promise<Object>} Vehicle specifications
+   */
+  async getVehicleSpecs(vrm) {
+    const startTime = Date.now();
+    
+    try {
+      console.log(`Fetching vehicle specs for VRM ${vrm}`);
+      const result = await this.client.getVehicleSpecs(vrm);
+      
+      const responseTime = Date.now() - startTime;
+      console.log(`Vehicle specs API call completed in ${responseTime}ms`);
+
+      return result;
+    } catch (error) {
+      const responseTime = Date.now() - startTime;
+      console.error(`Vehicle specs API call failed after ${responseTime}ms:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get vehicle mileage history
+   * @param {string} vrm - Vehicle Registration Mark
+   * @returns {Promise<Object>} Mileage history
+   */
+  async getMileageHistory(vrm) {
+    const startTime = Date.now();
+    
+    try {
+      console.log(`Fetching mileage history for VRM ${vrm}`);
+      const result = await this.client.getMileageHistory(vrm);
+      
+      const responseTime = Date.now() - startTime;
+      console.log(`Mileage history API call completed in ${responseTime}ms`);
+
+      return result;
+    } catch (error) {
+      const responseTime = Date.now() - startTime;
+      console.error(`Mileage history API call failed after ${responseTime}ms:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get comprehensive vehicle data (all data points)
+   * @param {string} vrm - Vehicle Registration Mark
+   * @returns {Promise<Object>} Comprehensive vehicle data
+   */
+  async getComprehensiveVehicleData(vrm) {
+    const startTime = Date.now();
+    
+    try {
+      console.log(`Fetching comprehensive vehicle data for VRM ${vrm}`);
+      
+      // Fetch all data points in parallel
+      const [registration, specs, mileage, history, mot] = await Promise.allSettled([
+        this.getVehicleRegistration(vrm),
+        this.getVehicleSpecs(vrm),
+        this.getMileageHistory(vrm),
+        this.checkVehicleHistory(vrm),
+        this.getMOTHistory(vrm),
+      ]);
+
+      const responseTime = Date.now() - startTime;
+      console.log(`Comprehensive vehicle data fetch completed in ${responseTime}ms`);
+
+      // Combine results
+      return {
+        vrm: vrm.toUpperCase(),
+        registration: registration.status === 'fulfilled' ? registration.value : null,
+        specifications: specs.status === 'fulfilled' ? specs.value : null,
+        mileageHistory: mileage.status === 'fulfilled' ? mileage.value : null,
+        historyCheck: history.status === 'fulfilled' ? history.value : null,
+        motHistory: mot.status === 'fulfilled' ? mot.value : null,
+        errors: {
+          registration: registration.status === 'rejected' ? registration.reason.message : null,
+          specifications: specs.status === 'rejected' ? specs.reason.message : null,
+          mileageHistory: mileage.status === 'rejected' ? mileage.reason.message : null,
+          historyCheck: history.status === 'rejected' ? history.reason.message : null,
+          motHistory: mot.status === 'rejected' ? mot.reason.message : null,
+        },
+      };
+    } catch (error) {
+      const responseTime = Date.now() - startTime;
+      console.error(`Comprehensive vehicle data fetch failed after ${responseTime}ms:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Get MOT history for a vehicle
    * @param {string} vrm - Vehicle Registration Mark
    * @returns {Promise<Object>} MOT history data

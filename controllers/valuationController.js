@@ -40,21 +40,29 @@ async function getValuation(req, res) {
     const valuationService = new ValuationService();
     const valuation = await valuationService.getValuation(vrm, mileage, forceRefresh);
 
-    // Check if this is mock data due to API unavailability
-    const isMockData = valuation.isMockData === true;
-
     res.json({
       success: true,
       data: valuation,
-      isMockData,
-      warning: isMockData ? 'Valuation API is currently unavailable. Showing estimated values only.' : undefined,
     });
   } catch (error) {
     console.error('Error in getValuation:', error);
     
-    // Handle API unavailability with fallback
+    // Handle valuation not found error
+    if (error.code === 'VALUATION_NOT_FOUND') {
+      return res.status(404).json({
+        success: false,
+        error: error.userMessage || 'Valuation data not available for this vehicle',
+        code: 'VALUATION_NOT_FOUND',
+      });
+    }
+
+    // Handle API unavailability
     if (isAPIUnavailable(error)) {
-      return res.status(503).json(handleValuationAPIUnavailable(error));
+      return res.status(503).json({
+        success: false,
+        error: 'Valuation service is temporarily unavailable. Please try again later.',
+        code: 'SERVICE_UNAVAILABLE',
+      });
     }
 
     // Handle other errors with user-friendly messages
@@ -99,21 +107,29 @@ async function getDetailedValuation(req, res) {
     const valuationService = new ValuationService();
     const detailedValuation = await valuationService.getDetailedValuation(vrm, mileage);
 
-    // Check if valuation is mock data due to API unavailability
-    const isMockData = detailedValuation.valuation?.isMockData === true;
-
     res.json({
       success: true,
       data: detailedValuation,
-      isMockData,
-      warning: isMockData ? 'Valuation API is currently unavailable. Showing estimated values only.' : undefined,
     });
   } catch (error) {
     console.error('Error in getDetailedValuation:', error);
     
-    // Handle API unavailability with fallback
+    // Handle valuation not found error
+    if (error.code === 'VALUATION_NOT_FOUND') {
+      return res.status(404).json({
+        success: false,
+        error: error.userMessage || 'Valuation data not available for this vehicle',
+        code: 'VALUATION_NOT_FOUND',
+      });
+    }
+
+    // Handle API unavailability
     if (isAPIUnavailable(error)) {
-      return res.status(503).json(handleValuationAPIUnavailable(error));
+      return res.status(503).json({
+        success: false,
+        error: 'Valuation service is temporarily unavailable. Please try again later.',
+        code: 'SERVICE_UNAVAILABLE',
+      });
     }
 
     // Handle other errors with user-friendly messages

@@ -9,6 +9,12 @@ router.get('/', vanController.getVans);
 // GET /api/vans/count - Get van count
 router.get('/count', vanController.getVanCount);
 
+// GET /api/vans/filter-options - Get filter options
+router.get('/filter-options', vanController.getFilterOptions);
+
+// GET /api/vans/search-filtered - Search vans with comprehensive filters
+router.get('/search-filtered', vanController.searchVans);
+
 // GET /api/vans/search - Search vans by postcode
 router.get('/search', vanController.searchByPostcode);
 
