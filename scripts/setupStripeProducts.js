@@ -21,23 +21,23 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const planConfigs = [
   {
     slug: 'bronze',
-    name: 'Bronze Package',
-    description: 'Perfect for small dealerships - List up to 20 cars',
-    price: 9900, // £99.00 in pence
+    name: 'BRONZE Package',
+    description: 'Our Bronze Subscription lets you list up to 20 cars',
+    price: 100000, // £1000.00 in pence
     listingLimit: 20
   },
   {
     slug: 'silver',
-    name: 'Silver Package',
-    description: 'Great for growing dealerships - List up to 35 cars',
-    price: 19900, // £199.00 in pence
+    name: 'SILVER Package',
+    description: 'Our Silver Subscription lets you list up to 35 cars',
+    price: 150000, // £1500.00 in pence
     listingLimit: 35
   },
   {
     slug: 'gold',
-    name: 'Gold Package',
-    description: 'Unlimited listings for established dealerships',
-    price: 39900, // £399.00 in pence
+    name: 'GOLD Package',
+    description: 'Our Gold Subscription has unlimited vehicle listings',
+    price: 200000, // £2000.00 in pence
     listingLimit: null // Unlimited
   }
 ];

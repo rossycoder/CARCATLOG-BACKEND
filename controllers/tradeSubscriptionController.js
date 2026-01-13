@@ -77,12 +77,12 @@ exports.getCurrentSubscription = async (req, res) => {
 };
 
 /**
- * Create Stripe Checkout Session
+ * Create Subscription Directly (No Stripe Checkout)
  * POST /api/trade/subscriptions/create-checkout-session
  */
 exports.createCheckoutSession = async (req, res) => {
   try {
-    console.log('\n🔍 CREATE CHECKOUT SESSION');
+    console.log('\n🔍 CREATE SUBSCRIPTION DIRECTLY');
     console.log('📝 Request body:', req.body);
     console.log('👤 Dealer ID:', req.dealerId);
     
@@ -127,22 +127,66 @@ exports.createCheckoutSession = async (req, res) => {
       });
     }
 
-    console.log('✅ Plan found, creating checkout session...');
-    const checkoutUrl = await stripeSubscriptionService.createCheckoutSession(
-      req.dealerId,
-      plan._id
-    );
+    // Get dealer
+    const TradeDealer = require('../models/TradeDealer');
+    const dealer = await TradeDealer.findById(req.dealerId);
+    
+    if (!dealer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Dealer not found'
+      });
+    }
 
-    console.log('✅ Checkout session created');
+    console.log('✅ Plan found, creating subscription directly...');
+
+    // Create subscription directly without Stripe
+    const subscription = new TradeSubscription({
+      dealerId: dealer._id,
+      planId: plan._id,
+      stripeSubscriptionId: `manual_sub_${Date.now()}`,
+      stripeCustomerId: `manual_cus_${Date.now()}`,
+      status: 'active',
+      currentPeriodStart: new Date(),
+      currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+      listingsLimit: plan.listingLimit,
+      listingsUsed: 0
+    });
+
+    await subscription.save();
+    console.log('✅ Subscription created:', subscription._id);
+
+    // Update dealer
+    dealer.currentSubscriptionId = subscription._id;
+    dealer.status = 'active';
+    dealer.hasActiveSubscription = true;
+    await dealer.save();
+    console.log('✅ Dealer updated');
+
+    // Return success with subscription details
     res.json({
       success: true,
-      checkoutUrl
+      message: 'Subscription activated successfully!',
+      subscription: {
+        id: subscription._id,
+        plan: {
+          id: plan._id,
+          name: plan.name,
+          slug: plan.slug,
+          price: plan.price,
+          listingsLimit: plan.listingLimit
+        },
+        status: subscription.status,
+        listingsUsed: subscription.listingsUsed,
+        listingsLimit: subscription.listingsLimit,
+        currentPeriodEnd: subscription.currentPeriodEnd
+      }
     });
   } catch (error) {
-    console.error('❌ Create checkout session error:', error);
+    console.error('❌ Create subscription error:', error);
     res.status(500).json({
       success: false,
-      message: 'Error creating checkout session',
+      message: 'Error creating subscription',
       error: error.message
     });
   }

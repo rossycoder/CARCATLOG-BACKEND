@@ -1,8 +1,10 @@
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
+const path = require('path');
 const SubscriptionPlan = require('../models/SubscriptionPlan');
 
-dotenv.config();
+// Load environment variables from backend/.env
+dotenv.config({ path: path.join(__dirname, '../.env') });
 
 /**
  * Seed subscription plans
@@ -11,103 +13,66 @@ dotenv.config();
 
 const plans = [
   {
-    name: 'Starter',
-    slug: 'starter',
-    description: 'Perfect for small dealerships getting started',
-    price: 9900, // £99.00 in pence
+    name: 'BRONZE Package',
+    slug: 'bronze',
+    description: 'Our Bronze Subscription lets you list up to 20 cars',
+    price: 100000, // £1000.00 in pence
     currency: 'GBP',
-    listingLimit: 10,
+    listingLimit: 20,
     features: [
-      'Up to 10 active listings',
-      'Unlimited photos per listing',
-      'Basic analytics dashboard',
-      'Email support',
-      'DVLA vehicle lookup',
-      'Mobile responsive listings'
+      'Attract buyers – Display your vehicle\'s best features with up to 100 photos',
+      'Attach a YouTube video for each vehicle to boost sales',
+      'We will provide your listing with a free basic HPI check & MOT status',
+      'A designated login area with a dealer dashboard to manage & update your stock',
+      'Unlimited listing alterations to keep your ads up to date'
     ],
-    stripePriceId: 'price_starter_monthly', // Replace with actual Stripe price ID
-    stripeProductId: 'prod_starter', // Replace with actual Stripe product ID
+    stripePriceId: 'price_bronze_monthly', // Replace with actual Stripe price ID
+    stripeProductId: 'prod_bronze', // Replace with actual Stripe product ID
     isActive: true,
     isPopular: false,
     displayOrder: 1
   },
   {
-    name: 'Professional',
-    slug: 'professional',
-    description: 'Most popular choice for growing dealerships',
-    price: 19900, // £199.00 in pence
+    name: 'SILVER Package',
+    slug: 'silver',
+    description: 'Our Silver Subscription lets you list up to 35 cars',
+    price: 150000, // £1500.00 in pence
     currency: 'GBP',
-    listingLimit: 25,
+    listingLimit: 35,
     features: [
-      'Up to 25 active listings',
-      'Unlimited photos per listing',
-      'Advanced analytics & insights',
-      'Priority email support',
-      'DVLA vehicle lookup',
-      'Featured listing (1 per month)',
-      'Mobile responsive listings',
-      'Export analytics reports'
+      'Attract buyers – Display your vehicle\'s best features with up to 100 photos',
+      'Attach a YouTube video for each vehicle to boost sales',
+      'We will provide your listing with a free basic HPI check & MOT status',
+      'A designated login area with a dealer dashboard to manage & update your stock',
+      'Unlimited listing alterations to keep your ads up to date'
     ],
-    stripePriceId: 'price_professional_monthly', // Replace with actual Stripe price ID
-    stripeProductId: 'prod_professional', // Replace with actual Stripe product ID
+    stripePriceId: 'price_silver_monthly', // Replace with actual Stripe price ID
+    stripeProductId: 'prod_silver', // Replace with actual Stripe product ID
     isActive: true,
     isPopular: true,
     displayOrder: 2,
     badge: 'Most Popular'
   },
   {
-    name: 'Business',
-    slug: 'business',
-    description: 'For established dealerships with high volume',
-    price: 39900, // £399.00 in pence
+    name: 'GOLD Package',
+    slug: 'gold',
+    description: 'Our Gold Subscription has unlimited vehicle listings',
+    price: 200000, // £2000.00 in pence
     currency: 'GBP',
-    listingLimit: 50,
+    listingLimit: null, // Unlimited
     features: [
-      'Up to 50 active listings',
-      'Unlimited photos per listing',
-      'Advanced analytics & insights',
-      'Priority support (email & phone)',
-      'DVLA vehicle lookup',
-      'Featured listings (5 per month)',
-      'Mobile responsive listings',
-      'Export analytics reports',
-      'Bulk upload capability',
-      'Custom branding options'
+      'Attract buyers – Display your vehicle\'s best features with up to 100 photos',
+      'Attach a YouTube video for each vehicle to boost sales',
+      'We will provide your listing with a free basic HPI check & MOT status',
+      'A designated login area with a dealer dashboard to manage & update your stock',
+      'Unlimited listing alterations to keep your ads up to date'
     ],
-    stripePriceId: 'price_business_monthly', // Replace with actual Stripe price ID
-    stripeProductId: 'prod_business', // Replace with actual Stripe product ID
+    stripePriceId: 'price_gold_monthly', // Replace with actual Stripe price ID
+    stripeProductId: 'prod_gold', // Replace with actual Stripe product ID
     isActive: true,
     isPopular: false,
     displayOrder: 3,
     badge: 'Best Value'
-  },
-  {
-    name: 'Enterprise',
-    slug: 'enterprise',
-    description: 'Unlimited listings for large dealerships',
-    price: 79900, // £799.00 in pence
-    currency: 'GBP',
-    listingLimit: null, // Unlimited
-    features: [
-      'Unlimited active listings',
-      'Unlimited photos per listing',
-      'Advanced analytics & insights',
-      'Dedicated account manager',
-      'DVLA vehicle lookup',
-      'Unlimited featured listings',
-      'Mobile responsive listings',
-      'Export analytics reports',
-      'Bulk upload capability',
-      'Custom branding options',
-      'API access',
-      'Priority listing placement',
-      'Custom integrations'
-    ],
-    stripePriceId: 'price_enterprise_monthly', // Replace with actual Stripe price ID
-    stripeProductId: 'prod_enterprise', // Replace with actual Stripe product ID
-    isActive: true,
-    isPopular: false,
-    displayOrder: 4
   }
 ];
 
