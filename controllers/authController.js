@@ -30,18 +30,14 @@ const register = async (req, res) => {
       });
     }
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
     // Generate email verification token
     const verificationToken = crypto.randomBytes(32).toString('hex');
-    const verificationExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
-    // Create user
+    // Create user (password will be hashed by pre-save hook)
     const user = await User.create({
       email: email.toLowerCase(),
-      password: hashedPassword,
+      password: password, // Will be hashed by pre-save hook
       name: name || email.split('@')[0],
       isEmailVerified: false,
       emailVerificationToken: verificationToken,
@@ -92,6 +88,8 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    console.log('🔐 Login attempt for:', email);
+
     // Validation
     if (!email || !password) {
       return res.status(400).json({
@@ -100,23 +98,44 @@ const login = async (req, res) => {
       });
     }
 
-    // Find user
+    // Find user and explicitly select password
     const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
+    
     if (!user) {
+      console.log('❌ User not found:', email);
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
       });
     }
 
-    // Check password
-    const isMatch = await bcrypt.compare(password, user.password);
+    console.log('✅ User found:', user.email);
+    console.log('   Has password:', !!user.password);
+    console.log('   Email verified:', user.isEmailVerified);
+
+    // Check if user has a password (social auth users might not)
+    if (!user.password) {
+      console.log('❌ User has no password (social auth user)');
+      return res.status(401).json({
+        success: false,
+        message: 'Please use social login or reset your password'
+      });
+    }
+
+    // Check password using the model method
+    const isMatch = await user.comparePassword(password);
+    
+    console.log('   Password match:', isMatch);
+
     if (!isMatch) {
+      console.log('❌ Password mismatch');
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
       });
     }
+
+    console.log('✅ Login successful');
 
     // Generate token
     const token = generateToken(user._id);
@@ -143,13 +162,14 @@ const login = async (req, res) => {
         user: {
           id: user._id,
           email: user.email,
-          name: user.name
+          name: user.name,
+          isEmailVerified: user.isEmailVerified
         },
         token
       }
     });
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('❌ Login error:', error);
     res.status(500).json({
       success: false,
       message: 'Error logging in',
@@ -238,24 +258,31 @@ const verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
 
-    // Find user with valid token
+    console.log('📧 Email verification attempt with token:', token);
+
+    // Find user with valid token - explicitly select the token fields
     const user = await User.findOne({
       emailVerificationToken: token,
       emailVerificationExpires: { $gt: Date.now() }
-    });
+    }).select('+emailVerificationToken +emailVerificationExpires');
 
     if (!user) {
+      console.log('❌ Invalid or expired token');
       return res.status(400).json({
         success: false,
-        message: 'Invalid or expired verification token'
+        message: 'Invalid or expired verification token. Please request a new verification email.'
       });
     }
+
+    console.log('✅ User found:', user.email);
 
     // Update user
     user.isEmailVerified = true;
     user.emailVerificationToken = undefined;
     user.emailVerificationExpires = undefined;
     await user.save();
+
+    console.log('✅ Email verified successfully');
 
     // Generate token for auto-login
     const authToken = generateToken(user._id);
@@ -282,7 +309,7 @@ const verifyEmail = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Email verification error:', error);
+    console.error('❌ Email verification error:', error);
     res.status(500).json({
       success: false,
       message: 'Error verifying email',
@@ -325,7 +352,7 @@ const resendVerification = async (req, res) => {
 
     // Generate new verification token
     const verificationToken = crypto.randomBytes(32).toString('hex');
-    const verificationExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
     user.emailVerificationToken = verificationToken;
     user.emailVerificationExpires = verificationExpires;
