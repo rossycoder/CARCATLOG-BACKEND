@@ -223,31 +223,48 @@ class StripeSubscriptionService {
       const dealerId = session.metadata.dealerId;
       const planId = session.metadata.planId;
 
-      console.log('Processing checkout completed for dealer:', dealerId);
+      console.log('\n🔔 WEBHOOK: Checkout completed');
+      console.log('📋 Dealer ID:', dealerId);
+      console.log('📋 Plan ID:', planId);
+      console.log('📋 Session ID:', session.id);
+      console.log('📋 Customer:', session.customer);
+      console.log('📋 Subscription:', session.subscription);
 
       // Get the subscription from Stripe
+      console.log('🔄 Retrieving Stripe subscription...');
       const subscription = await stripe.subscriptions.retrieve(session.subscription);
+      console.log('✅ Stripe subscription retrieved:', subscription.id);
+      console.log('   Status:', subscription.status);
       
       // Create local subscription record
+      console.log('🔍 Looking up plan and dealer...');
       const plan = await SubscriptionPlan.findById(planId);
       const dealer = await TradeDealer.findById(dealerId);
 
       if (!plan || !dealer) {
-        console.error('Plan or dealer not found for checkout session:', { dealerId, planId });
+        console.error('❌ Plan or dealer not found:', { dealerId, planId });
+        console.error('   Plan found:', !!plan);
+        console.error('   Dealer found:', !!dealer);
         return;
       }
 
+      console.log('✅ Plan found:', plan.name);
+      console.log('✅ Dealer found:', dealer.businessName);
+
       // Check if subscription already exists (prevent duplicates)
+      console.log('🔍 Checking for existing subscription...');
       let tradeSubscription = await TradeSubscription.findOne({
         stripeSubscriptionId: subscription.id
       });
 
       if (!tradeSubscription) {
-        console.log('Creating new subscription record...');
+        console.log('📝 Creating new subscription record...');
         
         // Ensure timestamps are valid numbers before converting
         const startTime = subscription.current_period_start;
         const endTime = subscription.current_period_end;
+        
+        console.log('   Raw timestamps:', { startTime, endTime });
         
         const currentPeriodStart = startTime && !isNaN(startTime) 
           ? new Date(startTime * 1000)
@@ -255,6 +272,8 @@ class StripeSubscriptionService {
         const currentPeriodEnd = endTime && !isNaN(endTime)
           ? new Date(endTime * 1000)
           : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        
+        console.log('   Converted dates:', { currentPeriodStart, currentPeriodEnd });
         
         tradeSubscription = new TradeSubscription({
           dealerId: dealer._id,
@@ -268,22 +287,45 @@ class StripeSubscriptionService {
           listingsUsed: 0
         });
 
-        await tradeSubscription.save();
-        console.log('✅ Subscription created and stored in database:', tradeSubscription._id);
+        console.log('💾 Saving subscription to database...');
+        try {
+          await tradeSubscription.save();
+          console.log('✅ Subscription saved successfully:', tradeSubscription._id);
+        } catch (saveError) {
+          console.error('❌ Failed to save subscription:', saveError.message);
+          console.error('   Error details:', saveError);
+          throw saveError;
+        }
       } else {
-        console.log('Subscription already exists:', tradeSubscription._id);
+        console.log('ℹ️ Subscription already exists:', tradeSubscription._id);
+        console.log('   Status:', tradeSubscription.status);
+        
+        // Update status if needed
+        if (tradeSubscription.status !== subscription.status) {
+          console.log('🔄 Updating subscription status:', tradeSubscription.status, '->', subscription.status);
+          tradeSubscription.status = subscription.status;
+          await tradeSubscription.save();
+        }
       }
 
       // Update dealer
+      console.log('📝 Updating dealer record...');
       dealer.currentSubscriptionId = tradeSubscription._id;
       dealer.status = 'active';
       dealer.hasActiveSubscription = true;
-      await dealer.save();
-      console.log('✅ Dealer updated with subscription:', dealer._id);
+      
+      try {
+        await dealer.save();
+        console.log('✅ Dealer updated successfully');
+      } catch (dealerError) {
+        console.error('❌ Failed to update dealer:', dealerError.message);
+        throw dealerError;
+      }
 
-      console.log('✅ Subscription payment processed and stored:', tradeSubscription._id);
+      console.log('✅ WEBHOOK PROCESSING COMPLETE\n');
     } catch (error) {
-      console.error('Error handling checkout completed:', error);
+      console.error('\n❌ WEBHOOK ERROR:', error.message);
+      console.error('Stack:', error.stack);
       throw error;
     }
   }
