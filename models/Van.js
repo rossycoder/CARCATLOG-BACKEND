@@ -13,6 +13,11 @@ const vanSchema = new mongoose.Schema({
     trim: true,
     index: true
   },
+  submodel: {
+    type: String,
+    trim: true,
+    index: true
+  },
   year: {
     type: Number,
     required: [true, 'Year is required'],
@@ -268,6 +273,7 @@ const vanSchema = new mongoose.Schema({
 
 // Indexes for faster queries
 vanSchema.index({ make: 1, model: 1 });
+vanSchema.index({ make: 1, model: 1, submodel: 1 });
 vanSchema.index({ year: 1 });
 vanSchema.index({ price: 1 });
 vanSchema.index({ location: '2dsphere' });

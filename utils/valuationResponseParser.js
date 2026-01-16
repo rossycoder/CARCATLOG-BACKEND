@@ -5,27 +5,30 @@
 
 /**
  * Validate that response contains required fields
+ * Handles both lowercase and capitalized field names from API
  * @param {Object} response - Raw API response
  * @returns {Object} Validation result with isValid and missing fields
  */
 function validateValuationResponse(response) {
-  const requiredFields = [
-    'vrm',
-    'mileage',
-    'estimatedValue'
-  ];
+  // Check for both lowercase and capitalized versions
+  const hasVrm = 'vrm' in response || 'Vrm' in response;
+  const hasMileage = 'mileage' in response || 'Mileage' in response;
+  const hasValuation = 'estimatedValue' in response || 'ValuationList' in response;
 
-  const missingFields = requiredFields.filter(field => !(field in response));
+  const missingFields = [];
+  if (!hasVrm) missingFields.push('vrm/Vrm');
+  if (!hasMileage) missingFields.push('mileage/Mileage');
+  if (!hasValuation) missingFields.push('estimatedValue/ValuationList');
 
-  // Also check that estimatedValue has required sub-fields
-  if (response.estimatedValue) {
-    const valueFields = ['retail', 'trade', 'private'];
-    const missingValueFields = valueFields.filter(
-      field => !(field in response.estimatedValue)
-    );
+  // Check ValuationList sub-fields if present
+  const valuationList = response.ValuationList || response.estimatedValue;
+  if (valuationList) {
+    const hasRetail = 'retail' in valuationList || 'DealerForecourt' in valuationList;
+    const hasTrade = 'trade' in valuationList || 'TradeAverage' in valuationList || 'PartExchange' in valuationList;
+    const hasPrivate = 'private' in valuationList || 'PrivateClean' in valuationList;
     
-    if (missingValueFields.length > 0) {
-      missingFields.push(...missingValueFields.map(f => `estimatedValue.${f}`));
+    if (!hasRetail && !hasTrade && !hasPrivate) {
+      missingFields.push('valuation prices');
     }
   }
 
@@ -76,6 +79,7 @@ function parseMarketConditions(marketData) {
 
 /**
  * Parse Valuation API response into ValuationResult format
+ * Handles both lowercase and CheckCarDetails API capitalized format
  * @param {Object} apiResponse - Raw API response
  * @param {boolean} isTestMode - Whether in test mode
  * @returns {Object} Parsed ValuationResult
@@ -100,15 +104,24 @@ function parseValuationResponse(apiResponse, isTestMode = false) {
     throw error;
   }
 
+  // Extract VRM (handle both formats)
+  const vrm = apiResponse.vrm || apiResponse.Vrm || 'unknown';
+  
+  // Extract mileage (handle both formats)
+  const mileage = apiResponse.mileage || apiResponse.Mileage || 0;
+  
+  // Extract valuation data (handle both formats)
+  const valuationList = apiResponse.ValuationList || apiResponse.estimatedValue || {};
+  
   // Parse the response
   const result = {
-    vrm: apiResponse.vrm,
-    mileage: apiResponse.mileage,
-    valuationDate: new Date(),
+    vrm,
+    mileage,
+    valuationDate: apiResponse.ValuationTime || apiResponse.valuationDate || new Date().toISOString(),
     estimatedValue: {
-      retail: apiResponse.estimatedValue.retail,
-      trade: apiResponse.estimatedValue.trade,
-      private: apiResponse.estimatedValue.private,
+      retail: valuationList.DealerForecourt || valuationList.retail || 0,
+      trade: valuationList.TradeAverage || valuationList.trade || valuationList.PartExchange || 0,
+      private: valuationList.PrivateClean || valuationList.private || 0,
     },
     confidence: apiResponse.confidence || 'medium',
     factors: parseValuationFactors(apiResponse.factors),
@@ -116,8 +129,9 @@ function parseValuationResponse(apiResponse, isTestMode = false) {
     validUntil: apiResponse.validUntil 
       ? new Date(apiResponse.validUntil)
       : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // Default: 30 days
-    apiProvider: apiResponse.provider || 'unknown',
+    apiProvider: apiResponse.provider || 'checkcardetails',
     testMode: isTestMode,
+    vehicleDescription: apiResponse.VehicleDescription || null,
   };
 
   return result;
@@ -125,19 +139,29 @@ function parseValuationResponse(apiResponse, isTestMode = false) {
 
 /**
  * Handle partial API response (some data missing)
+ * Handles both lowercase and CheckCarDetails API capitalized format
  * @param {Object} apiResponse - Partial API response
  * @param {boolean} isTestMode - Whether in test mode
  * @returns {Object} ValuationResult with default values
  */
 function handlePartialValuationResponse(apiResponse, isTestMode = false) {
+  // Extract VRM (handle both formats)
+  const vrm = apiResponse.vrm || apiResponse.Vrm || 'unknown';
+  
+  // Extract mileage (handle both formats)
+  const mileage = apiResponse.mileage || apiResponse.Mileage || 0;
+  
+  // Extract valuation data (handle both formats)
+  const valuationList = apiResponse.ValuationList || apiResponse.estimatedValue || {};
+  
   const result = {
-    vrm: apiResponse.vrm || 'unknown',
-    mileage: apiResponse.mileage || 0,
-    valuationDate: new Date(),
+    vrm,
+    mileage,
+    valuationDate: apiResponse.ValuationTime || apiResponse.valuationDate || new Date().toISOString(),
     estimatedValue: {
-      retail: apiResponse.estimatedValue?.retail || 0,
-      trade: apiResponse.estimatedValue?.trade || 0,
-      private: apiResponse.estimatedValue?.private || 0,
+      retail: valuationList.DealerForecourt || valuationList.retail || 0,
+      trade: valuationList.TradeAverage || valuationList.trade || valuationList.PartExchange || 0,
+      private: valuationList.PrivateClean || valuationList.private || 0,
     },
     confidence: 'low',
     factors: [],
@@ -147,8 +171,9 @@ function handlePartialValuationResponse(apiResponse, isTestMode = false) {
       trend: 'stable',
     },
     validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days for partial data
-    apiProvider: apiResponse.provider || 'unknown',
+    apiProvider: apiResponse.provider || 'checkcardetails',
     testMode: isTestMode,
+    vehicleDescription: apiResponse.VehicleDescription || null,
   };
 
   console.warn('Partial Valuation API response received:', {

@@ -20,6 +20,12 @@ router.get(
   vehicleController.getFilterOptions.bind(vehicleController)
 );
 
+// GET /api/vehicles/enhanced-lookup/:registration - Enhanced vehicle lookup with both APIs
+router.get(
+  '/enhanced-lookup/:registration',
+  vehicleController.enhancedVehicleLookup.bind(vehicleController)
+);
+
 // GET /api/vehicles - Get all cars with filters (must be before /:id)
 router.get(
   '/',

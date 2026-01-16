@@ -13,6 +13,11 @@ const bikeSchema = new mongoose.Schema({
     trim: true,
     index: true
   },
+  submodel: {
+    type: String,
+    trim: true,
+    index: true
+  },
   year: {
     type: Number,
     required: [true, 'Year is required'],
@@ -249,6 +254,7 @@ const bikeSchema = new mongoose.Schema({
 
 // Indexes for faster queries
 bikeSchema.index({ make: 1, model: 1 });
+bikeSchema.index({ make: 1, model: 1, submodel: 1 });
 bikeSchema.index({ year: 1 });
 bikeSchema.index({ price: 1 });
 bikeSchema.index({ location: '2dsphere' });

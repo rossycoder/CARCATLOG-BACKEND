@@ -57,12 +57,30 @@ const createAdvert = async (req, res) => {
       return 'Petrol'; // default
     };
 
+    // Helper to safely parse year
+    const parseYear = (year) => {
+      if (!year) return new Date().getFullYear();
+      const parsed = parseInt(year);
+      if (isNaN(parsed) || parsed < 1900 || parsed > new Date().getFullYear() + 1) {
+        return new Date().getFullYear();
+      }
+      return parsed;
+    };
+
+    // Helper to safely parse engine size
+    const parseEngineSize = (size) => {
+      if (!size) return undefined;
+      const parsed = parseFloat(size);
+      if (isNaN(parsed) || parsed <= 0) return undefined;
+      return parsed;
+    };
+
     // Create car document in database immediately
     const car = new Car({
       advertId: advertId,
       make: vehicleData.make || 'Unknown',
       model: vehicleData.model || 'Unknown',
-      year: vehicleData.year || new Date().getFullYear(),
+      year: parseYear(vehicleData.year),
       mileage: vehicleData.mileage || 0,
       color: vehicleData.color || 'Not specified',
       fuelType: normalizeFuelType(vehicleData.fuelType),
@@ -71,7 +89,7 @@ const createAdvert = async (req, res) => {
       description: '',
       images: [],
       registrationNumber: vehicleData.registration || vehicleData.registrationNumber || null,
-      engineSize: vehicleData.engineSize ? parseFloat(vehicleData.engineSize) : undefined,
+      engineSize: parseEngineSize(vehicleData.engineSize),
       bodyType: vehicleData.bodyType,
       doors: vehicleData.doors ? parseInt(vehicleData.doors) : undefined,
       seats: vehicleData.seats ? parseInt(vehicleData.seats) : undefined,
@@ -154,7 +172,7 @@ const getAdvert = async (req, res) => {
         bodyType: car.bodyType,
         doors: car.doors,
         seats: car.seats,
-        estimatedValue: car.price,
+        estimatedValue: car.price || 0,
         motDue: car.motStatus,
         co2Emissions: car.co2Emissions,
         taxStatus: car.taxStatus
@@ -169,7 +187,13 @@ const getAdvert = async (req, res) => {
         })),
         contactPhone: car.sellerContact?.phoneNumber || '',
         contactEmail: car.sellerContact?.email || '',
-        location: car.sellerContact?.postcode || car.postcode || ''
+        location: car.sellerContact?.postcode || car.postcode || '',
+        runningCosts: car.runningCosts || {
+          fuelEconomy: { urban: '', extraUrban: '', combined: '' },
+          annualTax: '',
+          insuranceGroup: '',
+          co2Emissions: car.co2Emissions || ''
+        }
       },
       status: car.advertStatus,
       createdAt: car.createdAt
@@ -225,13 +249,39 @@ const updateAdvert = async (req, res) => {
     
     // Update advert data if provided
     if (advertData) {
-      if (advertData.price !== undefined) car.price = advertData.price;
+      if (advertData.price !== undefined) {
+        const priceValue = parseFloat(advertData.price);
+        if (!isNaN(priceValue)) {
+          car.price = priceValue;
+          console.log(`💰 Updating price to: £${priceValue}`);
+        }
+      }
       if (advertData.description !== undefined) car.description = advertData.description;
       
       // Update photos - save Cloudinary URLs to database
       if (advertData.photos && Array.isArray(advertData.photos)) {
         console.log(`📸 Saving ${advertData.photos.length} photos to database`);
         car.images = advertData.photos.map(photo => photo.url || photo);
+      }
+      
+      // Update features
+      if (advertData.features && Array.isArray(advertData.features)) {
+        car.features = advertData.features;
+      }
+      
+      // Update running costs
+      if (advertData.runningCosts) {
+        car.runningCosts = {
+          fuelEconomy: advertData.runningCosts.fuelEconomy || {},
+          annualTax: advertData.runningCosts.annualTax,
+          insuranceGroup: advertData.runningCosts.insuranceGroup,
+          co2Emissions: advertData.runningCosts.co2Emissions
+        };
+      }
+      
+      // Update video URL
+      if (advertData.videoUrl !== undefined) {
+        car.videoUrl = advertData.videoUrl;
       }
     }
     
@@ -265,15 +315,19 @@ const updateAdvert = async (req, res) => {
     
     await car.save();
     console.log(`✅ Updated advert ${advertId} in database`);
+    console.log(`   Price: £${car.price}`);
     console.log(`   Photos saved: ${car.images.length}`);
     console.log(`   Status: ${car.advertStatus}`);
     
     // Return updated advert
     const advert = {
       id: advertId,
-      vehicleData: vehicleData || {},
+      vehicleData: vehicleData || {
+        estimatedValue: car.price
+      },
       advertData: {
         ...advertData,
+        price: car.price, // Return the saved price from database
         photos: car.images.map((url, index) => ({
           id: `photo-${index}`,
           url: url,

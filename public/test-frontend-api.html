@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test CheckCarDetails API Frontend</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .input-group {
+            margin: 20px 0;
+        }
+        input {
+            padding: 10px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .loading {
+            color: #007bff;
+            font-weight: bold;
+        }
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .success {
+            color: #155724;
+            background: #d4edda;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .data-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-left: 4px solid #007bff;
+        }
+        .data-section h3 {
+            margin-top: 0;
+            color: #007bff;
+        }
+        .data-item {
+            margin: 10px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+        }
+        .data-item strong {
+            color: #333;
+            display: inline-block;
+            width: 150px;
+        }
+        .source-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #28a745;
+            color: white;
+            border-radius: 3px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚗 CheckCarDetails API Frontend Test</h1>
+        
+        <div class="input-group">
+            <input type="text" id="vrm" placeholder="Enter VRM (e.g., AB12CDE)" value="AB12CDE">
+            <button onclick="testAPI()">Lookup Vehicle</button>
+        </div>
+
+        <div id="loading" style="display: none;" class="loading">
+            ⏳ Loading vehicle data...
+        </div>
+
+        <div id="error" style="display: none;" class="error"></div>
+        <div id="success" style="display: none;" class="success"></div>
+
+        <div id="results" style="display: none;">
+            <h2>📊 Vehicle Data</h2>
+            
+            <div class="data-section">
+                <h3>Basic Information</h3>
+                <div id="basic-info"></div>
+            </div>
+
+            <div class="data-section">
+                <h3>⛽ Running Costs</h3>
+                <div id="running-costs"></div>
+            </div>
+
+            <div class="data-section">
+                <h3>🏎️ Performance</h3>
+                <div id="performance"></div>
+            </div>
+
+            <div class="data-section">
+                <h3>💰 Valuation</h3>
+                <div id="valuation"></div>
+            </div>
+
+            <div class="data-section">
+                <h3>📡 Data Sources</h3>
+                <div id="sources"></div>
+            </div>
+
+            <details style="margin-top: 20px;">
+                <summary style="cursor: pointer; font-weight: bold;">View Raw JSON Response</summary>
+                <pre id="raw-json"></pre>
+            </details>
+        </div>
+    </div>
+
+    <script>
+        async function testAPI() {
+            const vrm = document.getElementById('vrm').value.trim();
+            
+            if (!vrm) {
+                showError('Please enter a VRM');
+                return;
+            }
+
+            // Reset UI
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('success').style.display = 'none';
+            document.getElementById('results').style.display = 'none';
+
+            try {
+                console.log('Calling API for VRM:', vrm);
+                
+                const response = await fetch(`/api/vehicles/enhanced-lookup/${vrm}`);
+                const data = await response.json();
+
+                console.log('API Response:', data);
+
+                if (!response.ok) {
+                    throw new Error(data.error?.message || 'API call failed');
+                }
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Lookup failed');
+                }
+
+                // Show success
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('success').style.display = 'block';
+                document.getElementById('success').textContent = '✅ Vehicle data loaded successfully!';
+                document.getElementById('results').style.display = 'block';
+
+                // Display data
+                displayData(data.data);
+
+                // Show raw JSON
+                document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+
+            } catch (error) {
+                console.error('Error:', error);
+                showError(error.message);
+            }
+        }
+
+        function showError(message) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error').style.display = 'block';
+            document.getElementById('error').textContent = '❌ Error: ' + message;
+            document.getElementById('results').style.display = 'none';
+        }
+
+        function displayData(data) {
+            // Basic Info
+            const basicInfo = document.getElementById('basic-info');
+            basicInfo.innerHTML = `
+                ${createDataItem('Make', data.make)}
+                ${createDataItem('Model', data.model)}
+                ${createDataItem('Year', data.year)}
+                ${createDataItem('Color', data.color)}
+                ${createDataItem('Fuel Type', data.fuelType)}
+                ${createDataItem('Transmission', data.transmission)}
+                ${createDataItem('Engine Size', data.engineSize, 'cc')}
+            `;
+
+            // Running Costs
+            const runningCosts = document.getElementById('running-costs');
+            runningCosts.innerHTML = `
+                <h4>Fuel Economy</h4>
+                ${createDataItem('Urban', data.runningCosts?.fuelEconomy?.urban, 'mpg')}
+                ${createDataItem('Extra Urban', data.runningCosts?.fuelEconomy?.extraUrban, 'mpg')}
+                ${createDataItem('Combined', data.runningCosts?.fuelEconomy?.combined, 'mpg')}
+                <h4>Emissions & Tax</h4>
+                ${createDataItem('CO2 Emissions', data.runningCosts?.co2Emissions, 'g/km')}
+                ${createDataItem('Annual Tax', data.runningCosts?.annualTax, '£')}
+                ${createDataItem('Insurance Group', data.runningCosts?.insuranceGroup)}
+            `;
+
+            // Performance
+            const performance = document.getElementById('performance');
+            performance.innerHTML = `
+                ${createDataItem('Power', data.performance?.power, 'bhp')}
+                ${createDataItem('Torque', data.performance?.torque, 'Nm')}
+                ${createDataItem('0-60 mph', data.performance?.acceleration, 'seconds')}
+                ${createDataItem('Top Speed', data.performance?.topSpeed, 'mph')}
+            `;
+
+            // Valuation
+            const valuation = document.getElementById('valuation');
+            valuation.innerHTML = `
+                ${createDataItem('Dealer Price', data.valuation?.dealerPrice, '£')}
+                ${createDataItem('Private Price', data.valuation?.privatePrice, '£')}
+                ${createDataItem('Part Exchange', data.valuation?.partExchangePrice, '£')}
+                ${createDataItem('Trade Price', data.valuation?.tradePrice, '£')}
+            `;
+
+            // Data Sources
+            const sources = document.getElementById('sources');
+            const dataSources = data.dataSources || {};
+            sources.innerHTML = `
+                <div class="data-item">
+                    <strong>DVLA:</strong> ${dataSources.dvla ? '✅ Available' : '❌ Unavailable'}
+                </div>
+                <div class="data-item">
+                    <strong>CheckCarDetails:</strong> ${dataSources.checkCarDetails ? '✅ Available' : '❌ Unavailable'}
+                </div>
+                <div class="data-item">
+                    <strong>Valuation:</strong> ${dataSources.valuation ? '✅ Available' : '❌ Unavailable'}
+                </div>
+            `;
+        }
+
+        function createDataItem(label, dataObj, unit = '') {
+            if (!dataObj) {
+                return `<div class="data-item"><strong>${label}:</strong> N/A</div>`;
+            }
+
+            const value = dataObj.value !== undefined ? dataObj.value : dataObj;
+            const source = dataObj.source || null;
+
+            if (value === null || value === undefined) {
+                return `<div class="data-item"><strong>${label}:</strong> N/A</div>`;
+            }
+
+            const displayValue = unit.startsWith('£') ? `${unit}${value}` : `${value} ${unit}`;
+            const sourceBadge = source ? `<span class="source-badge">${source}</span>` : '';
+
+            return `<div class="data-item"><strong>${label}:</strong> ${displayValue} ${sourceBadge}</div>`;
+        }
+
+        // Auto-test on load
+        window.addEventListener('load', () => {
+            console.log('Page loaded, ready to test API');
+        });
+    </script>
+</body>
+</html>

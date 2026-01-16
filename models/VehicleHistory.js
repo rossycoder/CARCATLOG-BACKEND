@@ -8,6 +8,74 @@ const vehicleHistorySchema = new mongoose.Schema({
     trim: true,
     index: true,
   },
+  make: {
+    type: String,
+    trim: true,
+  },
+  model: {
+    type: String,
+    trim: true,
+  },
+  colour: {
+    type: String,
+    trim: true,
+  },
+  fuelType: {
+    type: String,
+    trim: true,
+  },
+  yearOfManufacture: {
+    type: Number,
+  },
+  firstRegistered: {
+    type: Date,
+  },
+  engineCapacity: {
+    type: Number,
+  },
+  bodyType: {
+    type: String,
+    trim: true,
+  },
+  transmission: {
+    type: String,
+    trim: true,
+  },
+  vin: {
+    type: String,
+    trim: true,
+  },
+  engineNumber: {
+    type: String,
+    trim: true,
+  },
+  co2Emissions: {
+    type: Number,
+  },
+  numberOfPreviousKeepers: {
+    type: Number,
+    default: 0,
+  },
+  plateChanges: {
+    type: Number,
+    default: 0,
+  },
+  colourChanges: {
+    type: Number,
+    default: 0,
+  },
+  exported: {
+    type: Boolean,
+    default: false,
+  },
+  scrapped: {
+    type: Boolean,
+    default: false,
+  },
+  imported: {
+    type: Boolean,
+    default: false,
+  },
   checkDate: {
     type: Date,
     required: true,

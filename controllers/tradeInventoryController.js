@@ -375,51 +375,60 @@ exports.markAsSold = async (req, res) => {
 exports.publishVehicle = async (req, res) => {
   try {
     console.log('[Trade Publish] ========== START PUBLISH REQUEST ==========');
-    console.log('[Trade Publish] Request body:', JSON.stringify(req.body, null, 2));
+    console.log('[Trade Publish] Request body keys:', Object.keys(req.body));
     console.log('[Trade Publish] Authenticated dealer:', {
       id: req.dealerId,
       businessName: req.dealer?.businessName
     });
 
-    const { advertId, vehicleData, advertData, contactDetails, dealerId } = req.body;
+    const { advertId, contactDetails, dealerId, advertData } = req.body;
 
-    console.log('[Trade Publish] Publishing vehicle:', { advertId, dealerId });
-    console.log('[Trade Publish] Dealer ID comparison:', {
-      fromRequest: dealerId,
-      fromAuth: req.dealerId.toString(),
-      match: dealerId === req.dealerId.toString()
-    });
+    console.log('[Trade Publish] ===== DEBUG DATA =====');
+    console.log('[Trade Publish] advertData received:', !!advertData);
+    if (advertData) {
+      console.log('[Trade Publish] advertData.images:', advertData.images ? advertData.images.length : 'NONE');
+      console.log('[Trade Publish] advertData.description:', advertData.description ? 'YES' : 'NONE');
+      console.log('[Trade Publish] advertData keys:', Object.keys(advertData));
+    }
+    console.log('[Trade Publish] ===== END DEBUG =====');
+
+    // Validation: Check required fields
+    const validationErrors = [];
+    
+    if (!advertId) {
+      validationErrors.push('Advert ID is required');
+    }
+    
+    if (!contactDetails) {
+      validationErrors.push('Contact details are required');
+    } else {
+      if (!contactDetails.phoneNumber || !contactDetails.phoneNumber.trim()) {
+        validationErrors.push('Phone number is required');
+      }
+      if (!contactDetails.email || !contactDetails.email.trim()) {
+        validationErrors.push('Email is required');
+      }
+      if (!contactDetails.postcode || !contactDetails.postcode.trim()) {
+        validationErrors.push('Postcode is required');
+      }
+    }
+    
+    if (validationErrors.length > 0) {
+      console.log('[Trade Publish] Validation failed:', validationErrors);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: validationErrors
+      });
+    }
 
     // Verify dealer matches authenticated user
-    // Convert both to strings for comparison
     if (dealerId && dealerId.toString() !== req.dealerId.toString()) {
       console.log('[Trade Publish] Unauthorized: dealer mismatch');
       return res.status(403).json({ 
         success: false, 
         message: 'Unauthorized - Dealer ID mismatch' 
       });
-    }
-
-    // Check subscription and listing limits
-    const subscription = await TradeSubscription.findActiveForDealer(req.dealerId);
-    if (subscription) {
-      const canAdd = subscription.canAddListing();
-      if (!canAdd.allowed) {
-        console.log('[Trade Publish] Listing limit reached');
-        const SubscriptionPlan = require('../models/SubscriptionPlan');
-        const plan = await SubscriptionPlan.findById(subscription.planId);
-        
-        return res.status(403).json({
-          success: false,
-          message: canAdd.reason,
-          code: 'LISTING_LIMIT_REACHED',
-          subscription: {
-            listingsUsed: subscription.listingsUsed,
-            listingsLimit: subscription.listingsLimit,
-            planName: plan?.name || 'Unknown'
-          }
-        });
-      }
     }
 
     // Find the car by advertId
@@ -433,55 +442,68 @@ exports.publishVehicle = async (req, res) => {
     }
 
     console.log('[Trade Publish] Found vehicle:', car._id);
+    console.log('[Trade Publish] Current images:', car.images ? car.images.length : 0);
 
-    // Update car with all details
-    car.price = advertData?.price || car.price;
-    car.description = advertData?.description || car.description;
-    car.images = advertData?.photos?.map(p => p.url) || car.images;
-    car.sellerContact = {
-      phoneNumber: contactDetails.phoneNumber,
-      email: contactDetails.email,
-      allowEmailContact: contactDetails.allowEmailContact,
+    // Prepare update data
+    const updateData = {
+      'sellerContact.phoneNumber': contactDetails.phoneNumber,
+      'sellerContact.email': contactDetails.email,
+      'sellerContact.allowEmailContact': contactDetails.allowEmailContact || false,
+      'sellerContact.postcode': contactDetails.postcode,
+      'sellerContact.type': 'trade',
+      'sellerContact.businessName': req.dealer.businessName,
       postcode: contactDetails.postcode,
-      type: 'trade',
-      businessName: req.dealer.businessName,
-      ...req.dealer.businessAddress
+      dealerId: req.dealerId,
+      isDealerListing: true,
+      sellerType: 'dealer',
+      advertStatus: 'active',
+      publishedAt: new Date()
     };
-    car.dealerId = req.dealerId;
-    car.isDealerListing = true;
-    car.sellerType = 'dealer';
-    car.advertStatus = 'active';
-    car.publishedAt = new Date();
 
-    await car.save();
-    console.log('[Trade Publish] Vehicle published successfully:', car._id);
-
-    // Update subscription listing count
-    if (subscription) {
-      try {
-        await subscription.incrementListingCount();
-        console.log('[Trade Publish] Updated subscription listing count:', subscription.listingsUsed);
-      } catch (subError) {
-        console.log('[Trade Publish] Could not update subscription:', subError.message);
-      }
+    // ALWAYS use images from advertData if provided (these are the dealer's uploaded images)
+    // Frontend sends photos array, backend needs images array
+    if (advertData && advertData.photos && advertData.photos.length > 0) {
+      console.log('[Trade Publish] Using photos from advertData:', advertData.photos.length);
+      // Convert photos array (with url property) to images array (just URLs)
+      updateData.images = advertData.photos.map(photo => photo.url || photo);
+    } else if (advertData && advertData.images && advertData.images.length > 0) {
+      console.log('[Trade Publish] Using images from advertData:', advertData.images.length);
+      updateData.images = advertData.images;
     }
 
-    // Update dealer stats (optional)
-    try {
-      if (req.dealer.updateStats) {
-        await req.dealer.updateStats();
-      }
-    } catch (statsError) {
-      console.log('[Trade Publish] Could not update dealer stats (optional):', statsError.message);
+    // ALWAYS use description from advertData if provided
+    if (advertData && advertData.description && advertData.description.trim() !== '') {
+      console.log('[Trade Publish] Using description from advertData');
+      updateData.description = advertData.description;
     }
 
+    // ALWAYS use other important fields from advertData if they exist
+    if (advertData) {
+      const fieldsToUpdate = ['features', 'condition', 'serviceHistory', 'owners'];
+      fieldsToUpdate.forEach(field => {
+        if (advertData[field]) {
+          console.log(`[Trade Publish] Using ${field} from advertData`);
+          updateData[field] = advertData[field];
+        }
+      });
+    }
+
+    // SIMPLE UPDATE - Just set the fields we need, PRESERVE existing images
+    const updateResult = await Car.updateOne(
+      { _id: car._id },
+      { $set: updateData },
+      { runValidators: false }
+    );
+    
+    console.log('[Trade Publish] Update result:', updateResult);
     console.log('[Trade Publish] ========== PUBLISH SUCCESS ==========');
+    
     res.json({
       success: true,
       data: {
         vehicleId: car._id,
         advertId: car.advertId,
-        status: car.advertStatus
+        status: 'active'
       },
       message: 'Vehicle published successfully'
     });
@@ -489,6 +511,7 @@ exports.publishVehicle = async (req, res) => {
     console.error('[Trade Publish] ========== PUBLISH ERROR ==========');
     console.error('[Trade Publish] Error:', error);
     console.error('[Trade Publish] Error stack:', error.stack);
+    
     res.status(500).json({ 
       success: false, 
       message: 'Failed to publish vehicle',

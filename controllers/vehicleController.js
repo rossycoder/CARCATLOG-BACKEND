@@ -1,7 +1,11 @@
 const { body, validationResult } = require('express-validator');
 const dvlaService = require('../services/dvlaService');
+const HistoryService = require('../services/historyService');
 const Car = require('../models/Car');
 const { createErrorFromCode, logError } = require('../utils/dvlaErrorHandler');
+
+// Initialize HistoryService
+const historyService = new HistoryService();
 
 class VehicleController {
   /**
@@ -221,6 +225,7 @@ class VehicleController {
   /**
    * POST /api/vehicles/dvla-lookup
    * Lookup vehicle from DVLA without creating database record
+   * Enhanced to also fetch data from CheckCarDetails for comprehensive information
    */
   async dvlaLookup(req, res, next) {
     try {
@@ -239,20 +244,72 @@ class VehicleController {
 
       const { registrationNumber } = req.body;
 
-      // Lookup vehicle from DVLA
-      console.log(`[Vehicle Controller] DVLA lookup for: ${registrationNumber}`);
+      // Lookup vehicle from both DVLA and CheckCarDetails
+      console.log(`[Vehicle Controller] Enhanced lookup for: ${registrationNumber}`);
       
       try {
-        const dvlaData = await dvlaService.lookupVehicle(registrationNumber);
+        // Call both APIs in parallel for faster response
+        const [dvlaResult, historyResult] = await Promise.allSettled([
+          dvlaService.lookupVehicle(registrationNumber),
+          historyService.checkVehicleHistory(registrationNumber, false)
+        ]);
         
-        // Return DVLA data directly
+        // Process DVLA result
+        let dvlaData = null;
+        if (dvlaResult.status === 'fulfilled') {
+          dvlaData = dvlaResult.value;
+          console.log(`[Vehicle Controller] DVLA lookup successful`);
+        } else {
+          console.log(`[Vehicle Controller] DVLA lookup failed:`, dvlaResult.reason?.message);
+        }
+        
+        // Process CheckCarDetails result
+        let historyData = null;
+        if (historyResult.status === 'fulfilled') {
+          historyData = historyResult.value;
+          console.log(`[Vehicle Controller] CheckCarDetails lookup successful`);
+        } else {
+          console.log(`[Vehicle Controller] CheckCarDetails lookup failed:`, historyResult.reason?.message);
+        }
+        
+        // Merge data - prioritize CheckCarDetails for model info as it's more comprehensive
+        const mergedData = {
+          // Basic info - prefer CheckCarDetails
+          make: historyData?.make || dvlaData?.make || 'Unknown',
+          model: historyData?.model || dvlaData?.model || 'Unknown',
+          colour: historyData?.colour || dvlaData?.colour || dvlaData?.color || 'Unknown',
+          fuelType: historyData?.fuelType || dvlaData?.fuelType || 'Unknown',
+          yearOfManufacture: historyData?.yearOfManufacture || dvlaData?.yearOfManufacture || dvlaData?.year,
+          engineCapacity: historyData?.engineCapacity || dvlaData?.engineCapacity,
+          bodyType: historyData?.bodyType || dvlaData?.bodyType,
+          transmission: historyData?.transmission || dvlaData?.transmission,
+          
+          // Additional info from CheckCarDetails
+          previousOwners: historyData?.previousOwners || historyData?.numberOfPreviousKeepers || 0,
+          vin: historyData?.vin,
+          co2Emissions: historyData?.co2Emissions || dvlaData?.co2Emissions,
+          
+          // DVLA specific
+          taxStatus: dvlaData?.taxStatus,
+          taxDueDate: dvlaData?.taxDueDate,
+          motStatus: dvlaData?.motStatus,
+          motExpiryDate: dvlaData?.motExpiryDate,
+          
+          // Metadata
+          _sources: {
+            dvla: dvlaResult.status === 'fulfilled',
+            checkCarDetails: historyResult.status === 'fulfilled'
+          }
+        };
+        
+        // Return merged data
         return res.json({
           success: true,
-          data: dvlaData,
-          vehicle: dvlaData
+          data: mergedData,
+          vehicle: mergedData
         });
       } catch (error) {
-        console.error(`[Vehicle Controller] DVLA lookup failed for: ${registrationNumber}`, error.message);
+        console.error(`[Vehicle Controller] Lookup failed for: ${registrationNumber}`, error.message);
         
         // Return appropriate error based on error type
         let statusCode = 500;
@@ -671,6 +728,80 @@ class VehicleController {
     } catch (error) {
       console.error('[Vehicle Controller] Error in getFilterOptions:', error);
       next(error);
+    }
+  }
+
+  /**
+   * GET /api/vehicles/enhanced-lookup/:registration
+   * Enhanced vehicle lookup using both DVLA and CheckCarDetails APIs
+   * Returns merged data with source tracking from both APIs
+   */
+  async enhancedVehicleLookup(req, res, next) {
+    try {
+      const { registration } = req.params;
+      const { useCache = 'true' } = req.query;
+
+      console.log(`[Vehicle Controller] Enhanced lookup request for: ${registration}`);
+
+      if (!registration) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: 'MISSING_REGISTRATION',
+            message: 'Registration number is required'
+          }
+        });
+      }
+
+      // Validate registration format
+      const cleanedReg = registration.toUpperCase().replace(/\s/g, '');
+      if (cleanedReg.length < 2 || cleanedReg.length > 10) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_REGISTRATION',
+            message: 'Invalid registration number format'
+          }
+        });
+      }
+
+      const enhancedVehicleService = require('../services/enhancedVehicleService');
+      
+      // Get enhanced vehicle data with fallback handling
+      const result = await enhancedVehicleService.getVehicleDataWithFallback(cleanedReg);
+
+      if (!result.success) {
+        console.error(`[Vehicle Controller] Enhanced lookup failed for ${registration}:`, result.error);
+        return res.status(500).json({
+          success: false,
+          error: {
+            code: 'LOOKUP_FAILED',
+            message: result.error || 'Failed to lookup vehicle data from all sources'
+          }
+        });
+      }
+
+      console.log(`[Vehicle Controller] Enhanced lookup successful for ${registration}`);
+      console.log(`[Vehicle Controller] Data sources - DVLA: ${result.data.dataSources.dvla}, CheckCarDetails: ${result.data.dataSources.checkCarDetails}`);
+
+      // Return merged data with source tracking
+      return res.json({
+        success: true,
+        data: result.data,
+        warnings: result.warnings || [],
+        dataSources: result.data.dataSources
+      });
+
+    } catch (error) {
+      console.error('[Vehicle Controller] Error in enhancedVehicleLookup:', error);
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'An unexpected error occurred during vehicle lookup',
+          details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        }
+      });
     }
   }
 }

@@ -77,12 +77,12 @@ exports.getCurrentSubscription = async (req, res) => {
 };
 
 /**
- * Create Subscription Directly (No Stripe Checkout)
+ * Create Stripe Checkout Session for Subscription
  * POST /api/trade/subscriptions/create-checkout-session
  */
 exports.createCheckoutSession = async (req, res) => {
   try {
-    console.log('\n🔍 CREATE SUBSCRIPTION DIRECTLY');
+    console.log('\n🔍 CREATE STRIPE CHECKOUT SESSION');
     console.log('📝 Request body:', req.body);
     console.log('👤 Dealer ID:', req.dealerId);
     
@@ -138,55 +138,108 @@ exports.createCheckoutSession = async (req, res) => {
       });
     }
 
-    console.log('✅ Plan found, creating subscription directly...');
+    console.log('✅ Plan found, creating Stripe checkout session...');
 
-    // Create subscription directly without Stripe
-    const subscription = new TradeSubscription({
-      dealerId: dealer._id,
-      planId: plan._id,
-      stripeSubscriptionId: `manual_sub_${Date.now()}`,
-      stripeCustomerId: `manual_cus_${Date.now()}`,
-      status: 'active',
-      currentPeriodStart: new Date(),
-      currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-      listingsLimit: plan.listingLimit,
-      listingsUsed: 0
+    // Check if we should use direct activation (development) or Stripe (production)
+    const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.STRIPE_SECRET_KEY;
+
+    if (isDevelopment) {
+      // DEVELOPMENT: Create subscription directly without Stripe
+      console.log('🔧 Development mode: Creating subscription directly');
+      
+      const subscription = new TradeSubscription({
+        dealerId: dealer._id,
+        planId: plan._id,
+        stripeSubscriptionId: `manual_sub_${Date.now()}`,
+        stripeCustomerId: `manual_cus_${Date.now()}`,
+        status: 'active',
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+        listingsLimit: plan.listingLimit,
+        listingsUsed: 0
+      });
+
+      await subscription.save();
+      console.log('✅ Subscription created:', subscription._id);
+
+      // Update dealer
+      dealer.currentSubscriptionId = subscription._id;
+      dealer.status = 'active';
+      dealer.hasActiveSubscription = true;
+      await dealer.save();
+      console.log('✅ Dealer updated');
+
+      // Return success with subscription details
+      return res.json({
+        success: true,
+        message: 'Subscription activated successfully!',
+        subscription: {
+          id: subscription._id,
+          plan: {
+            id: plan._id,
+            name: plan.name,
+            slug: plan.slug,
+            price: plan.price,
+            listingsLimit: plan.listingLimit
+          },
+          status: subscription.status,
+          listingsUsed: subscription.listingsUsed,
+          listingsLimit: subscription.listingsLimit,
+          currentPeriodEnd: subscription.currentPeriodEnd
+        }
+      });
+    }
+
+    // PRODUCTION: Create Stripe checkout session
+    console.log('💳 Production mode: Creating Stripe checkout session');
+    
+    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+    // Create Stripe checkout session
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'gbp',
+            product_data: {
+              name: plan.name,
+              description: plan.description,
+            },
+            unit_amount: plan.price, // Price in pence
+            recurring: {
+              interval: 'month',
+            },
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: `${baseUrl}/trade/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/trade/subscription?cancelled=true`,
+      customer_email: dealer.email,
+      metadata: {
+        dealerId: dealer._id.toString(),
+        planId: plan._id.toString(),
+        planSlug: plan.slug,
+      },
     });
 
-    await subscription.save();
-    console.log('✅ Subscription created:', subscription._id);
+    console.log('✅ Stripe session created:', session.id);
 
-    // Update dealer
-    dealer.currentSubscriptionId = subscription._id;
-    dealer.status = 'active';
-    dealer.hasActiveSubscription = true;
-    await dealer.save();
-    console.log('✅ Dealer updated');
-
-    // Return success with subscription details
+    // Return Stripe checkout URL
     res.json({
       success: true,
-      message: 'Subscription activated successfully!',
-      subscription: {
-        id: subscription._id,
-        plan: {
-          id: plan._id,
-          name: plan.name,
-          slug: plan.slug,
-          price: plan.price,
-          listingsLimit: plan.listingLimit
-        },
-        status: subscription.status,
-        listingsUsed: subscription.listingsUsed,
-        listingsLimit: subscription.listingsLimit,
-        currentPeriodEnd: subscription.currentPeriodEnd
-      }
+      sessionId: session.id,
+      url: session.url,
+      message: 'Redirecting to Stripe checkout...'
     });
   } catch (error) {
-    console.error('❌ Create subscription error:', error);
+    console.error('❌ Create checkout session error:', error);
     res.status(500).json({
       success: false,
-      message: 'Error creating subscription',
+      message: 'Error creating checkout session',
       error: error.message
     });
   }

@@ -4,6 +4,60 @@
  */
 
 /**
+ * Extract model from CheckCarDetails API response with priority-based fallback
+ * Priority: VehicleRegistration.Model > SmmtDetails.ModelVariant > SmmtDetails.Series
+ * @param {Object} apiResponse - Raw API response from CheckCarDetails
+ * @returns {string|null} Extracted model or null if not found
+ */
+function extractModel(apiResponse) {
+  // Priority 1: VehicleRegistration.Model (most specific)
+  if (apiResponse.VehicleRegistration?.Model) {
+    const model = apiResponse.VehicleRegistration.Model.trim();
+    if (model && model !== 'Unknown') {
+      console.log(`[HistoryParser] Model extracted from VehicleRegistration.Model: ${model}`);
+      return model;
+    }
+  }
+  
+  // Priority 2: SmmtDetails.ModelVariant (fallback)
+  if (apiResponse.SmmtDetails?.ModelVariant) {
+    const model = apiResponse.SmmtDetails.ModelVariant.trim();
+    if (model && model !== 'Unknown') {
+      console.log(`[HistoryParser] Model extracted from SmmtDetails.ModelVariant: ${model}`);
+      return model;
+    }
+  }
+  
+  // Priority 3: SmmtDetails.Series (last resort)
+  if (apiResponse.SmmtDetails?.Series) {
+    const model = apiResponse.SmmtDetails.Series.trim();
+    if (model && model !== 'Unknown') {
+      console.log(`[HistoryParser] Model extracted from SmmtDetails.Series: ${model}`);
+      return model;
+    }
+  }
+  
+  // If all fail, return null
+  console.warn('[HistoryParser] No model found in API response');
+  return null;
+}
+
+/**
+ * Extract make from CheckCarDetails API response
+ * @param {Object} apiResponse - Raw API response from CheckCarDetails
+ * @returns {string} Extracted make or 'Unknown'
+ */
+function extractMake(apiResponse) {
+  if (apiResponse.VehicleRegistration?.Make) {
+    return apiResponse.VehicleRegistration.Make.trim();
+  }
+  if (apiResponse.SmmtDetails?.Marque) {
+    return apiResponse.SmmtDetails.Marque.trim();
+  }
+  return 'Unknown';
+}
+
+/**
  * Validate that response contains required fields
  * @param {Object} response - Raw API response
  * @returns {Object} Validation result with isValid and missing fields
@@ -183,4 +237,6 @@ module.exports = {
   parseAccidentDetails,
   parseTheftDetails,
   parseFinanceDetails,
+  extractModel,
+  extractMake,
 };

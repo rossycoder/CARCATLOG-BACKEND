@@ -21,10 +21,11 @@ router.use(authenticateTradeDealer);
 
 // Publish vehicle from sell flow (bypasses payment and subscription check)
 // IMPORTANT: This route MUST be before requireActiveSubscription middleware
+// NOTE: No validateVehicleData middleware here - publish endpoint has custom validation
 router.post('/publish', (req, res, next) => {
   console.log('[Trade Routes] /publish route hit - bypassing subscription check');
   next();
-}, validateVehicleData, tradeInventoryController.publishVehicle);
+}, tradeInventoryController.publishVehicle);
 
 // Get inventory and stats - require active subscription
 router.get('/', requireActiveSubscription, tradeInventoryController.getInventory);

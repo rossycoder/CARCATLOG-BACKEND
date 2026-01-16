@@ -3,13 +3,24 @@ const mongoose = require('mongoose');
 const carSchema = new mongoose.Schema({
   make: {
     type: String,
-    required: [true, 'Make is required'],
+    required: function() {
+      // Make is required unless it's from CheckCarDetails API (will be fetched)
+      return this.dataSource !== 'DVLA' || this.dataSources?.checkCarDetails === true;
+    },
     trim: true,
     index: true
   },
   model: {
     type: String,
-    required: [true, 'Model is required'],
+    required: function() {
+      // Model is required unless it's from CheckCarDetails API (will be fetched)
+      return this.dataSource !== 'DVLA' || this.dataSources?.checkCarDetails === true;
+    },
+    trim: true,
+    index: true
+  },
+  submodel: {
+    type: String,
     trim: true,
     index: true
   },
@@ -33,13 +44,17 @@ const carSchema = new mongoose.Schema({
   },
   color: {
     type: String,
-    required: [true, 'Color is required'],
+    required: function() {
+      // Color is required for manual entries, but can be fetched from API
+      return this.dataSource === 'manual' && !this.dataSources?.checkCarDetails;
+    },
     trim: true
   },
   transmission: {
     type: String,
     required: function() {
-      return this.dataSource !== 'DVLA';
+      // Transmission is required for manual entries, but can be fetched from API
+      return this.dataSource === 'manual' && !this.dataSources?.checkCarDetails;
     },
     enum: ['automatic', 'manual']
   },
@@ -282,6 +297,67 @@ const carSchema = new mongoose.Schema({
     type: Date
   },
   
+  // Vehicle features
+  features: {
+    type: [String],
+    default: []
+  },
+  
+  // Enhanced running costs data (from CheckCarDetails API)
+  runningCosts: {
+    fuelEconomy: {
+      urban: { type: Number, default: null },
+      extraUrban: { type: Number, default: null },
+      combined: { type: Number, default: null }
+    },
+    co2Emissions: { type: Number, default: null },
+    insuranceGroup: { type: String, default: null },
+    annualTax: { type: Number, default: null }
+  },
+  
+  // Performance data (from CheckCarDetails API)
+  performance: {
+    power: { type: Number, default: null }, // bhp
+    torque: { type: Number, default: null }, // Nm
+    acceleration: { type: Number, default: null }, // 0-60 seconds
+    topSpeed: { type: Number, default: null } // mph
+  },
+  
+  // Valuation/pricing data (from CheckCarDetails API)
+  valuation: {
+    dealerPrice: { type: Number, default: null }, // GBP
+    privatePrice: { type: Number, default: null }, // GBP
+    partExchangePrice: { type: Number, default: null }, // GBP
+    valuationDate: { type: Date, default: null }
+  },
+  
+  // Data source tracking
+  dataSources: {
+    dvla: { type: Boolean, default: false },
+    checkCarDetails: { type: Boolean, default: false },
+    lastUpdated: { type: Date, default: Date.now }
+  },
+  
+  // Field source tracking (for display purposes)
+  fieldSources: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
+  
+  // Video URL
+  videoUrl: {
+    type: String,
+    trim: true,
+    validate: {
+      validator: function(v) {
+        if (!v) return true; // Allow empty
+        // Validate YouTube URL format
+        return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/.test(v);
+      },
+      message: 'Please provide a valid YouTube URL'
+    }
+  },
+  
   // Advert status
   advertStatus: {
     type: String,
@@ -313,6 +389,7 @@ const carSchema = new mongoose.Schema({
 
 // Indexes for faster queries
 carSchema.index({ make: 1, model: 1 });
+carSchema.index({ make: 1, model: 1, submodel: 1 });
 carSchema.index({ year: 1 });
 carSchema.index({ price: 1 });
 carSchema.index({ location: '2dsphere' });

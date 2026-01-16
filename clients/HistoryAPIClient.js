@@ -266,10 +266,70 @@ class HistoryAPIClient {
     const vehicleReg = data.VehicleRegistration || {};
     const vehicleHistory = data.VehicleHistory || {};
     
+    // Extract previous keepers - try multiple possible field names
+    let numberOfPreviousKeepers = 0;
+    if (vehicleHistory.NumberOfPreviousKeepers !== undefined && vehicleHistory.NumberOfPreviousKeepers !== null) {
+      numberOfPreviousKeepers = parseInt(vehicleHistory.NumberOfPreviousKeepers) || 0;
+    } else if (vehicleHistory.PreviousKeepers !== undefined && vehicleHistory.PreviousKeepers !== null) {
+      numberOfPreviousKeepers = parseInt(vehicleHistory.PreviousKeepers) || 0;
+    } else if (vehicleHistory.numberOfPreviousKeepers !== undefined && vehicleHistory.numberOfPreviousKeepers !== null) {
+      numberOfPreviousKeepers = parseInt(vehicleHistory.numberOfPreviousKeepers) || 0;
+    } else if (data.numberOfPreviousKeepers !== undefined && data.numberOfPreviousKeepers !== null) {
+      numberOfPreviousKeepers = parseInt(data.numberOfPreviousKeepers) || 0;
+    } else if (data.PreviousKeepers !== undefined && data.PreviousKeepers !== null) {
+      numberOfPreviousKeepers = parseInt(data.PreviousKeepers) || 0;
+    }
+    
+    console.log('📊 Previous Keepers Data:', {
+      raw: vehicleHistory.NumberOfPreviousKeepers,
+      parsed: numberOfPreviousKeepers,
+      vehicleHistory: vehicleHistory
+    });
+    
+    // Extract make and model - try multiple possible field names
+    let make = 'Unknown';
+    let model = 'Unknown';
+    
+    // Try different field names for make
+    if (vehicleReg.Make) {
+      make = vehicleReg.Make;
+    } else if (vehicleReg.make) {
+      make = vehicleReg.make;
+    } else if (data.Make) {
+      make = data.Make;
+    } else if (data.make) {
+      make = data.make;
+    }
+    
+    // Try different field names for model
+    if (vehicleReg.Model) {
+      model = vehicleReg.Model;
+    } else if (vehicleReg.model) {
+      model = vehicleReg.model;
+    } else if (vehicleReg.ModelLiteral) {
+      model = vehicleReg.ModelLiteral;
+    } else if (vehicleReg.ModelDescription) {
+      model = vehicleReg.ModelDescription;
+    } else if (data.Model) {
+      model = data.Model;
+    } else if (data.model) {
+      model = data.model;
+    } else if (data.ModelLiteral) {
+      model = data.ModelLiteral;
+    }
+    
+    console.log('🚗 Make/Model Data:', {
+      makeRaw: vehicleReg.Make,
+      modelRaw: vehicleReg.Model,
+      makeParsed: make,
+      modelParsed: model,
+      allVehicleRegFields: Object.keys(vehicleReg)
+    });
+    
     return {
       vrm: vehicleReg.Vrm || vehicleReg.PreviousVrmGb || data.vrm,
-      make: vehicleReg.Make || data.make,
-      model: vehicleReg.Model || data.model,
+      make: make,
+      model: model,
       colour: vehicleReg.Colour || data.colour,
       fuelType: vehicleReg.FuelType || data.fuelType,
       yearOfManufacture: vehicleReg.YearOfManufacture || data.yearOfManufacture,
@@ -278,10 +338,12 @@ class HistoryAPIClient {
       bodyType: vehicleReg.DoorPlanLiteral || data.bodyType,
       transmission: vehicleReg.Transmission || vehicleReg.TransmissionType,
       
-      // History information
-      numberOfPreviousKeepers: vehicleHistory.NumberOfPreviousKeepers || 0,
-      plateChanges: vehicleHistory.PlateChangeCount || 0,
-      colourChanges: vehicleHistory.ColourChangeCount || 0,
+      // History information - use the extracted value
+      numberOfPreviousKeepers: numberOfPreviousKeepers,
+      previousOwners: numberOfPreviousKeepers, // Add this for compatibility
+      numberOfOwners: numberOfPreviousKeepers, // Add this for compatibility
+      plateChanges: parseInt(vehicleHistory.PlateChangeCount) || 0,
+      colourChanges: parseInt(vehicleHistory.ColourChangeCount) || 0,
       exported: vehicleReg.Exported || false,
       scrapped: vehicleReg.Scrapped || false,
       imported: vehicleReg.Imported || false,
