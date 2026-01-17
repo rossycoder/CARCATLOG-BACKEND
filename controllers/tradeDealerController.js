@@ -57,14 +57,25 @@ exports.register = async (req, res) => {
     let logoUrl = null;
     if (req.file) {
       const cloudinary = require('../services/cloudinaryService');
-      const uploadResult = await cloudinary.uploadImage(req.file.buffer, {
+      
+      // Convert buffer to base64 data URI
+      const base64Image = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+      
+      const uploadResult = await cloudinary.uploadImage(base64Image, {
         folder: 'dealer-logos',
         transformation: [
           { width: 400, height: 400, crop: 'limit' },
           { quality: 'auto' }
         ]
       });
-      logoUrl = uploadResult.secure_url;
+      
+      // Check if upload was successful
+      if (uploadResult.success && uploadResult.data) {
+        logoUrl = uploadResult.data.url;
+      } else {
+        console.error('Cloudinary upload failed:', uploadResult.error);
+        // Continue with registration even if logo upload fails
+      }
     }
 
     // Parse businessAddress - handle both string and object formats

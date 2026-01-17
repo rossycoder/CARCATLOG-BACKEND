@@ -123,6 +123,35 @@ exports.getVanById = async (req, res) => {
       lastViewedAt: new Date()
     });
 
+    // If this is a trade dealer listing, fetch dealer information
+    if (van.dealerId) {
+      const TradeDealer = require('../models/TradeDealer');
+      const dealer = await TradeDealer.findById(van.dealerId).select('businessName logo phone email businessAddress');
+      
+      if (dealer) {
+        // Add dealer logo to van data
+        van.dealerLogo = dealer.logo;
+        
+        // Add dealer business address
+        if (dealer.businessAddress) {
+          van.dealerBusinessAddress = dealer.businessAddress;
+        }
+        
+        // Enhance seller contact info with dealer details
+        if (!van.sellerContact) {
+          van.sellerContact = {};
+        }
+        van.sellerContact.businessName = dealer.businessName;
+        van.sellerContact.type = 'trade';
+        van.sellerContact.phoneNumber = van.sellerContact.phoneNumber || dealer.phone;
+        
+        // Add business address to seller contact
+        if (dealer.businessAddress) {
+          van.sellerContact.businessAddress = dealer.businessAddress;
+        }
+      }
+    }
+
     res.json({
       success: true,
       data: van

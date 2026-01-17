@@ -410,10 +410,42 @@ class VehicleController {
         });
       }
 
-      // Return car data
+      // Convert to plain object to add dealer info
+      const carData = car.toObject();
+
+      // If this is a trade dealer listing, fetch dealer information
+      if (car.dealerId) {
+        const TradeDealer = require('../models/TradeDealer');
+        const dealer = await TradeDealer.findById(car.dealerId).select('businessName logo phone email businessAddress');
+        
+        if (dealer) {
+          // Add dealer logo to car data
+          carData.dealerLogo = dealer.logo;
+          
+          // Add dealer business address
+          if (dealer.businessAddress) {
+            carData.dealerBusinessAddress = dealer.businessAddress;
+          }
+          
+          // Enhance seller contact info with dealer details
+          if (!carData.sellerContact) {
+            carData.sellerContact = {};
+          }
+          carData.sellerContact.businessName = dealer.businessName;
+          carData.sellerContact.type = 'trade';
+          carData.sellerContact.phoneNumber = carData.sellerContact.phoneNumber || dealer.phone;
+          
+          // Add business address to seller contact
+          if (dealer.businessAddress) {
+            carData.sellerContact.businessAddress = dealer.businessAddress;
+          }
+        }
+      }
+
+      // Return car data with dealer info
       return res.json({
         success: true,
-        data: car
+        data: carData
       });
 
     } catch (error) {
