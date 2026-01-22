@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const vehicleDataNormalizer = require('../utils/vehicleDataNormalizer');
 
 const carSchema = new mongoose.Schema({
   make: {
@@ -20,6 +21,11 @@ const carSchema = new mongoose.Schema({
     index: true
   },
   submodel: {
+    type: String,
+    trim: true,
+    index: true
+  },
+  variant: {
     type: String,
     trim: true,
     index: true
@@ -160,6 +166,10 @@ const carSchema = new mongoose.Schema({
     uppercase: true,
     sparse: true,
     index: true
+  },
+  displayTitle: {
+    type: String,
+    trim: true
   },
   dataSource: {
     type: String,
@@ -402,9 +412,37 @@ carSchema.index({ isDealerListing: 1 });
 carSchema.index({ vehicleType: 1 });
 carSchema.index({ vehicleType: 1, condition: 1 });
 
-// Pre-save hook to trigger history check for new listings with registration numbers
+// Pre-save hook for validation and normalization
 carSchema.pre('save', async function(next) {
-  // Only run for new documents with registration numbers
+  // Check for duplicate active adverts with same registration
+  if (this.registrationNumber && this.advertStatus === 'active') {
+    const duplicate = await this.constructor.findOne({
+      registrationNumber: this.registrationNumber,
+      advertStatus: 'active',
+      _id: { $ne: this._id }
+    });
+    
+    if (duplicate) {
+      const error = new Error(`Active advert already exists for registration ${this.registrationNumber}`);
+      error.code = 'DUPLICATE_REGISTRATION';
+      return next(error);
+    }
+  }
+  
+  // Auto-generate displayTitle if missing (AutoTrader format)
+  if (!this.displayTitle && this.make && this.model) {
+    const vehicleFormatter = require('../utils/vehicleFormatter');
+    this.displayTitle = vehicleFormatter.buildFullTitle(
+      this.make,
+      this.model,
+      this.engineSize,
+      this.variant,
+      this.transmission
+    );
+    console.log(`Auto-generated displayTitle: ${this.displayTitle}`);
+  }
+  
+  // History check for new listings with registration numbers
   if (this.isNew && this.registrationNumber && this.historyCheckStatus === 'pending') {
     try {
       const HistoryService = require('../services/historyService');
@@ -427,8 +465,6 @@ carSchema.pre('save', async function(next) {
       // Mark as failed but allow listing to proceed
       this.historyCheckStatus = 'failed';
       this.historyCheckDate = new Date();
-      
-      // Don't block the save operation
     }
   }
   

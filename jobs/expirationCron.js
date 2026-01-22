@@ -40,31 +40,11 @@ const startWarningCron = () => {
 };
 
 /**
- * Cron job to cleanup old expired listings
- * Runs once a week on Sunday at 3:00 AM
- */
-const startCleanupCron = () => {
-  // Run weekly on Sunday at 3:00 AM
-  cron.schedule('0 3 * * 0', async () => {
-    console.log('Running cleanup cron job...');
-    try {
-      const results = await expirationService.cleanupOldExpiredListings(90);
-      console.log('Cleanup completed:', results);
-    } catch (error) {
-      console.error('Error in cleanup cron job:', error);
-    }
-  });
-
-  console.log('Cleanup cron job scheduled (weekly on Sunday at 3:00 AM)');
-};
-
-/**
  * Initialize all cron jobs
  */
 const initializeCronJobs = () => {
   startExpirationCron();
   startWarningCron();
-  startCleanupCron();
   
   console.log('All expiration cron jobs initialized');
 };
@@ -72,6 +52,5 @@ const initializeCronJobs = () => {
 module.exports = {
   initializeCronJobs,
   startExpirationCron,
-  startWarningCron,
-  startCleanupCron
+  startWarningCron
 };

@@ -5,14 +5,14 @@
  */
 
 const axios = require('axios');
+const vehicleFormatter = require('../utils/vehicleFormatter');
 
 class CheckCarDetailsClient {
   constructor() {
     this.baseURL = process.env.CHECKCARD_API_BASE_URL || 'https://api.checkcardetails.co.uk';
-    this.apiKey = process.env.API_ENVIRONMENT === 'production' 
-      ? process.env.CHECKCARD_API_KEY 
-      : (process.env.CHECKCARD_API_TEST_KEY || process.env.CHECKCARD_API_KEY);
-    this.isTestMode = process.env.API_ENVIRONMENT !== 'production';
+    // Use production key by default, fall back to test key if specified
+    this.apiKey = process.env.CHECKCARD_API_KEY || process.env.CHECKCARD_API_TEST_KEY;
+    this.isTestMode = process.env.API_ENVIRONMENT === 'test';
     this.timeout = 10000; // 10 seconds
     this.maxRetries = 2; // Retry once on failure
     
@@ -149,10 +149,10 @@ class CheckCarDetailsClient {
   }
 
   /**
-   * Parse API response and extract running costs data
+   * Parse API response and extract ALL available vehicle data automatically
    * Updated to handle actual CheckCarDetails API response structure
    * @param {Object} data - Raw API response
-   * @returns {Object} Parsed vehicle data
+   * @returns {Object} Parsed vehicle data with ALL available fields
    */
   parseResponse(data) {
     // Handle different response structures
@@ -163,6 +163,11 @@ class CheckCarDetailsClient {
     const vehicleExcise = data.VehicleExciseDutyDetails || {};
     const vehicleId = data.VehicleIdentification || {};
     const bodyDetails = data.BodyDetails || {};
+    const dimensions = data.Dimensions || {};
+    const weights = data.Weights || {};
+    const powerSource = data.PowerSource || {};
+    const transmission = data.Transmission || {};
+    const dvlaTech = data.DvlaTechnicalDetails || {};
 
     // Extract fuel economy data
     const fuelEconomy = {
@@ -214,11 +219,31 @@ class CheckCarDetailsClient {
         data.power || 
         data.EnginePower
       ),
+      powerKw: this.extractNumber(
+        performance.Power?.Kw || 
+        smmtDetails.PowerKw || 
+        data.PowerKw
+      ),
+      powerPs: this.extractNumber(
+        performance.Power?.Ps || 
+        smmtDetails.PowerPs || 
+        data.PowerPs
+      ),
       torque: this.extractNumber(
         performance.Torque?.Nm || 
         smmtDetails.TorqueNm || 
         data.Torque || 
         data.torque
+      ),
+      torqueLbFt: this.extractNumber(
+        performance.Torque?.LbFt || 
+        smmtDetails.TorqueLbFt || 
+        data.TorqueLbFt
+      ),
+      torqueRpm: this.extractNumber(
+        performance.Torque?.Rpm || 
+        smmtDetails.TorqueRpm || 
+        data.TorqueRpm
       ),
       acceleration: this.extractNumber(
         performance.Statistics?.ZeroToSixtyMph || 
@@ -227,19 +252,30 @@ class CheckCarDetailsClient {
         data.acceleration || 
         data.ZeroToSixty
       ),
+      zeroToOneHundredKph: this.extractNumber(
+        performance.Statistics?.ZeroToOneHundredKph || 
+        data.ZeroToOneHundredKph
+      ),
       topSpeed: this.extractNumber(
         performance.Statistics?.MaxSpeedMph || 
         smmtDetails.MaxSpeedMph || 
         data.TopSpeed || 
         data.topSpeed || 
         data.MaxSpeed
+      ),
+      topSpeedKph: this.extractNumber(
+        performance.Statistics?.MaxSpeedKph || 
+        smmtDetails.MaxSpeedKph || 
+        data.MaxSpeedKph
       )
     };
 
     // Extract basic vehicle data
     const basicData = {
-      make: vehicleId.DvlaMake || modelData.Make || smmtDetails.Make || data.Make || data.make || null,
-      model: vehicleId.DvlaModel || modelData.Model || smmtDetails.Model || data.Model || data.model || null,
+      make: vehicleId.DvlaMake || modelData.Make || smmtDetails.Marque || smmtDetails.Make || data.Make || data.make || null,
+      model: modelData.Range || vehicleId.DvlaModel || modelData.Model || smmtDetails.Range || smmtDetails.Model || data.Model || data.model || null,
+      modelVariant: modelData.ModelVariant || smmtDetails.Variant || data.ModelVariant || data.modelVariant || null,
+      series: modelData.Series || smmtDetails.Series || data.Series || null,
       year: this.extractNumber(
         vehicleId.YearOfManufacture || 
         modelData.StartDate?.substring(0, 4) || 
@@ -248,32 +284,114 @@ class CheckCarDetailsClient {
         data.YearOfManufacture
       ),
       fuelType: this.normalizeFuelType(vehicleId.DvlaFuelType || modelData.FuelType || smmtDetails.FuelType || data.FuelType || data.fuelType),
-      transmission: data.Transmission?.TransmissionType || smmtDetails.Transmission || data.Transmission || data.transmission || null,
+      transmission: transmission.TransmissionType || smmtDetails.Transmission || data.Transmission || data.transmission || null,
+      numberOfGears: this.extractNumber(
+        transmission.NumberOfGears || 
+        smmtDetails.NumberOfGears || 
+        data.NumberOfGears
+      ),
+      driveType: transmission.DriveType || smmtDetails.DriveType || data.DriveType || null,
+      drivingAxle: transmission.DrivingAxle || smmtDetails.DrivingAxle || data.DrivingAxle || null,
       engineSize: this.extractNumber(
-        data.DvlaTechnicalDetails?.EngineCapacityCc || 
+        dvlaTech.EngineCapacityCc || 
+        powerSource.IceDetails?.EngineCapacityCc ||
         smmtDetails.EngineCapacity || 
         data.EngineSize || 
         data.engineSize || 
         data.EngineCapacity
       ),
-      // NEW: Extract body type from VehicleIdentification
+      engineSizeLitres: this.extractNumber(
+        powerSource.IceDetails?.EngineCapacityLitres ||
+        smmtDetails.NominalEngineCapacity ||
+        data.EngineCapacityLitres
+      ),
+      engineDescription: powerSource.IceDetails?.EngineDescription || smmtDetails.EngineDescription || data.EngineDescription || null,
+      engineManufacturer: powerSource.IceDetails?.EngineManufacturer || smmtDetails.EngineMake || data.EngineManufacturer || null,
+      engineLocation: powerSource.IceDetails?.EngineLocation || smmtDetails.EngineLocation || data.EngineLocation || null,
+      numberOfCylinders: this.extractNumber(
+        powerSource.IceDetails?.NumberOfCylinders || 
+        smmtDetails.NumberOfCylinders || 
+        data.NumberOfCylinders
+      ),
+      cylinderArrangement: powerSource.IceDetails?.CylinderArrangement || smmtDetails.CylinderArrangement || data.CylinderArrangement || null,
+      valvesPerCylinder: this.extractNumber(
+        powerSource.IceDetails?.ValvesPerCylinder || 
+        smmtDetails.ValvesPerCylinder || 
+        data.ValvesPerCylinder
+      ),
+      valveGear: powerSource.IceDetails?.ValveGear || smmtDetails.ValveGear || data.ValveGear || null,
+      bore: this.extractNumber(
+        powerSource.IceDetails?.Bore || 
+        smmtDetails.Bore || 
+        data.Bore
+      ),
+      stroke: this.extractNumber(
+        powerSource.IceDetails?.Stroke || 
+        smmtDetails.Stroke || 
+        data.Stroke
+      ),
+      aspiration: powerSource.IceDetails?.Aspiration || smmtDetails.Aspiration || data.Aspiration || null,
+      fuelDelivery: powerSource.IceDetails?.FuelDelivery || data.FuelDelivery || null,
       bodyType: vehicleId.DvlaBodyType || bodyDetails.BodyStyle || smmtDetails.BodyStyle || data.BodyType || null,
-      // NEW: Extract doors from BodyDetails
+      bodyShape: bodyDetails.BodyShape || smmtDetails.BodyShape || data.BodyShape || null,
       doors: this.extractNumber(
         bodyDetails.NumberOfDoors || 
         smmtDetails.NumberOfDoors || 
         data.NumberOfDoors || 
         data.doors
       ),
-      // NEW: Extract seats
       seats: this.extractNumber(
         bodyDetails.NumberOfSeats ||
-        data.DvlaTechnicalDetails?.SeatCountIncludingDriver ||
+        dvlaTech.SeatCountIncludingDriver ||
         smmtDetails.NumberOfSeats ||
         data.NumberOfSeats ||
         data.seats
-      )
+      ),
+      numberOfAxles: this.extractNumber(
+        bodyDetails.NumberOfAxles || 
+        smmtDetails.NumberOfAxles || 
+        data.NumberOfAxles
+      ),
+      wheelbase: smmtDetails.Wheelbase || data.Wheelbase || null,
+      // VIN and registration details
+      vin: vehicleId.Vin || data.Vin || null,
+      vinLast5: vehicleId.VinLast5 || data.VinLast5 || null,
+      engineNumber: vehicleId.EngineNumber || data.EngineNumber || null,
+      dateFirstRegistered: vehicleId.DateFirstRegistered || vehicleId.DateFirstRegisteredInUk || data.DateFirstRegistered || null,
+      dateOfManufacture: vehicleId.DateOfManufacture || data.DateOfManufacture || null,
+      // Dimensions
+      heightMm: this.extractNumber(dimensions.HeightMm || smmtDetails.Height || data.HeightMm),
+      lengthMm: this.extractNumber(dimensions.LengthMm || smmtDetails.Length || data.LengthMm),
+      widthMm: this.extractNumber(dimensions.WidthMm || smmtDetails.Width || data.WidthMm),
+      wheelBaseLengthMm: this.extractNumber(dimensions.WheelBaseLengthMm || data.WheelBaseLengthMm),
+      // Weights
+      kerbWeightKg: this.extractNumber(weights.KerbWeightKg || smmtDetails.KerbWeight || data.KerbWeightKg),
+      grossVehicleWeightKg: this.extractNumber(weights.GrossVehicleWeightKg || smmtDetails.GrossVehicleWeight || dvlaTech.GrossWeight || data.GrossVehicleWeightKg),
+      unladenWeightKg: this.extractNumber(weights.UnladenWeightKg || smmtDetails.UnladenWeight || data.UnladenWeightKg),
+      payloadWeightKg: this.extractNumber(weights.PayloadWeightKg || smmtDetails.PayloadWeight || data.PayloadWeightKg),
+      maxTowableMassBraked: this.extractNumber(dvlaTech.MaxTowableMassBraked || data.MaxTowableMassBraked),
+      maxTowableMassUnbraked: this.extractNumber(dvlaTech.MaxTowableMassUnbraked || data.MaxTowableMassUnbraked),
+      // Additional details
+      fuelTankCapacityLitres: this.extractNumber(bodyDetails.FuelTankCapacityLitres || data.FuelTankCapacityLitres),
+      countryOfOrigin: modelData.CountryOfOrigin || smmtDetails.CountryOfOrigin || data.CountryOfOrigin || null,
+      euroStatus: modelData.EuroStatus || smmtDetails.EuroStatus || data.EuroStatus || null,
+      typeApprovalCategory: modelData.TypeApprovalCategory || smmtDetails.TypeApprovalCategory || data.TypeApprovalCategory || null,
+      vehicleClass: modelData.VehicleClass || data.VehicleClass || null,
+      marketSectorCode: modelData.MarketSectorCode || smmtDetails.SmmtMarketSectorCode || data.MarketSectorCode || null,
+      // CO2 Band
+      co2Band: vehicleExcise.DvlaCo2Band || vehicleExcise.DvlaBand || data.Co2Band || null,
+      // Sound levels
+      soundLevelStationary: this.extractNumber(performance.SoundLevels?.Stationary || data.SoundLevelStationary),
+      soundLevelDriveBy: this.extractNumber(performance.SoundLevels?.DriveBy || data.SoundLevelDriveBy),
+      // Emissions catalyst
+      hasFuelCatalyst: emissions.HasFuelCatalyst !== undefined ? emissions.HasFuelCatalyst : null
     };
+
+    // Format variant in AutoTrader style and store in 'variant' field
+    const formattedVariant = vehicleFormatter.formatVariant(basicData);
+    if (formattedVariant) {
+      basicData.variant = formattedVariant;
+    }
 
     return {
       fuelEconomy,

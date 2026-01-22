@@ -1,4 +1,5 @@
 const axios = require('axios');
+const vehicleFormatter = require('../utils/vehicleFormatter');
 
 class DVLAService {
   constructor() {
@@ -105,7 +106,8 @@ class DVLAService {
       return color.charAt(0).toUpperCase() + color.slice(1).toLowerCase();
     };
 
-    return {
+    // Prepare vehicle data for variant generation
+    const vehicleData = {
       make: dvlaData.make || 'Unknown',
       model: dvlaData.model || 'Unknown',
       year: dvlaData.yearOfManufacture || new Date().getFullYear(),
@@ -113,6 +115,7 @@ class DVLAService {
       fuelType: normalizeFuelType(dvlaData.fuelType),
       mileage: mileage,
       engineSize: dvlaData.engineCapacity ? dvlaData.engineCapacity / 1000 : null, // Convert cc to liters
+      engineSizeLitres: dvlaData.engineCapacity ? dvlaData.engineCapacity / 1000 : null,
       registrationNumber: dvlaData.registrationNumber,
       dataSource: 'DVLA',
       co2Emissions: dvlaData.co2Emissions || null,
@@ -126,6 +129,14 @@ class DVLAService {
       transmission: additionalData.transmission || null,
       condition: 'used' // DVLA only has registered vehicles
     };
+
+    // Generate variant automatically using vehicleFormatter
+    const variant = vehicleFormatter.formatVariant(vehicleData);
+    if (variant) {
+      vehicleData.variant = variant;
+    }
+
+    return vehicleData;
   }
 }
 

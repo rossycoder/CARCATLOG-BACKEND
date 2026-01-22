@@ -8,6 +8,7 @@ const HistoryService = require('../services/historyService');
 const EmailService = require('../services/emailService');
 const AdvertisingPackagePurchase = require('../models/AdvertisingPackagePurchase');
 const { formatErrorResponse } = require('../utils/errorHandlers');
+const vehicleFormatter = require('../utils/vehicleFormatter');
 
 /**
  * Create Stripe checkout session for advertising package
@@ -140,6 +141,28 @@ async function createAdvertCheckoutSession(req, res) {
           // Update existing car
           console.log(`📝 Updating existing car: ${car._id}`);
           
+          // Generate variant if missing
+          if (!car.variant || car.variant === 'null' || car.variant === 'undefined') {
+            const parsedEngineSize = car.engineSize || (safeVehicleData.engineSize ? parseFloat(String(safeVehicleData.engineSize).replace(/[^\d.]/g, '')) : undefined);
+            
+            const variantData = {
+              make: car.make || safeVehicleData.make,
+              model: car.model || safeVehicleData.model,
+              engineSize: parsedEngineSize,
+              engineSizeLitres: parsedEngineSize,
+              fuelType: car.fuelType || safeVehicleData.fuelType,
+              transmission: car.transmission || (safeVehicleData.transmission ? safeVehicleData.transmission.toLowerCase() : 'manual'),
+              doors: car.doors || safeVehicleData.doors,
+              modelVariant: safeVehicleData.modelVariant
+            };
+            
+            const generatedVariant = vehicleFormatter.formatVariant(variantData);
+            if (generatedVariant) {
+              car.variant = generatedVariant;
+              console.log(`🔧 Auto-generated variant for existing car: "${generatedVariant}"`);
+            }
+          }
+          
           // Only update fields if new data is provided
           if (safeAdvertData.price) car.price = safeAdvertData.price;
           if (safeVehicleData.estimatedValue && !car.price) car.price = safeVehicleData.estimatedValue;
@@ -183,6 +206,7 @@ async function createAdvertCheckoutSession(req, res) {
             car.advertStatus = 'active';
             car.publishedAt = new Date();
             console.log(`✅ Car updated and ACTIVATED (test mode)`);
+            console.log(`✅ Variant: "${car.variant}"`);
           } else {
             car.advertStatus = 'pending_payment';
             console.log(`✅ Car updated with pending payment status`);
@@ -192,17 +216,67 @@ async function createAdvertCheckoutSession(req, res) {
         } else {
           // Create new car
           console.log(`📝 Creating NEW car document`);
+          
+          // Parse engine size to number
+          const parsedEngineSize = vehicleData.engineSize ? parseFloat(String(vehicleData.engineSize).replace(/[^\d.]/g, '')) || undefined : undefined;
+          
+          // Generate variant automatically if not provided
+          let variant = vehicleData.variant || vehicleData.modelVariant || null;
+          if (!variant || variant === 'null' || variant === 'undefined' || variant.trim() === '') {
+            // Prepare data for variant generation
+            const variantData = {
+              make: vehicleData.make,
+              model: vehicleData.model,
+              engineSize: parsedEngineSize,
+              engineSizeLitres: parsedEngineSize,
+              fuelType: vehicleData.fuelType,
+              transmission: vehicleData.transmission ? vehicleData.transmission.toLowerCase() : 'manual',
+              doors: vehicleData.doors,
+              modelVariant: vehicleData.modelVariant
+            };
+            
+            // Generate variant using vehicleFormatter
+            variant = vehicleFormatter.formatVariant(variantData);
+            console.log(`🔧 Auto-generated variant for NEW car: "${variant}"`);
+            
+            // If still null/empty, create a basic variant
+            if (!variant || variant.trim() === '') {
+              const engineStr = parsedEngineSize ? `${parsedEngineSize}L` : '';
+              const fuelStr = vehicleData.fuelType || 'Petrol';
+              const transStr = vehicleData.transmission ? vehicleData.transmission.charAt(0).toUpperCase() + vehicleData.transmission.slice(1).toLowerCase() : 'Manual';
+              const doorsStr = vehicleData.doors ? `${vehicleData.doors}dr` : '';
+              variant = [engineStr, fuelStr, transStr, doorsStr].filter(Boolean).join(' ');
+              console.log(`🔧 Fallback variant generated: "${variant}"`);
+            }
+          }
+          
+          // Generate displayTitle in AutoTrader format
+          // Format: "Make Model EngineSize Variant Transmission"
+          const displayTitleParts = [];
+          if (vehicleData.make) displayTitleParts.push(vehicleData.make);
+          if (vehicleData.model) displayTitleParts.push(vehicleData.model);
+          if (parsedEngineSize) displayTitleParts.push(`${parsedEngineSize}L`);
+          if (variant) displayTitleParts.push(variant);
+          if (vehicleData.transmission) {
+            const trans = vehicleData.transmission.charAt(0).toUpperCase() + vehicleData.transmission.slice(1).toLowerCase();
+            displayTitleParts.push(trans);
+          }
+          const displayTitle = displayTitleParts.join(' ');
+          console.log(`📝 Generated displayTitle: "${displayTitle}"`);
+          
           car = new Car({
             advertId: advertId,
             make: vehicleData.make || 'Unknown',
             model: vehicleData.model || 'Unknown',
+            variant: variant,
+            displayTitle: displayTitle,
             year: vehicleData.year || new Date().getFullYear(),
             mileage: vehicleData.mileage || 0,
             color: vehicleData.color || 'Not specified',
             fuelType: vehicleData.fuelType || 'Petrol',
             transmission: vehicleData.transmission ? vehicleData.transmission.toLowerCase() : 'manual',
             registrationNumber: vehicleData.registration || vehicleData.registrationNumber || null,
-            engineSize: vehicleData.engineSize ? parseFloat(String(vehicleData.engineSize).replace(/[^\d.]/g, '')) || undefined : undefined,
+            engineSize: parsedEngineSize,
             bodyType: vehicleData.bodyType,
             doors: vehicleData.doors,
             seats: vehicleData.seats,
@@ -246,6 +320,7 @@ async function createAdvertCheckoutSession(req, res) {
           await car.save();
           const statusMsg = car.advertStatus === 'active' ? 'ACTIVATED (test mode)' : 'pending payment status';
           console.log(`✅ Car created with ${statusMsg}`);
+          console.log(`✅ Variant saved: "${car.variant}"`);
         }
         
         console.log(`   Car ID: ${car._id}`);

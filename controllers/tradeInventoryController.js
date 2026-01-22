@@ -185,10 +185,46 @@ exports.createVehicle = async (req, res) => {
     // Use dealer's business address postcode if not provided
     const postcode = req.body.postcode || req.dealer.businessAddress?.postcode || 'SW1A 1AA';
     
-    console.log('[Trade Inventory] Normalized values:', { transmission, postcode });
+    // Auto-generate variant if missing or null
+    const vehicleFormatter = require('../utils/vehicleFormatter');
+    let variant = req.body.variant;
+    
+    if (!variant || variant === 'null' || variant === 'undefined' || variant.trim() === '') {
+      // Generate variant from vehicle data
+      const variantData = {
+        make: req.body.make,
+        model: req.body.model,
+        engineSize: req.body.engineSize,
+        engineSizeLitres: req.body.engineSize,
+        fuelType: req.body.fuelType,
+        transmission: transmission,
+        modelVariant: req.body.modelVariant,
+        doors: req.body.doors
+      };
+      
+      variant = vehicleFormatter.formatVariant(variantData);
+      console.log('[Trade Inventory] Auto-generated variant:', variant);
+    }
+    
+    // Generate displayTitle in AutoTrader format
+    const displayTitleParts = [];
+    if (req.body.make) displayTitleParts.push(req.body.make);
+    if (req.body.model) displayTitleParts.push(req.body.model);
+    if (req.body.engineSize) displayTitleParts.push(`${req.body.engineSize}L`);
+    if (variant) displayTitleParts.push(variant);
+    if (transmission) {
+      const trans = transmission.charAt(0).toUpperCase() + transmission.slice(1);
+      displayTitleParts.push(trans);
+    }
+    const displayTitle = displayTitleParts.join(' ');
+    console.log('[Trade Inventory] Generated displayTitle:', displayTitle);
+    
+    console.log('[Trade Inventory] Normalized values:', { transmission, postcode, variant, displayTitle });
     
     const vehicleData = {
       ...req.body,
+      variant,       // Auto-generated or from req.body
+      displayTitle,  // AutoTrader format title
       transmission,  // This will override the spread value
       postcode,      // This will override the spread value
       dealerId: req.dealerId,

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const vehicleController = require('../controllers/vehicleController');
+const { validateAndNormalizeVehicle, checkDuplicateRegistration } = require('../middleware/vehicleValidation');
 
 // GET /api/vehicles/count - Get total count of available cars (must be before /:id)
 router.get(
@@ -36,6 +37,8 @@ router.get(
 router.post(
   '/lookup',
   vehicleController.constructor.lookupValidationRules(),
+  checkDuplicateRegistration,
+  validateAndNormalizeVehicle,
   vehicleController.lookupAndCreateVehicle.bind(vehicleController)
 );
 

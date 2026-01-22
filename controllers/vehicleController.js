@@ -9,6 +9,23 @@ const historyService = new HistoryService();
 
 class VehicleController {
   /**
+   * Clean up "null" string values in vehicle data
+   * @param {Object} carData - Vehicle data object
+   * @returns {Object} Cleaned vehicle data
+   */
+  cleanNullStrings(carData) {
+    // Clean variant field
+    if (carData.variant === 'null' || carData.variant === 'undefined' || carData.variant === '') {
+      carData.variant = null;
+    }
+    // Clean submodel field
+    if (carData.submodel === 'null' || carData.submodel === 'undefined' || carData.submodel === '') {
+      carData.submodel = null;
+    }
+    return carData;
+  }
+
+  /**
    * Validation rules for vehicle lookup
    */
   static lookupValidationRules() {
@@ -413,6 +430,9 @@ class VehicleController {
       // Convert to plain object to add dealer info
       const carData = car.toObject();
 
+      // Clean up "null" string values
+      this.cleanNullStrings(carData);
+
       // If this is a trade dealer listing, fetch dealer information
       if (car.dealerId) {
         const TradeDealer = require('../models/TradeDealer');
@@ -581,7 +601,8 @@ class VehicleController {
       
       const { 
         make, 
-        model, 
+        model,
+        submodel,
         priceFrom,
         priceTo,
         yearFrom,
@@ -603,9 +624,10 @@ class VehicleController {
       // Build query - only show active cars
       const query = { advertStatus: 'active' };
 
-      // Make and Model filters (case-insensitive exact match)
+      // Make, Model, and Submodel filters (case-insensitive exact match)
       if (make) query.make = new RegExp(`^${make}$`, 'i');
       if (model) query.model = new RegExp(`^${model}$`, 'i');
+      if (submodel) query.submodel = new RegExp(`^${submodel}$`, 'i');
       
       // Price range filters
       if (priceFrom || priceTo) {
@@ -672,13 +694,19 @@ class VehicleController {
         .skip(parseInt(skip))
         .sort(sortOption);
 
+      // Clean up "null" strings in all cars
+      const cleanedCars = cars.map(car => {
+        const carData = car.toObject();
+        return this.cleanNullStrings(carData);
+      });
+
       const total = await Car.countDocuments(query);
 
       console.log('[Vehicle Controller] Found', total, 'cars matching filters');
 
       return res.json({
         success: true,
-        cars: cars,
+        cars: cleanedCars,
         total: total,
         pagination: {
           limit: parseInt(limit),
@@ -713,6 +741,48 @@ class VehicleController {
       const models = await Car.distinct('model', { advertStatus: 'active' });
       console.log('[Vehicle Controller] Found models:', models.length);
       
+      // Get hierarchical model and submodel data
+      const modelHierarchy = await Car.aggregate([
+        { $match: { advertStatus: 'active' } },
+        {
+          $group: {
+            _id: { make: '$make', model: '$model' },
+            submodels: { $addToSet: '$submodel' }
+          }
+        },
+        {
+          $group: {
+            _id: '$_id.make',
+            models: {
+              $push: {
+                model: '$_id.model',
+                submodels: { $filter: { input: '$submodels', cond: { $ne: ['$$this', null] } } }
+              }
+            }
+          }
+        }
+      ]);
+
+      // Transform hierarchy data into structured format
+      const modelsByMake = {};
+      const submodelsByMakeModel = {};
+      
+      modelHierarchy.forEach(makeGroup => {
+        const make = makeGroup._id;
+        modelsByMake[make] = [];
+        submodelsByMakeModel[make] = {};
+        
+        makeGroup.models.forEach(modelGroup => {
+          const model = modelGroup.model;
+          if (model) {
+            modelsByMake[make].push(model);
+            submodelsByMakeModel[make][model] = modelGroup.submodels.filter(Boolean).sort();
+          }
+        });
+        
+        modelsByMake[make].sort();
+      });
+      
       // Get unique fuel types
       const fuelTypes = await Car.distinct('fuelType', { advertStatus: 'active' });
       console.log('[Vehicle Controller] Found fuelTypes:', fuelTypes.length);
@@ -742,6 +812,8 @@ class VehicleController {
         data: {
           makes: makes.filter(Boolean).sort(),
           models: models.filter(Boolean).sort(),
+          modelsByMake,
+          submodelsByMakeModel,
           fuelTypes: fuelTypes.filter(Boolean).sort(),
           transmissions: transmissions.filter(Boolean).sort(),
           bodyTypes: bodyTypes.filter(Boolean).sort(),
@@ -753,7 +825,7 @@ class VehicleController {
         }
       };
       
-      console.log('[Vehicle Controller] Returning filter options:', JSON.stringify(result, null, 2));
+      console.log('[Vehicle Controller] Returning filter options with submodels');
       
       return res.json(result);
 

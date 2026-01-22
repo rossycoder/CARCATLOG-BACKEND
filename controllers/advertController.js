@@ -80,6 +80,7 @@ const createAdvert = async (req, res) => {
       advertId: advertId,
       make: vehicleData.make || 'Unknown',
       model: vehicleData.model || 'Unknown',
+      variant: vehicleData.variant || vehicleData.modelVariant || null,
       year: parseYear(vehicleData.year),
       mileage: vehicleData.mileage || 0,
       color: vehicleData.color || 'Not specified',

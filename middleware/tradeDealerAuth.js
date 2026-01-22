@@ -111,21 +111,29 @@ const checkListingLimit = async (req, res, next) => {
     if (!req.subscription) {
       return res.status(403).json({
         success: false,
-        message: 'Subscription information not available'
+        message: 'Subscription information not available',
+        code: 'NO_SUBSCRIPTION'
       });
     }
 
     const canAdd = req.subscription.canAddListing();
 
     if (!canAdd.allowed) {
+      const SubscriptionPlan = require('../models/SubscriptionPlan');
+      const plan = await SubscriptionPlan.findById(req.subscription.planId);
+      
+      const planName = plan?.name || 'current';
+      const limit = req.subscription.listingsLimit;
+      
       return res.status(403).json({
         success: false,
-        message: canAdd.reason,
+        message: `You have reached your listing limit of ${limit} vehicles for your ${planName} subscription. Please upgrade your plan to add more vehicles.`,
         code: 'LISTING_LIMIT_REACHED',
         subscription: {
           listingsUsed: req.subscription.listingsUsed,
           listingsLimit: req.subscription.listingsLimit,
-          planName: req.subscription.planId?.name
+          planName: planName,
+          usagePercentage: req.subscription.usagePercentage
         }
       });
     }

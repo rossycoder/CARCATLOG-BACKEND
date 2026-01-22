@@ -4,6 +4,8 @@
  * with source tracking
  */
 
+const vehicleFormatter = require('./vehicleFormatter');
+
 class DataMerger {
   constructor() {
     // All data comes from CheckCarDetails or Valuation APIs
@@ -11,6 +13,7 @@ class DataMerger {
       // Basic vehicle info - CheckCarDetails
       make: 'checkcardetails',
       model: 'checkcardetails',
+      modelVariant: 'checkcardetails',
       year: 'checkcardetails',
       color: 'checkcardetails',
       fuelType: 'checkcardetails',
@@ -69,6 +72,9 @@ class DataMerger {
       // Basic vehicle information from CheckCarDetails (with valuation fallback)
       make: this.selectValue('make', checkCarData?.make || fallbackMake),
       model: this.selectValue('model', checkCarData?.model || fallbackModel),
+      // Prefer modelVariant over variant field (modelVariant is more specific from API)
+      variant: this.selectValue('variant', checkCarData?.modelVariant || checkCarData?.variant),
+      modelVariant: this.selectValue('modelVariant', checkCarData?.modelVariant),
       year: this.selectValue('year', checkCarData?.year),
       color: this.selectValue('color', checkCarData?.color),
       fuelType: this.selectValue('fuelType', checkCarData?.fuelType || fallbackFuelType),
@@ -100,6 +106,25 @@ class DataMerger {
 
     // Add field source tracking for frontend display
     merged.fieldSources = this.trackFieldSources(merged, checkCarData, valuationData);
+
+    // Generate variant automatically if missing or invalid
+    if (!merged.variant?.value || merged.variant.value === 'null' || merged.variant.value === 'undefined' || merged.variant.value === '') {
+      const vehicleData = {
+        make: merged.make?.value,
+        model: merged.model?.value,
+        engineSize: merged.engineSize?.value,
+        engineSizeLitres: merged.engineSize?.value,
+        fuelType: merged.fuelType?.value,
+        transmission: merged.transmission?.value,
+        modelVariant: merged.modelVariant?.value,
+        doors: merged.doors?.value
+      };
+      
+      const generatedVariant = vehicleFormatter.formatVariant(vehicleData);
+      if (generatedVariant) {
+        merged.variant = this.selectValue('variant', generatedVariant, 'generated');
+      }
+    }
 
     return merged;
   }
@@ -219,44 +244,40 @@ class DataMerger {
 
   /**
    * Merge valuation data (Valuation API only)
+   * Returns data in the same format as ValuationService for consistency
    */
   mergeValuationData(valuationData) {
     if (!valuationData) {
-      return {
-        tradePrice: { value: null, source: null },
-        privatePrice: { value: null, source: null },
-        dealerPrice: { value: null, source: null },
-        partExchangePrice: { value: null, source: null }
-      };
+      return null;
     }
 
-    // Handle both old and new field names from valuation API
-    const tradePrice = valuationData.estimatedValue?.trade || valuationData.tradePrice || valuationData.estimatedValue?.trade;
-    const privatePrice = valuationData.estimatedValue?.private || valuationData.privatePrice || valuationData.estimatedValue?.private;
-    const dealerPrice = valuationData.estimatedValue?.retail || valuationData.dealerPrice || valuationData.estimatedValue?.retail;
-    const partExchangePrice = valuationData.estimatedValue?.trade || valuationData.partExchangePrice || valuationData.estimatedValue?.trade;
+    // Extract values from the valuation API response
+    const retail = valuationData.estimatedValue?.retail || 0;
+    const trade = valuationData.estimatedValue?.trade || 0;
+    const privateVal = valuationData.estimatedValue?.private || 0;
 
+    // Return in the same format as ValuationService (estimatedValue structure)
+    // This ensures consistency between valuation tool and listing process
     return {
-      tradePrice: this.selectValue('valuation.tradePrice',
-        tradePrice,
-        null,
-        'valuation'
-      ),
-      privatePrice: this.selectValue('valuation.privatePrice',
-        privatePrice,
-        null,
-        'valuation'
-      ),
-      dealerPrice: this.selectValue('valuation.dealerPrice',
-        dealerPrice,
-        null,
-        'valuation'
-      ),
-      partExchangePrice: this.selectValue('valuation.partExchangePrice',
-        partExchangePrice,
-        null,
-        'valuation'
-      )
+      vrm: valuationData.vrm,
+      mileage: valuationData.mileage,
+      valuationDate: valuationData.valuationDate,
+      estimatedValue: {
+        retail: retail,
+        trade: trade,
+        private: privateVal
+      },
+      confidence: valuationData.confidence || 'medium',
+      factors: valuationData.factors || [],
+      marketConditions: valuationData.marketConditions || {
+        demand: 'medium',
+        supply: 'medium',
+        trend: 'stable'
+      },
+      validUntil: valuationData.validUntil,
+      apiProvider: valuationData.apiProvider || 'checkcardetails',
+      testMode: valuationData.testMode || false,
+      vehicleDescription: valuationData.vehicleDescription || null
     };
   }
 
@@ -345,7 +366,7 @@ class DataMerger {
   trackFieldSources(merged, checkCarData, valuationData) {
     const sources = {};
 
-    const basicFields = ['make', 'model', 'year', 'color', 'fuelType', 'transmission', 'engineSize', 'bodyType', 'doors', 'seats', 'previousOwners', 'gearbox', 'emissionClass'];
+    const basicFields = ['make', 'model', 'variant', 'year', 'color', 'fuelType', 'transmission', 'engineSize', 'bodyType', 'doors', 'seats', 'previousOwners', 'gearbox', 'emissionClass'];
     basicFields.forEach(field => {
       if (merged[field]?.source) {
         sources[field] = merged[field].source;
@@ -381,12 +402,7 @@ class DataMerger {
     }
 
     if (merged.valuation) {
-      sources.valuation = {};
-      ['tradePrice', 'privatePrice', 'dealerPrice', 'partExchangePrice'].forEach(field => {
-        if (merged.valuation[field]?.source) {
-          sources.valuation[field] = merged.valuation[field].source;
-        }
-      });
+      sources.valuation = 'valuation';
     }
 
     return sources;
