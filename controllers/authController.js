@@ -258,7 +258,17 @@ const verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
 
-    console.log('📧 Email verification attempt with token:', token);
+    console.log('📧 Email verification attempt');
+    console.log('   Token received:', token);
+    console.log('   Token length:', token?.length);
+
+    if (!token) {
+      console.log('❌ No token provided');
+      return res.status(400).json({
+        success: false,
+        message: 'Verification token is required'
+      });
+    }
 
     // Find user with valid token - explicitly select the token fields
     const user = await User.findOne({
@@ -266,15 +276,34 @@ const verifyEmail = async (req, res) => {
       emailVerificationExpires: { $gt: Date.now() }
     }).select('+emailVerificationToken +emailVerificationExpires');
 
+    console.log('   User found:', !!user);
+    
     if (!user) {
-      console.log('❌ Invalid or expired token');
+      // Check if token exists but is expired
+      const expiredUser = await User.findOne({
+        emailVerificationToken: token
+      }).select('+emailVerificationToken +emailVerificationExpires');
+
+      if (expiredUser) {
+        console.log('❌ Token expired for user:', expiredUser.email);
+        console.log('   Expired at:', expiredUser.emailVerificationExpires);
+        return res.status(400).json({
+          success: false,
+          message: 'Verification link has expired. Please request a new verification email.',
+          expired: true
+        });
+      }
+
+      console.log('❌ Invalid token - no matching user found');
       return res.status(400).json({
         success: false,
-        message: 'Invalid or expired verification token. Please request a new verification email.'
+        message: 'Invalid verification link. Please request a new verification email.',
+        expired: false
       });
     }
 
-    console.log('✅ User found:', user.email);
+    console.log('✅ Valid token for user:', user.email);
+    console.log('   Token expires:', user.emailVerificationExpires);
 
     // Update user
     user.isEmailVerified = true;
@@ -290,14 +319,18 @@ const verifyEmail = async (req, res) => {
     // Send welcome email now that they're verified
     try {
       const emailContent = welcomeEmail(user.name, user.email);
-      await sendEmail(user.email, emailContent.subject, emailContent.text, emailContent.html);
+      await Promise.race([
+        sendEmail(user.email, emailContent.subject, emailContent.text, emailContent.html),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Email timeout')), 5000))
+      ]);
     } catch (emailError) {
       console.error('Failed to send welcome email:', emailError);
+      // Don't fail verification if welcome email fails
     }
 
     res.json({
       success: true,
-      message: 'Email verified successfully',
+      message: 'Email verified successfully! You can now sign in.',
       data: {
         user: {
           id: user._id,
@@ -312,7 +345,7 @@ const verifyEmail = async (req, res) => {
     console.error('❌ Email verification error:', error);
     res.status(500).json({
       success: false,
-      message: 'Error verifying email',
+      message: 'Error verifying email. Please try again.',
       error: error.message
     });
   }
