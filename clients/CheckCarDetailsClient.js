@@ -293,12 +293,14 @@ class CheckCarDetailsClient {
       driveType: transmission.DriveType || smmtDetails.DriveType || data.DriveType || null,
       drivingAxle: transmission.DrivingAxle || smmtDetails.DrivingAxle || data.DrivingAxle || null,
       engineSize: this.extractNumber(
-        dvlaTech.EngineCapacityCc || 
-        powerSource.IceDetails?.EngineCapacityCc ||
-        smmtDetails.EngineCapacity || 
-        data.EngineSize || 
-        data.engineSize || 
-        data.EngineCapacity
+        // Prefer litres, otherwise convert cc to litres
+        powerSource.IceDetails?.EngineCapacityLitres ||
+        smmtDetails.NominalEngineCapacity ||
+        data.EngineCapacityLitres ||
+        (dvlaTech.EngineCapacityCc ? (dvlaTech.EngineCapacityCc / 1000) : null) ||
+        (powerSource.IceDetails?.EngineCapacityCc ? (powerSource.IceDetails.EngineCapacityCc / 1000) : null) ||
+        (smmtDetails.EngineCapacity ? (smmtDetails.EngineCapacity / 1000) : null) ||
+        (data.EngineSize ? (typeof data.EngineSize === 'number' && data.EngineSize > 100 ? data.EngineSize / 1000 : data.EngineSize) : null)
       ),
       engineSizeLitres: this.extractNumber(
         powerSource.IceDetails?.EngineCapacityLitres ||

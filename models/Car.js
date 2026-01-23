@@ -429,17 +429,51 @@ carSchema.pre('save', async function(next) {
     }
   }
   
-  // Auto-generate displayTitle if missing (AutoTrader format)
+  // Auto-generate displayTitle if missing (AutoTrader format: "EngineSize Variant BodyStyle")
   if (!this.displayTitle && this.make && this.model) {
-    const vehicleFormatter = require('../utils/vehicleFormatter');
-    this.displayTitle = vehicleFormatter.buildFullTitle(
-      this.make,
-      this.model,
-      this.engineSize,
-      this.variant,
-      this.transmission
-    );
-    console.log(`Auto-generated displayTitle: ${this.displayTitle}`);
+    const parts = [];
+    
+    // Engine size (without 'L' suffix for AutoTrader style)
+    if (this.engineSize) {
+      const size = parseFloat(this.engineSize);
+      if (!isNaN(size) && size > 0) {
+        parts.push(size.toFixed(1));
+      }
+    }
+    
+    // Variant (should include fuel type + trim like "TDI S" or "320d M Sport")
+    if (this.variant && this.variant !== 'null' && this.variant !== 'undefined' && this.variant.trim() !== '') {
+      parts.push(this.variant);
+    } else if (this.fuelType) {
+      // Fallback: use fuel type if no variant
+      parts.push(this.fuelType);
+    }
+    
+    // Body style - convert to AutoTrader short form (e.g., "5dr", "Estate")
+    if (this.doors && this.doors >= 2 && this.doors <= 5) {
+      parts.push(`${this.doors}dr`);
+    } else if (this.bodyType) {
+      const bodyType = this.bodyType.toLowerCase();
+      if (bodyType.includes('estate')) {
+        parts.push('Estate');
+      } else if (bodyType.includes('saloon') || bodyType.includes('sedan')) {
+        parts.push('Saloon');
+      } else if (bodyType.includes('coupe')) {
+        parts.push('Coupe');
+      } else if (bodyType.includes('convertible') || bodyType.includes('cabriolet')) {
+        parts.push('Convertible');
+      } else if (bodyType.includes('suv')) {
+        parts.push('SUV');
+      } else if (bodyType.includes('mpv')) {
+        parts.push('MPV');
+      }
+    }
+    
+    // Generate displayTitle
+    if (parts.length > 0) {
+      this.displayTitle = parts.join(' ');
+      console.log(`🎯 Auto-generated displayTitle: "${this.displayTitle}" for ${this.make} ${this.model}`);
+    }
   }
   
   // History check for new listings with registration numbers

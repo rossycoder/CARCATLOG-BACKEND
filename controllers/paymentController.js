@@ -141,8 +141,8 @@ async function createAdvertCheckoutSession(req, res) {
           // Update existing car
           console.log(`📝 Updating existing car: ${car._id}`);
           
-          // Generate variant if missing
-          if (!car.variant || car.variant === 'null' || car.variant === 'undefined') {
+          // Generate variant if missing or invalid
+          if (!car.variant || car.variant === 'null' || car.variant === 'undefined' || car.variant.trim() === '') {
             const parsedEngineSize = car.engineSize || (safeVehicleData.engineSize ? parseFloat(String(safeVehicleData.engineSize).replace(/[^\d.]/g, '')) : undefined);
             
             const variantData = {
@@ -217,12 +217,47 @@ async function createAdvertCheckoutSession(req, res) {
           // Create new car
           console.log(`📝 Creating NEW car document`);
           
+          // If we have a registration number, fetch enhanced data from CheckCarDetails API
+          let enhancedData = null;
+          if (vehicleData.registration || vehicleData.registrationNumber) {
+            try {
+              const CheckCarDetailsClient = require('../clients/CheckCarDetailsClient');
+              const registration = vehicleData.registration || vehicleData.registrationNumber;
+              console.log(`📡 Fetching enhanced data from CheckCarDetails API for: ${registration}`);
+              enhancedData = await CheckCarDetailsClient.getVehicleData(registration);
+              console.log(`✅ Enhanced data fetched:`, {
+                modelVariant: enhancedData?.modelVariant,
+                variant: enhancedData?.variant,
+                make: enhancedData?.make,
+                model: enhancedData?.model
+              });
+            } catch (error) {
+              console.log(`⚠️  Could not fetch enhanced data: ${error.message}`);
+            }
+          }
+          
           // Parse engine size to number
           const parsedEngineSize = vehicleData.engineSize ? parseFloat(String(vehicleData.engineSize).replace(/[^\d.]/g, '')) || undefined : undefined;
           
           // Generate variant automatically if not provided
-          let variant = vehicleData.variant || vehicleData.modelVariant || null;
-          if (!variant || variant === 'null' || variant === 'undefined' || variant.trim() === '') {
+          // Priority: enhancedData.modelVariant > vehicleData.modelVariant > vehicleData.variant
+          // Filter out null/undefined/empty strings and the literal strings "null" or "undefined"
+          let variant = null;
+          
+          // First try enhanced data from API
+          if (enhancedData?.modelVariant && enhancedData.modelVariant !== 'null' && enhancedData.modelVariant !== 'undefined' && enhancedData.modelVariant.trim() !== '') {
+            variant = enhancedData.modelVariant;
+            console.log(`✅ Using ModelVariant from CheckCarDetails API: "${variant}"`);
+          } else if (enhancedData?.variant && enhancedData.variant !== 'null' && enhancedData.variant !== 'undefined' && enhancedData.variant.trim() !== '') {
+            variant = enhancedData.variant;
+            console.log(`✅ Using variant from CheckCarDetails API: "${variant}"`);
+          } else if (vehicleData.variant && vehicleData.variant !== 'null' && vehicleData.variant !== 'undefined' && vehicleData.variant.trim() !== '') {
+            variant = vehicleData.variant;
+          } else if (vehicleData.modelVariant && vehicleData.modelVariant !== 'null' && vehicleData.modelVariant !== 'undefined' && vehicleData.modelVariant.trim() !== '') {
+            variant = vehicleData.modelVariant;
+          }
+          
+          if (!variant) {
             // Prepare data for variant generation
             const variantData = {
               make: vehicleData.make,

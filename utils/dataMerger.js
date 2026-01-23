@@ -79,7 +79,11 @@ class DataMerger {
       color: this.selectValue('color', checkCarData?.color),
       fuelType: this.selectValue('fuelType', checkCarData?.fuelType || fallbackFuelType),
       transmission: this.selectValue('transmission', checkCarData?.transmission),
-      engineSize: this.selectValue('engineSize', checkCarData?.engineSize),
+      engineSize: this.selectValue('engineSize', 
+        // Prefer engineSizeLitres if available, otherwise convert cc to litres
+        checkCarData?.engineSizeLitres || 
+        (checkCarData?.engineSize ? parseFloat((checkCarData.engineSize / 1000).toFixed(1)) : null)
+      ),
       bodyType: this.selectValue('bodyType', checkCarData?.bodyType),
       doors: this.selectValue('doors', checkCarData?.doors),
       seats: this.selectValue('seats', checkCarData?.seats),

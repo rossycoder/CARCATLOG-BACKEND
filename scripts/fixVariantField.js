@@ -36,8 +36,13 @@ async function fixVariantField() {
         // Fetch fresh data from API
         const apiData = await CheckCarDetailsClient.getVehicleData(car.registrationNumber);
         
-        // Extract variant from API data
-        const variant = apiData.variant || apiData.modelVariant;
+        // Extract variant from API data with proper validation
+        let variant = null;
+        if (apiData.variant && apiData.variant !== 'null' && apiData.variant !== 'undefined' && apiData.variant.trim() !== '') {
+          variant = apiData.variant;
+        } else if (apiData.modelVariant && apiData.modelVariant !== 'null' && apiData.modelVariant !== 'undefined' && apiData.modelVariant.trim() !== '') {
+          variant = apiData.modelVariant;
+        }
         
         if (variant) {
           // Update the car record
