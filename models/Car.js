@@ -43,6 +43,10 @@ const carSchema = new mongoose.Schema({
     },
     min: [0, 'Price must be positive']
   },
+  estimatedValue: {
+    type: Number,
+    min: [0, 'Estimated value must be positive']
+  },
   mileage: {
     type: Number,
     required: [true, 'Mileage is required'],
@@ -188,6 +192,12 @@ const carSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  motDue: {
+    type: Date
+  },
+  motExpiry: {
+    type: Date
+  },
   dvlaLastUpdated: {
     type: Date
   },
@@ -324,6 +334,14 @@ const carSchema = new mongoose.Schema({
     insuranceGroup: { type: String, default: null },
     annualTax: { type: Number, default: null }
   },
+  
+  // Individual running cost fields (for backward compatibility)
+  fuelEconomyUrban: { type: Number, default: null },
+  fuelEconomyExtraUrban: { type: Number, default: null },
+  fuelEconomyCombined: { type: Number, default: null },
+  co2Emissions: { type: Number, default: null },
+  insuranceGroup: { type: String, default: null },
+  annualTax: { type: Number, default: null },
   
   // Performance data (from CheckCarDetails API)
   performance: {

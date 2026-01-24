@@ -114,6 +114,44 @@ const createAdvert = async (req, res) => {
     // Use enhanced engine size if available (already in litres)
     const engineSize = enhancedData?.engineSize || parseEngineSize(vehicleData.engineSize);
     
+    // Calculate estimated price if not provided
+    let estimatedPrice = vehicleData.estimatedValue || 0;
+    if (!estimatedPrice || estimatedPrice === 0) {
+      // Calculate based on year, mileage, make
+      const currentYear = new Date().getFullYear();
+      const vehicleYear = parseYear(vehicleData.year);
+      const vehicleAge = currentYear - vehicleYear;
+      const mileage = vehicleData.mileage || 0;
+      
+      // Base value starts at £15000 for new cars
+      let baseValue = 15000;
+      
+      // Depreciate by £1000 per year
+      baseValue -= (vehicleAge * 1000);
+      
+      // Depreciate by £500 per 10,000 miles
+      baseValue -= Math.floor(mileage / 10000) * 500;
+      
+      // Minimum value of £1000
+      estimatedPrice = Math.max(baseValue, 1000);
+      
+      console.log(`💰 Calculated estimated price: £${estimatedPrice} (Year: ${vehicleYear}, Mileage: ${mileage})`);
+    }
+    
+    // Set MOT expiry date (1 year after first registration for new cars, or use provided date)
+    let motExpiry = null;
+    if (vehicleData.motDue) {
+      motExpiry = new Date(vehicleData.motDue);
+    } else if (vehicleData.dateFirstRegistered || vehicleData.year) {
+      // Set MOT to 1 year after first registration
+      const regDate = vehicleData.dateFirstRegistered 
+        ? new Date(vehicleData.dateFirstRegistered)
+        : new Date(vehicleData.year, 0, 1);
+      motExpiry = new Date(regDate);
+      motExpiry.setFullYear(motExpiry.getFullYear() + 1);
+      console.log(`🔧 Set MOT expiry to: ${motExpiry.toISOString().split('T')[0]}`);
+    }
+    
     const car = new Car({
       advertId: advertId,
       make: vehicleData.make || 'Unknown',
@@ -124,7 +162,8 @@ const createAdvert = async (req, res) => {
       color: vehicleData.color || 'Not specified',
       fuelType: normalizeFuelType(vehicleData.fuelType),
       transmission: normalizeTransmission(vehicleData.transmission),
-      price: vehicleData.estimatedValue || 0,
+      price: estimatedPrice,
+      estimatedValue: estimatedPrice,
       description: '',
       images: [],
       registrationNumber: vehicleData.registration || vehicleData.registrationNumber || null,
@@ -134,7 +173,9 @@ const createAdvert = async (req, res) => {
       seats: vehicleData.seats ? parseInt(vehicleData.seats) : undefined,
       co2Emissions: parseCO2(vehicleData.co2Emissions),
       taxStatus: vehicleData.taxDue,
-      motStatus: vehicleData.motDue,
+      motStatus: vehicleData.motStatus || 'Unknown',
+      motDue: motExpiry,
+      motExpiry: motExpiry,
       dataSource: vehicleData.registration ? 'DVLA' : 'manual',
       advertStatus: 'incomplete',
       condition: 'used'
@@ -201,6 +242,8 @@ const getAdvert = async (req, res) => {
       vehicleData: {
         make: car.make,
         model: car.model,
+        variant: car.variant,
+        displayTitle: car.displayTitle,
         year: car.year,
         mileage: car.mileage,
         color: car.color,
@@ -211,13 +254,22 @@ const getAdvert = async (req, res) => {
         bodyType: car.bodyType,
         doors: car.doors,
         seats: car.seats,
-        estimatedValue: car.price || 0,
-        motDue: car.motStatus,
+        estimatedValue: car.estimatedValue || car.price || 0,
+        motDue: car.motDue || car.motExpiry || car.motStatus,
+        motStatus: car.motStatus,
+        motExpiry: car.motExpiry,
         co2Emissions: car.co2Emissions,
-        taxStatus: car.taxStatus
+        taxStatus: car.taxStatus,
+        fuelEconomyUrban: car.fuelEconomyUrban,
+        fuelEconomyExtraUrban: car.fuelEconomyExtraUrban,
+        fuelEconomyCombined: car.fuelEconomyCombined,
+        annualTax: car.annualTax,
+        insuranceGroup: car.insuranceGroup,
+        gearbox: car.gearbox,
+        emissionClass: car.emissionClass
       },
       advertData: {
-        price: car.price,
+        price: car.price || car.estimatedValue || 0,
         description: car.description,
         photos: car.images.map((url, index) => ({
           id: `photo-${index}`,
@@ -227,12 +279,18 @@ const getAdvert = async (req, res) => {
         contactPhone: car.sellerContact?.phoneNumber || '',
         contactEmail: car.sellerContact?.email || '',
         location: car.sellerContact?.postcode || car.postcode || '',
-        runningCosts: car.runningCosts || {
-          fuelEconomy: { urban: '', extraUrban: '', combined: '' },
-          annualTax: '',
-          insuranceGroup: '',
+        features: car.features || [],
+        runningCosts: {
+          fuelEconomy: {
+            urban: car.fuelEconomyUrban || '',
+            extraUrban: car.fuelEconomyExtraUrban || '',
+            combined: car.fuelEconomyCombined || ''
+          },
+          annualTax: car.annualTax || '',
+          insuranceGroup: car.insuranceGroup || '',
           co2Emissions: car.co2Emissions || ''
-        }
+        },
+        videoUrl: car.videoUrl || ''
       },
       status: car.advertStatus,
       createdAt: car.createdAt

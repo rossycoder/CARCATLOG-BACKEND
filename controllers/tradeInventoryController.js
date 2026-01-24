@@ -185,17 +185,46 @@ exports.createVehicle = async (req, res) => {
     // Use dealer's business address postcode if not provided
     const postcode = req.body.postcode || req.dealer.businessAddress?.postcode || 'SW1A 1AA';
     
+    // If we have a registration number, fetch enhanced data from CheckCarDetails API
+    let enhancedData = null;
+    if (req.body.registrationNumber || req.body.registration) {
+      try {
+        const CheckCarDetailsClient = require('../clients/CheckCarDetailsClient');
+        const registration = req.body.registrationNumber || req.body.registration;
+        console.log(`[Trade Inventory] Fetching enhanced data from CheckCarDetails API for: ${registration}`);
+        enhancedData = await CheckCarDetailsClient.getVehicleData(registration);
+        console.log(`[Trade Inventory] Enhanced data fetched:`, {
+          modelVariant: enhancedData?.modelVariant,
+          variant: enhancedData?.variant,
+          engineSize: enhancedData?.engineSize
+        });
+      } catch (error) {
+        console.log(`[Trade Inventory] Could not fetch enhanced data: ${error.message}`);
+      }
+    }
+    
+    // Use enhanced engine size if available
+    const engineSize = enhancedData?.engineSize || req.body.engineSize;
+    console.log(`[Trade Inventory] Engine size: ${engineSize}L (from ${enhancedData?.engineSize ? 'API' : 'request body'})`);
+    
     // Auto-generate variant if missing or null
     const vehicleFormatter = require('../utils/vehicleFormatter');
     let variant = req.body.variant;
     
-    if (!variant || variant === 'null' || variant === 'undefined' || variant.trim() === '') {
+    // Priority: Use enhanced data from API if available
+    if (enhancedData?.modelVariant && enhancedData.modelVariant !== 'null' && enhancedData.modelVariant !== 'undefined' && enhancedData.modelVariant.trim() !== '') {
+      variant = enhancedData.modelVariant;
+      console.log(`[Trade Inventory] Using ModelVariant from CheckCarDetails API: "${variant}"`);
+    } else if (enhancedData?.variant && enhancedData.variant !== 'null' && enhancedData.variant !== 'undefined' && enhancedData.variant.trim() !== '') {
+      variant = enhancedData.variant;
+      console.log(`[Trade Inventory] Using variant from CheckCarDetails API: "${variant}"`);
+    } else if (!variant || variant === 'null' || variant === 'undefined' || variant.trim() === '') {
       // Generate variant from vehicle data
       const variantData = {
         make: req.body.make,
         model: req.body.model,
-        engineSize: req.body.engineSize,
-        engineSizeLitres: req.body.engineSize,
+        engineSize: engineSize,
+        engineSizeLitres: engineSize,
         fuelType: req.body.fuelType,
         transmission: transmission,
         modelVariant: req.body.modelVariant,
@@ -210,7 +239,7 @@ exports.createVehicle = async (req, res) => {
     const displayTitleParts = [];
     if (req.body.make) displayTitleParts.push(req.body.make);
     if (req.body.model) displayTitleParts.push(req.body.model);
-    if (req.body.engineSize) displayTitleParts.push(`${req.body.engineSize}L`);
+    if (engineSize) displayTitleParts.push(`${engineSize}L`);
     if (variant) displayTitleParts.push(variant);
     if (transmission) {
       const trans = transmission.charAt(0).toUpperCase() + transmission.slice(1);
@@ -219,11 +248,12 @@ exports.createVehicle = async (req, res) => {
     const displayTitle = displayTitleParts.join(' ');
     console.log('[Trade Inventory] Generated displayTitle:', displayTitle);
     
-    console.log('[Trade Inventory] Normalized values:', { transmission, postcode, variant, displayTitle });
+    console.log('[Trade Inventory] Normalized values:', { transmission, postcode, variant, displayTitle, engineSize });
     
     const vehicleData = {
       ...req.body,
-      variant,       // Auto-generated or from req.body
+      engineSize,    // Use enhanced or request body value
+      variant,       // Auto-generated or from req.body or API
       displayTitle,  // AutoTrader format title
       transmission,  // This will override the spread value
       postcode,      // This will override the spread value

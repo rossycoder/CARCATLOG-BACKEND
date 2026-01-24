@@ -11,6 +11,39 @@ const { formatErrorResponse } = require('../utils/errorHandlers');
 const vehicleFormatter = require('../utils/vehicleFormatter');
 
 /**
+ * Calculate the appropriate price range based on vehicle valuation
+ * Used for server-side validation
+ */
+function calculatePriceRangeForValidation(valuation, isTradeType) {
+  if (!valuation || isNaN(valuation)) return null;
+  
+  const value = parseFloat(valuation);
+  
+  if (isTradeType) {
+    // Trade pricing tiers
+    if (value < 1000) return 'under-1000';
+    if (value <= 2000) return '1001-2000';
+    if (value <= 3000) return '2001-3000';
+    if (value <= 5000) return '3001-5000';
+    if (value <= 7000) return '5001-7000';
+    if (value <= 10000) return '7001-10000';
+    if (value <= 17000) return '10001-17000';
+    return 'over-17000';
+  } else {
+    // Private pricing tiers
+    if (value < 1000) return 'under-1000';
+    if (value <= 2999) return '1000-2999';
+    if (value <= 4999) return '3000-4999';
+    if (value <= 6999) return '5000-6999';
+    if (value <= 9999) return '7000-9999';
+    if (value <= 12999) return '10000-12999';
+    if (value <= 16999) return '13000-16999';
+    if (value <= 24999) return '17000-24999';
+    return 'over-24995';
+  }
+}
+
+/**
  * Create Stripe checkout session for advertising package
  * POST /api/payments/create-advert-checkout-session
  * Body: { packageId, packageName, price, duration, sellerType, vehicleValue, registration?, mileage? }
@@ -42,6 +75,25 @@ async function createAdvertCheckoutSession(req, res) {
         success: false,
         error: 'Package details are required',
       });
+    }
+
+    // Validate price range matches vehicle valuation if valuation is provided
+    const valuation = advertData?.price || vehicleData?.estimatedValue || vehicleData?.price;
+    if (valuation && vehicleValue) {
+      const expectedPriceRange = calculatePriceRangeForValidation(valuation, sellerType === 'trade');
+      if (expectedPriceRange !== vehicleValue) {
+        console.error('❌ Price range mismatch:', {
+          valuation,
+          expectedPriceRange,
+          providedPriceRange: vehicleValue,
+          sellerType
+        });
+        return res.status(400).json({
+          success: false,
+          error: `Price range mismatch. Vehicle valued at £${valuation} should use ${expectedPriceRange} price range, but ${vehicleValue} was provided.`,
+        });
+      }
+      console.log('✅ Price range validation passed:', { valuation, priceRange: vehicleValue });
     }
 
     const stripeService = new StripeService();
@@ -237,7 +289,11 @@ async function createAdvertCheckoutSession(req, res) {
           }
           
           // Parse engine size to number
-          const parsedEngineSize = vehicleData.engineSize ? parseFloat(String(vehicleData.engineSize).replace(/[^\d.]/g, '')) || undefined : undefined;
+          // Priority: Use enhanced data from API if available, otherwise parse from vehicleData
+          const parsedEngineSize = enhancedData?.engineSize || 
+            (vehicleData.engineSize ? parseFloat(String(vehicleData.engineSize).replace(/[^\d.]/g, '')) || undefined : undefined);
+          
+          console.log(`🔧 Engine size: ${parsedEngineSize}L (from ${enhancedData?.engineSize ? 'API' : 'vehicleData'})`);
           
           // Generate variant automatically if not provided
           // Priority: enhancedData.modelVariant > vehicleData.modelVariant > vehicleData.variant

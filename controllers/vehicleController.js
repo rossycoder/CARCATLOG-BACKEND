@@ -747,7 +747,8 @@ class VehicleController {
         {
           $group: {
             _id: { make: '$make', model: '$model' },
-            submodels: { $addToSet: '$submodel' }
+            submodels: { $addToSet: '$submodel' },
+            variants: { $addToSet: '$variant' }
           }
         },
         {
@@ -756,7 +757,8 @@ class VehicleController {
             models: {
               $push: {
                 model: '$_id.model',
-                submodels: { $filter: { input: '$submodels', cond: { $ne: ['$$this', null] } } }
+                submodels: { $filter: { input: '$submodels', cond: { $ne: ['$$this', null] } } },
+                variants: { $filter: { input: '$variants', cond: { $ne: ['$$this', null] } } }
               }
             }
           }
@@ -766,17 +768,20 @@ class VehicleController {
       // Transform hierarchy data into structured format
       const modelsByMake = {};
       const submodelsByMakeModel = {};
+      const variantsByMakeModel = {};
       
       modelHierarchy.forEach(makeGroup => {
         const make = makeGroup._id;
         modelsByMake[make] = [];
         submodelsByMakeModel[make] = {};
+        variantsByMakeModel[make] = {};
         
         makeGroup.models.forEach(modelGroup => {
           const model = modelGroup.model;
           if (model) {
             modelsByMake[make].push(model);
             submodelsByMakeModel[make][model] = modelGroup.submodels.filter(Boolean).sort();
+            variantsByMakeModel[make][model] = modelGroup.variants.filter(Boolean).sort();
           }
         });
         
@@ -814,6 +819,7 @@ class VehicleController {
           models: models.filter(Boolean).sort(),
           modelsByMake,
           submodelsByMakeModel,
+          variantsByMakeModel,
           fuelTypes: fuelTypes.filter(Boolean).sort(),
           transmissions: transmissions.filter(Boolean).sort(),
           bodyTypes: bodyTypes.filter(Boolean).sort(),
@@ -825,7 +831,7 @@ class VehicleController {
         }
       };
       
-      console.log('[Vehicle Controller] Returning filter options with submodels');
+      console.log('[Vehicle Controller] Returning filter options with submodels and variants');
       
       return res.json(result);
 
