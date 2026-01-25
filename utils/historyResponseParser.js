@@ -171,27 +171,62 @@ function parseHistoryResponse(apiResponse, isTestMode = false) {
 
   // Add write-off details if present
   if (vehicleHistory.writeOffRecord && vehicleHistory.writeoff) {
+    // Extract category from status field (e.g., "CAT D VEHICLE DAMAGED" -> "D")
+    let category = 'unknown';
+    const writeoffData = Array.isArray(vehicleHistory.writeoff) 
+      ? vehicleHistory.writeoff[0] 
+      : vehicleHistory.writeoff;
+    
+    if (writeoffData.category) {
+      category = writeoffData.category;
+    } else if (writeoffData.status) {
+      const status = writeoffData.status.toUpperCase();
+      if (status.includes('CAT A') || status.includes('CATEGORY A')) category = 'A';
+      else if (status.includes('CAT B') || status.includes('CATEGORY B')) category = 'B';
+      else if (status.includes('CAT C') || status.includes('CATEGORY C')) category = 'C';
+      else if (status.includes('CAT D') || status.includes('CATEGORY D')) category = 'D';
+      else if (status.includes('CAT S') || status.includes('CATEGORY S')) category = 'S';
+      else if (status.includes('CAT N') || status.includes('CATEGORY N')) category = 'N';
+    }
+    
     result.accidentDetails = {
       count: 1,
-      severity: vehicleHistory.writeoff.category || 'unknown',
-      dates: vehicleHistory.writeoff.date ? [new Date(vehicleHistory.writeoff.date)] : [],
+      severity: category,
+      dates: writeoffData.lossdate ? [new Date(writeoffData.lossdate)] : [],
+    };
+  } else {
+    // Add default empty accident details
+    result.accidentDetails = {
+      count: 0,
+      severity: 'unknown',
+      dates: [],
     };
   }
 
-  // Add theft details if present
+  // Add stolen details
   if (vehicleHistory.stolenRecord && vehicleHistory.stolen) {
     result.stolenDetails = {
       reportedDate: vehicleHistory.stolen.date ? new Date(vehicleHistory.stolen.date) : new Date(),
       status: vehicleHistory.stolen.status || 'active',
     };
+  } else {
+    result.stolenDetails = {
+      status: 'active',
+    };
   }
 
-  // Add finance details if present
+  // Add finance details
   if (vehicleHistory.financeRecord && vehicleHistory.finance) {
     result.financeDetails = {
       amount: vehicleHistory.finance.amount || 0,
       lender: vehicleHistory.finance.lender || 'Unknown',
       type: vehicleHistory.finance.type || 'unknown',
+    };
+  } else {
+    result.financeDetails = {
+      amount: 0,
+      lender: 'Unknown',
+      type: 'unknown',
     };
   }
 

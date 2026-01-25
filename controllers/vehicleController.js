@@ -733,8 +733,22 @@ class VehicleController {
     try {
       console.log('[Vehicle Controller] Fetching filter options...');
       
+      // Get filter parameters from query string
+      const { make, model, submodel } = req.query;
+      console.log('[Vehicle Controller] Filter params:', { make, model, submodel });
+      
+      // Build base query for active cars
+      const baseQuery = { advertStatus: 'active' };
+      
+      // Build filtered query based on selected filters
+      const filteredQuery = { ...baseQuery };
+      if (make) filteredQuery.make = make;
+      if (model) filteredQuery.model = model;
+      // The frontend sends "submodel" but we store it in "variant" field
+      if (submodel) filteredQuery.variant = submodel;
+      
       // Get unique makes (from active cars only)
-      const makes = await Car.distinct('make', { advertStatus: 'active' });
+      const makes = await Car.distinct('make', baseQuery);
       console.log('[Vehicle Controller] Found makes:', makes.length);
       
       // Get unique models
@@ -788,25 +802,25 @@ class VehicleController {
         modelsByMake[make].sort();
       });
       
-      // Get unique fuel types
-      const fuelTypes = await Car.distinct('fuelType', { advertStatus: 'active' });
+      // Get unique fuel types (filtered based on selection)
+      const fuelTypes = await Car.distinct('fuelType', filteredQuery);
       console.log('[Vehicle Controller] Found fuelTypes:', fuelTypes.length);
       
-      // Get unique transmissions
-      const transmissions = await Car.distinct('transmission', { advertStatus: 'active' });
+      // Get unique transmissions (filtered based on selection)
+      const transmissions = await Car.distinct('transmission', filteredQuery);
       console.log('[Vehicle Controller] Found transmissions:', transmissions.length);
       
-      // Get unique body types
-      const bodyTypes = await Car.distinct('bodyType', { advertStatus: 'active' });
+      // Get unique body types (filtered based on selection)
+      const bodyTypes = await Car.distinct('bodyType', filteredQuery);
       console.log('[Vehicle Controller] Found bodyTypes:', bodyTypes.length);
       
-      // Get unique colours (note: field is 'color' not 'colour')
-      const colours = await Car.distinct('color', { advertStatus: 'active' });
-      console.log('[Vehicle Controller] Found colours:', colours.length);
+      // Get unique colours (filtered based on selection) - THIS IS THE KEY FIX
+      const colours = await Car.distinct('color', filteredQuery);
+      console.log('[Vehicle Controller] Found colours:', colours.length, 'for query:', filteredQuery);
       
-      // Get year range
+      // Get year range (filtered based on selection)
       const years = await Car.aggregate([
-        { $match: { advertStatus: 'active' } },
+        { $match: filteredQuery },
         { $group: { _id: null, minYear: { $min: '$year' }, maxYear: { $max: '$year' } } }
       ]);
       

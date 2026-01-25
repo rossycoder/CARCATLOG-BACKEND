@@ -94,7 +94,7 @@ const vehicleHistorySchema = new mongoose.Schema({
     },
     severity: {
       type: String,
-      enum: ['minor', 'moderate', 'severe', 'unknown'],
+      enum: ['A', 'B', 'C', 'D', 'S', 'N', 'minor', 'moderate', 'severe', 'unknown'],
       default: 'unknown',
     },
     dates: [{

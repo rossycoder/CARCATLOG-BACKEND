@@ -182,13 +182,15 @@ class HistoryAPIClient {
     }
 
     try {
-      // Use ukvehicledata endpoint instead of carhistorycheck
-      // This endpoint works and provides comprehensive vehicle data
-      const apiResponse = await this.makeRequestWithRetry('ukvehicledata', vrm);
+      // Use carhistorycheck endpoint which includes write-off data
+      // This endpoint provides comprehensive vehicle history including write-offs
+      const apiResponse = await this.makeRequestWithRetry('carhistorycheck', vrm);
       
-      // Parse the ukvehicledata response to extract history information
+      // Parse the carhistorycheck response using historyResponseParser
+      const { parseHistoryResponse } = require('../utils/historyResponseParser');
+      
       try {
-        const parsedResult = this.parseUKVehicleDataResponse(apiResponse);
+        const parsedResult = parseHistoryResponse(apiResponse, this.isTestMode);
         return parsedResult;
       } catch (parseError) {
         console.warn('Failed to parse complete response, attempting partial parse');
@@ -196,7 +198,7 @@ class HistoryAPIClient {
         return partialResult;
       }
     } catch (error) {
-      throw this.formatError(error, vrm, 'ukvehicledata');
+      throw this.formatError(error, vrm, 'carhistorycheck');
     }
   }
 
@@ -352,6 +354,60 @@ class HistoryAPIClient {
       vin: vehicleReg.Vin,
       engineNumber: vehicleReg.EngineNumber,
       co2Emissions: vehicleReg.Co2Emissions,
+      
+      // History checks - CRITICAL: Extract write-off and other history data
+      hasAccidentHistory: Boolean(vehicleHistory.writeOffRecord || vehicleHistory.writeoff),
+      isStolen: Boolean(vehicleHistory.stolenRecord || vehicleHistory.stolen),
+      isScrapped: Boolean(vehicleReg.Scrapped),
+      isImported: Boolean(vehicleReg.Imported || vehicleReg.ImportNonEu),
+      isExported: Boolean(vehicleReg.Exported),
+      isWrittenOff: Boolean(vehicleHistory.writeOffRecord || vehicleHistory.writeoff),
+      hasOutstandingFinance: Boolean(vehicleHistory.financeRecord || vehicleHistory.finance),
+      
+      // Accident/Write-off details
+      accidentDetails: (vehicleHistory.writeOffRecord && vehicleHistory.writeoff) ? {
+        count: 1,
+        severity: vehicleHistory.writeoff.category || 
+                 (vehicleHistory.writeoff.status?.includes('CAT D') ? 'D' :
+                  vehicleHistory.writeoff.status?.includes('CAT C') ? 'C' :
+                  vehicleHistory.writeoff.status?.includes('CAT B') ? 'B' :
+                  vehicleHistory.writeoff.status?.includes('CAT A') ? 'A' :
+                  vehicleHistory.writeoff.status?.includes('CAT S') ? 'S' :
+                  vehicleHistory.writeoff.status?.includes('CAT N') ? 'N' : 'unknown'),
+        dates: vehicleHistory.writeoff.lossdate ? [new Date(vehicleHistory.writeoff.lossdate)] : []
+      } : {
+        count: 0,
+        severity: 'unknown',
+        dates: []
+      },
+      
+      // Stolen details
+      stolenDetails: (vehicleHistory.stolenRecord && vehicleHistory.stolen) ? {
+        reportedDate: vehicleHistory.stolen.date ? new Date(vehicleHistory.stolen.date) : new Date(),
+        status: vehicleHistory.stolen.status || 'active'
+      } : {
+        status: 'active'
+      },
+      
+      // Finance details
+      financeDetails: (vehicleHistory.financeRecord && vehicleHistory.finance) ? {
+        amount: vehicleHistory.finance.amount || 0,
+        lender: vehicleHistory.finance.lender || 'Unknown',
+        type: vehicleHistory.finance.type || 'unknown'
+      } : {
+        amount: 0,
+        lender: 'Unknown',
+        type: 'unknown'
+      },
+      
+      // Additional fields for compatibility
+      numberOfKeys: 1,
+      keys: 1,
+      serviceHistory: 'Contact seller',
+      checkStatus: 'success',
+      apiProvider: 'unknown',
+      testMode: this.isTestMode,
+      checkDate: new Date(),
       
       // History lists
       keeperChanges: vehicleHistory.KeeperChangesList || [],
