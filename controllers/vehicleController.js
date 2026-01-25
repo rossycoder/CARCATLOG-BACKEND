@@ -197,6 +197,26 @@ class VehicleController {
 
       await car.save();
 
+      // Step 5: Fetch vehicle history data (non-blocking)
+      // This ensures the history data is available when the car is viewed
+      try {
+        console.log(`[Vehicle Controller] Fetching vehicle history for: ${registrationNumber}`);
+        const historyData = await historyService.checkVehicleHistory(registrationNumber, false);
+        
+        if (historyData && historyData._id) {
+          car.historyCheckId = historyData._id;
+          car.historyCheckStatus = 'verified';
+          car.historyCheckDate = new Date();
+          await car.save();
+          console.log(`[Vehicle Controller] Vehicle history data saved for: ${registrationNumber}`);
+        }
+      } catch (historyError) {
+        // Don't fail the car creation if history check fails
+        console.warn(`[Vehicle Controller] Failed to fetch vehicle history: ${historyError.message}`);
+        car.historyCheckStatus = 'failed';
+        await car.save();
+      }
+
       // Update purchase record with vehicle ID
       purchase.vehicleId = car._id;
       purchase.registration = car.registrationNumber;
