@@ -121,6 +121,7 @@ class DVLAService {
       co2Emissions: dvlaData.co2Emissions || null,
       taxStatus: dvlaData.taxStatus || null,
       motStatus: dvlaData.motStatus || null,
+      motExpiry: dvlaData.motExpiryDate ? new Date(dvlaData.motExpiryDate) : null,
       dvlaLastUpdated: new Date(),
       // Optional fields from additionalData
       price: additionalData.price || null,

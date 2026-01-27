@@ -14,14 +14,15 @@ const {
   resetPassword
 } = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
+const { verifyRecaptcha } = require('../middleware/recaptchaMiddleware');
 
-// Public routes
-router.post('/register', register);
-router.post('/login', login);
+// Public routes with reCAPTCHA protection
+router.post('/register', verifyRecaptcha, register);
+router.post('/login', verifyRecaptcha, login);
 router.post('/check-email', checkEmail);
 router.get('/verify-email/:token', verifyEmail);
 router.post('/resend-verification', resendVerification);
-router.post('/forgot-password', forgotPassword);
+router.post('/forgot-password', forgotPassword); // reCAPTCHA temporarily disabled for testing
 router.post('/reset-password', resetPassword);
 
 // Google OAuth routes

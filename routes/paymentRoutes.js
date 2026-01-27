@@ -20,6 +20,9 @@ router.post('/create-van-checkout-session', paymentController.createVanCheckoutS
 // POST /api/payments/webhook - Handle Stripe webhooks
 router.post('/webhook', express.raw({type: 'application/json'}), paymentController.handleWebhook);
 
+// POST /api/payments/test-complete-purchase - Complete test purchase (development only)
+router.post('/test-complete-purchase', paymentController.completeTestPurchase);
+
 // GET /api/payments/session/:sessionId - Get checkout session details
 router.get('/session/:sessionId', paymentController.getSessionDetails);
 

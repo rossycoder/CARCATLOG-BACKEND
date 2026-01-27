@@ -77,6 +77,22 @@ async function checkVehicleHistory(req, res) {
   } catch (error) {
     console.error('Error in checkVehicleHistory:', error);
     
+    // Check for daily limit error (403 Forbidden)
+    if (error.isDailyLimitError || error.details?.status === 403) {
+      return res.status(503).json({
+        success: false,
+        error: error.userMessage || 'Vehicle history service temporarily unavailable',
+        message: 'The vehicle history check service has reached its daily limit. Please try again later.',
+        nextSteps: [
+          'Try again in 24 hours',
+          'Contact the seller directly for vehicle history information',
+          'Request service history documents from the seller'
+        ],
+        isServiceUnavailable: true,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
     // Return error - no mock data fallback
     const errorResponse = formatErrorResponse(error, 'history');
     

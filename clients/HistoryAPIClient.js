@@ -251,6 +251,21 @@ class HistoryAPIClient {
 
     console.error(`CheckCarDetails API call failed (${datapoint}):`, errorDetails);
     
+    // Check for 403 Forbidden (daily limit exceeded)
+    if (error.response?.status === 403) {
+      const apiMessage = error.response?.data?.message || '';
+      if (apiMessage.includes('daily limit')) {
+        const enhancedError = new Error(
+          `Daily API limit exceeded for ${datapoint}. Vehicle history data is temporarily unavailable.`
+        );
+        enhancedError.originalError = error;
+        enhancedError.details = errorDetails;
+        enhancedError.isDailyLimitError = true;
+        enhancedError.userMessage = 'Vehicle history check is temporarily unavailable. Please try again later or contact the seller for vehicle history information.';
+        return enhancedError;
+      }
+    }
+    
     const enhancedError = new Error(
       `CheckCarDetails API ${datapoint} failed for VRM ${vrm}: ${error.message}`
     );

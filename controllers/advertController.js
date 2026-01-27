@@ -177,8 +177,11 @@ const createAdvert = async (req, res) => {
       motDue: motExpiry,
       motExpiry: motExpiry,
       dataSource: vehicleData.registration ? 'DVLA' : 'manual',
-      advertStatus: 'incomplete',
-      condition: 'used'
+      advertStatus: 'draft', // Changed from 'incomplete' to 'draft'
+      condition: 'used',
+      // Set dealer fields if this is a trade dealer request
+      dealerId: req.dealerId || undefined,
+      isDealerListing: !!req.dealerId
     });
     
     await car.save();
@@ -319,8 +322,17 @@ const updateAdvert = async (req, res) => {
     
     console.log(`📝 Updating advert data: ${advertId}`);
     
-    // Find car by advertId
-    const car = await Car.findOne({ advertId });
+    // Find car by advertId (UUID) or _id (MongoDB ObjectId)
+    let car;
+    
+    // Check if it's a MongoDB ObjectId (24 hex characters)
+    if (/^[0-9a-fA-F]{24}$/.test(advertId)) {
+      console.log('🔍 Searching by MongoDB _id');
+      car = await Car.findById(advertId);
+    } else {
+      console.log('🔍 Searching by advertId (UUID)');
+      car = await Car.findOne({ advertId });
+    }
     
     if (!car) {
       return res.status(404).json({
@@ -328,6 +340,8 @@ const updateAdvert = async (req, res) => {
         message: 'Advert not found'
       });
     }
+    
+    console.log(`✅ Found car: ${car._id} (advertId: ${car.advertId})`);
     
     // Update vehicle data if provided
     if (vehicleData) {

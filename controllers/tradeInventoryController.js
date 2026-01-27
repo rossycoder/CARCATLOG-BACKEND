@@ -81,13 +81,15 @@ exports.getStats = async (req, res) => {
       { $group: { _id: null, total: { $sum: '$viewCount' } } }
     ]);
 
-    const mostViewed = await Car.find({
+    // Get most viewed active listings, or recent active listings if no views
+    let mostViewed = await Car.find({
       dealerId: req.dealerId,
-      isDealerListing: true
+      isDealerListing: true,
+      advertStatus: 'active'
     })
-      .sort({ viewCount: -1 })
+      .sort({ viewCount: -1, createdAt: -1 })
       .limit(5)
-      .select('make model year viewCount images');
+      .select('make model year viewCount images price');
 
     const statusCounts = {};
     stats.forEach(stat => {
@@ -497,8 +499,18 @@ exports.publishVehicle = async (req, res) => {
       });
     }
 
-    // Find the car by advertId
-    const car = await Car.findOne({ advertId });
+    // Find the car by advertId (UUID) or _id (MongoDB ObjectId)
+    let car;
+    
+    // Check if it's a MongoDB ObjectId (24 hex characters)
+    if (/^[0-9a-fA-F]{24}$/.test(advertId)) {
+      console.log('[Trade Publish] Searching by MongoDB _id:', advertId);
+      car = await Car.findById(advertId);
+    } else {
+      console.log('[Trade Publish] Searching by advertId (UUID):', advertId);
+      car = await Car.findOne({ advertId });
+    }
+    
     if (!car) {
       console.log('[Trade Publish] Vehicle not found:', advertId);
       return res.status(404).json({ 

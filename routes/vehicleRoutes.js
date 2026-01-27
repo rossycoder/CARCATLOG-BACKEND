@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const vehicleController = require('../controllers/vehicleController');
 const { validateAndNormalizeVehicle, checkDuplicateRegistration } = require('../middleware/vehicleValidation');
+const { protect } = require('../middleware/authMiddleware');
 
 // GET /api/vehicles/count - Get total count of available cars (must be before /:id)
 router.get(
@@ -25,6 +26,13 @@ router.get(
 router.get(
   '/enhanced-lookup/:registration',
   vehicleController.enhancedVehicleLookup.bind(vehicleController)
+);
+
+// GET /api/vehicles/my-listings - Get user's listings (requires auth, must be before /:id)
+router.get(
+  '/my-listings',
+  protect,
+  vehicleController.getMyListings.bind(vehicleController)
 );
 
 // GET /api/vehicles - Get all cars with filters (must be before /:id)
@@ -54,6 +62,20 @@ router.post(
   '/validate-registration',
   vehicleController.constructor.validateRegistrationRules(),
   vehicleController.validateRegistration.bind(vehicleController)
+);
+
+// PATCH /api/vehicles/:id/status - Update vehicle status (requires auth)
+router.patch(
+  '/:id/status',
+  protect,
+  vehicleController.updateVehicleStatus.bind(vehicleController)
+);
+
+// DELETE /api/vehicles/:id - Delete vehicle (requires auth)
+router.delete(
+  '/:id',
+  protect,
+  vehicleController.deleteVehicle.bind(vehicleController)
 );
 
 // GET /api/vehicles/:id - Get a single car by ID (must be last)

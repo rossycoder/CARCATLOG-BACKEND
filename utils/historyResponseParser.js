@@ -1,6 +1,12 @@
 /**
  * History API Response Parser and Validator
  * Parses and validates responses from the History API
+ * 
+ * IMPORTANT NOTES:
+ * - MOT data is NOT included in the carhistorycheck endpoint response
+ * - MOT data must be fetched separately using the /vehicledata/mot endpoint
+ * - The carhistorycheck endpoint provides: write-off status, stolen records, finance records, keeper history
+ * - Do not expect mot.motStatus or mot.motDueDate in the carhistorycheck response
  */
 
 /**
@@ -145,6 +151,18 @@ function parseHistoryResponse(apiResponse, isTestMode = false) {
   // Extract VRM
   const vrm = vehicleReg.Vrm || apiResponse.registrationNumber || apiResponse.vrm || 'unknown';
   
+  // Extract number of previous keepers - try multiple field names
+  let numberOfPreviousKeepers = 0;
+  if (vehicleHistory.NumberOfPreviousKeepers !== undefined && vehicleHistory.NumberOfPreviousKeepers !== null) {
+    numberOfPreviousKeepers = parseInt(vehicleHistory.NumberOfPreviousKeepers) || 0;
+  } else if (vehicleHistory.numberOfPreviousKeepers !== undefined && vehicleHistory.numberOfPreviousKeepers !== null) {
+    numberOfPreviousKeepers = parseInt(vehicleHistory.numberOfPreviousKeepers) || 0;
+  } else if (vehicleHistory.PreviousKeepers !== undefined && vehicleHistory.PreviousKeepers !== null) {
+    numberOfPreviousKeepers = parseInt(vehicleHistory.PreviousKeepers) || 0;
+  }
+  
+  console.log(`[HistoryParser] Previous Keepers: ${numberOfPreviousKeepers} (raw: ${vehicleHistory.NumberOfPreviousKeepers})`);
+  
   // Parse the response from CheckCarDetails format
   const result = {
     vrm: vrm,
@@ -157,13 +175,15 @@ function parseHistoryResponse(apiResponse, isTestMode = false) {
     isImported: Boolean(vehicleReg.Imported || vehicleReg.ImportNonEu),
     isExported: Boolean(vehicleReg.Exported),
     isWrittenOff: Boolean(vehicleHistory.writeOffRecord || vehicleHistory.writeoff),
-    previousOwners: vehicleHistory.NumberOfPreviousKeepers || 0,
-    numberOfOwners: vehicleHistory.NumberOfPreviousKeepers || 0,
+    numberOfPreviousKeepers: numberOfPreviousKeepers,
+    previousOwners: numberOfPreviousKeepers,
+    numberOfOwners: numberOfPreviousKeepers,
     numberOfKeys: 1, // Not provided by CheckCarDetails API
     keys: 1,
     serviceHistory: 'Contact seller', // Not provided by CheckCarDetails API
-    motStatus: apiResponse.mot?.motStatus || 'Unknown',
-    motExpiryDate: apiResponse.mot?.motDueDate || null,
+    // MOT data is NOT included in carhistorycheck endpoint - must be fetched separately
+    motStatus: null,
+    motExpiryDate: null,
     checkStatus: 'success',
     apiProvider: 'CheckCarDetails',
     testMode: isTestMode,
@@ -177,9 +197,12 @@ function parseHistoryResponse(apiResponse, isTestMode = false) {
       ? vehicleHistory.writeoff[0] 
       : vehicleHistory.writeoff;
     
+    // First try the category field if it exists
     if (writeoffData.category) {
-      category = writeoffData.category;
-    } else if (writeoffData.status) {
+      category = writeoffData.category.toUpperCase();
+    } 
+    // Otherwise extract from status field
+    else if (writeoffData.status) {
       const status = writeoffData.status.toUpperCase();
       if (status.includes('CAT A') || status.includes('CATEGORY A')) category = 'A';
       else if (status.includes('CAT B') || status.includes('CATEGORY B')) category = 'B';
@@ -188,6 +211,8 @@ function parseHistoryResponse(apiResponse, isTestMode = false) {
       else if (status.includes('CAT S') || status.includes('CATEGORY S')) category = 'S';
       else if (status.includes('CAT N') || status.includes('CATEGORY N')) category = 'N';
     }
+    
+    console.log(`[HistoryParser] Write-off detected: Category ${category}, Status: ${writeoffData.status}`);
     
     result.accidentDetails = {
       count: 1,

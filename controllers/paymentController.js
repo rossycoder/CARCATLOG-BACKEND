@@ -155,7 +155,8 @@ async function createAdvertCheckoutSession(req, res) {
         advertId: advertId || null,
         advertData: JSON.stringify(safeAdvertData),
         vehicleData: JSON.stringify(safeVehicleData),
-        contactDetails: JSON.stringify(safeContactDetails)
+        contactDetails: JSON.stringify(safeContactDetails),
+        userId: req.user ? (req.user._id || req.user.id).toString() : null
       }
     });
 
@@ -774,6 +775,13 @@ async function handlePaymentSuccess(paymentIntent) {
               // UPDATE existing car with payment data
               console.log(`📝 Updating existing car: ${car._id}`);
               
+              // Get userId from purchase metadata
+              const userId = purchase.metadata.get('userId');
+              if (userId && !car.userId) {
+                car.userId = userId;
+                console.log(`   Setting userId: ${userId}`);
+              }
+              
               car.price = advertData.price || vehicleData.estimatedValue || car.price;
               car.description = advertData.description || car.description;
               car.images = advertData.photos ? advertData.photos.map(p => p.url) : car.images;
@@ -826,8 +834,16 @@ async function handlePaymentSuccess(paymentIntent) {
               // CREATE new car document with ALL data
               console.log(`📝 Creating NEW car document`);
               
+              // Get userId from purchase metadata
+              const userId = purchase.metadata.get('userId');
+              if (userId) {
+                console.log(`   Setting userId: ${userId}`);
+              }
+              
               car = new Car({
               advertId: advertId,
+              // User association
+              userId: userId || null,
               // Vehicle data
               make: vehicleData.make,
               model: vehicleData.model,
@@ -1601,6 +1617,76 @@ async function createVanCheckoutSession(req, res) {
   }
 }
 
+/**
+ * Complete test purchase (for development/testing)
+ * POST /api/payments/test-complete-purchase
+ */
+async function completeTestPurchase(req, res) {
+  try {
+    const { purchaseId } = req.body;
+    
+    if (!purchaseId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Purchase ID is required'
+      });
+    }
+
+    console.log(`🧪 TEST: Completing purchase ${purchaseId}`);
+
+    const purchase = await AdvertisingPackagePurchase.findById(purchaseId);
+    
+    if (!purchase) {
+      return res.status(404).json({
+        success: false,
+        error: 'Purchase not found'
+      });
+    }
+
+    if (purchase.paymentStatus === 'paid') {
+      return res.json({
+        success: true,
+        message: 'Purchase already completed',
+        vehicleId: purchase.vehicleId
+      });
+    }
+
+    // Simulate payment intent
+    const testPaymentIntent = {
+      id: 'test_pi_' + Date.now(),
+      metadata: {
+        type: 'advertising_package',
+        sessionId: purchase.stripeSessionId
+      }
+    };
+
+    // Call the same handler as webhook
+    await handlePaymentSuccess(testPaymentIntent);
+
+    // Fetch updated purchase
+    const updatedPurchase = await AdvertisingPackagePurchase.findById(purchaseId);
+
+    res.json({
+      success: true,
+      message: 'Test purchase completed successfully',
+      vehicleId: updatedPurchase.vehicleId,
+      purchase: {
+        id: updatedPurchase._id,
+        status: updatedPurchase.paymentStatus,
+        packageStatus: updatedPurchase.packageStatus,
+        vehicleId: updatedPurchase.vehicleId
+      }
+    });
+
+  } catch (error) {
+    console.error('Error completing test purchase:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to complete test purchase'
+    });
+  }
+}
+
 module.exports = {
   createCheckoutSession,
   createAdvertCheckoutSession,
@@ -1610,6 +1696,7 @@ module.exports = {
   getSessionDetails,
   getPurchaseDetails,
   handleWebhook,
+  completeTestPurchase,
   getCreditBalance,
   useCreditForCheck,
   createRefund,

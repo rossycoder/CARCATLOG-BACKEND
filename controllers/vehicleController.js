@@ -192,6 +192,13 @@ class VehicleController {
       carData.packageDuration = purchase.duration;
       carData.expiresAt = purchase.expiresAt;
 
+      // Add user ID if authenticated
+      if (req.user) {
+        const userId = req.user._id || req.user.id;
+        carData.userId = userId;
+        console.log('[Vehicle Controller] Setting userId:', userId);
+      }
+
       // Step 4: Create Car record
       const car = new Car(carData);
 
@@ -647,7 +654,8 @@ class VehicleController {
       // Make, Model, and Submodel filters (case-insensitive exact match)
       if (make) query.make = new RegExp(`^${make}$`, 'i');
       if (model) query.model = new RegExp(`^${model}$`, 'i');
-      if (submodel) query.submodel = new RegExp(`^${submodel}$`, 'i');
+      // Frontend sends "submodel" but we store it in "variant" field
+      if (submodel) query.variant = new RegExp(`^${submodel}$`, 'i');
       
       // Price range filters
       if (priceFrom || priceTo) {
@@ -673,7 +681,7 @@ class VehicleController {
       // Exact match filters
       if (gearbox) query.transmission = gearbox;
       if (bodyType) query.bodyType = bodyType;
-      if (colour) query.color = colour;
+      if (colour) query.color = colour; // Map 'colour' param to 'color' field
       if (fuelType) query.fuelType = fuelType;
       
       // Numeric filters
@@ -945,6 +953,179 @@ class VehicleController {
           message: 'An unexpected error occurred during vehicle lookup',
           details: process.env.NODE_ENV === 'development' ? error.message : undefined
         }
+      });
+    }
+  }
+
+  /**
+   * GET /api/vehicles/my-listings
+   * Get all listings for the authenticated user
+   */
+  async getMyListings(req, res, next) {
+    try {
+      // Check if user is authenticated
+      if (!req.user) {
+        console.log('[Vehicle Controller] Unauthenticated request to my-listings');
+        return res.status(401).json({
+          success: false,
+          error: 'Authentication required'
+        });
+      }
+
+      const userId = req.user._id || req.user.id;
+      console.log('[Vehicle Controller] Fetching listings for user:', userId);
+      console.log('[Vehicle Controller] User object:', req.user);
+
+      // Find all vehicles created by this user
+      const listings = await Car.find({ 
+        userId: userId 
+      }).sort({ createdAt: -1 });
+
+      console.log('[Vehicle Controller] Found', listings.length, 'listings for user:', userId);
+
+      // If no listings found, return empty array (not an error)
+      if (listings.length === 0) {
+        return res.json({
+          success: true,
+          listings: [],
+          count: 0,
+          message: 'No listings found'
+        });
+      }
+
+      // Clean up "null" strings in all listings
+      const cleanedListings = listings.map(listing => {
+        const listingData = listing.toObject();
+        return this.cleanNullStrings(listingData);
+      });
+
+      return res.json({
+        success: true,
+        listings: cleanedListings,
+        count: cleanedListings.length
+      });
+
+    } catch (error) {
+      console.error('[Vehicle Controller] Error in getMyListings:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to fetch listings'
+      });
+    }
+  }
+
+  /**
+   * PATCH /api/vehicles/:id/status
+   * Update vehicle status (mark as sold, etc.)
+   */
+  async updateVehicleStatus(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { advertStatus } = req.body;
+
+      // Check if user is authenticated
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          error: 'Authentication required'
+        });
+      }
+
+      const userId = req.user._id || req.user.id;
+
+      // Find the vehicle
+      const vehicle = await Car.findById(id);
+
+      if (!vehicle) {
+        return res.status(404).json({
+          success: false,
+          error: 'Vehicle not found'
+        });
+      }
+
+      // Check if user owns this vehicle
+      if (vehicle.userId && vehicle.userId.toString() !== userId.toString()) {
+        return res.status(403).json({
+          success: false,
+          error: 'You do not have permission to update this vehicle'
+        });
+      }
+
+      // Update status
+      vehicle.advertStatus = advertStatus;
+      if (advertStatus === 'sold') {
+        vehicle.soldAt = new Date();
+      }
+      await vehicle.save();
+
+      console.log('[Vehicle Controller] Updated vehicle status:', id, advertStatus);
+
+      return res.json({
+        success: true,
+        message: 'Vehicle status updated successfully',
+        vehicle: this.cleanNullStrings(vehicle.toObject())
+      });
+
+    } catch (error) {
+      console.error('[Vehicle Controller] Error in updateVehicleStatus:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to update vehicle status'
+      });
+    }
+  }
+
+  /**
+   * DELETE /api/vehicles/:id
+   * Delete a vehicle listing
+   */
+  async deleteVehicle(req, res, next) {
+    try {
+      const { id } = req.params;
+
+      // Check if user is authenticated
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          error: 'Authentication required'
+        });
+      }
+
+      const userId = req.user._id || req.user.id;
+
+      // Find the vehicle
+      const vehicle = await Car.findById(id);
+
+      if (!vehicle) {
+        return res.status(404).json({
+          success: false,
+          error: 'Vehicle not found'
+        });
+      }
+
+      // Check if user owns this vehicle
+      if (vehicle.userId && vehicle.userId.toString() !== userId.toString()) {
+        return res.status(403).json({
+          success: false,
+          error: 'You do not have permission to delete this vehicle'
+        });
+      }
+
+      // Delete the vehicle
+      await Car.findByIdAndDelete(id);
+
+      console.log('[Vehicle Controller] Deleted vehicle:', id);
+
+      return res.json({
+        success: true,
+        message: 'Vehicle deleted successfully'
+      });
+
+    } catch (error) {
+      console.error('[Vehicle Controller] Error in deleteVehicle:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to delete vehicle'
       });
     }
   }

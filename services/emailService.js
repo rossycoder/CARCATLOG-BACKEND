@@ -8,17 +8,18 @@ const sgMail = require('@sendgrid/mail');
 
 class EmailService {
   constructor() {
-    this.emailService = process.env.EMAIL_SERVICE || 'sendgrid'; // Default to SendGrid
+    this.emailService = process.env.EMAIL_SERVICE || 'gmail'; // Default to Gmail
     this.fromEmail = process.env.EMAIL_FROM || 'noreply@carcatalog.com';
     
-    // Configure SendGrid
-    if (this.emailService === 'sendgrid' && process.env.SENDGRID_API_KEY) {
-      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-      this.enabled = true;
-      console.log('✅ Email service initialized with SendGrid');
-    }
-    // Configure Gmail with Nodemailer
-    else if (this.emailService === 'gmail' && process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
+    console.log('📧 Email Service Configuration:');
+    console.log('   Service:', this.emailService);
+    console.log('   From:', this.fromEmail);
+    console.log('   Gmail User:', process.env.EMAIL_USER ? '✓ Set' : '✗ Not set');
+    console.log('   Gmail Password:', process.env.EMAIL_PASSWORD ? '✓ Set' : '✗ Not set');
+    console.log('   SendGrid Key:', process.env.SENDGRID_API_KEY ? '✓ Set' : '✗ Not set');
+    
+    // Configure Gmail with Nodemailer (Primary)
+    if (this.emailService === 'gmail' && process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
       this.transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
@@ -28,9 +29,16 @@ class EmailService {
       });
       this.enabled = true;
       console.log('✅ Email service initialized with Gmail');
+    }
+    // Configure SendGrid (Fallback)
+    else if (this.emailService === 'sendgrid' && process.env.SENDGRID_API_KEY) {
+      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+      this.enabled = true;
+      console.log('✅ Email service initialized with SendGrid');
     } else {
       this.enabled = false;
       console.log('⚠️ Email service disabled - no valid configuration found');
+      console.log('   Please check your .env file for EMAIL_USER and EMAIL_PASSWORD');
     }
   }
 

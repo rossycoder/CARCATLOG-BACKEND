@@ -104,11 +104,24 @@ function parseValuationResponse(apiResponse, isTestMode = false) {
     throw error;
   }
 
+  // Helper function to parse numeric values (handles strings with commas and numbers)
+  const parseNumericValue = (value) => {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return Math.round(value);
+    if (typeof value === 'string') {
+      // Remove commas and parse as integer
+      const cleaned = value.replace(/,/g, '');
+      const parsed = parseInt(cleaned, 10);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    return 0;
+  };
+
   // Extract VRM (handle both formats)
   const vrm = apiResponse.vrm || apiResponse.Vrm || 'unknown';
   
-  // Extract mileage (handle both formats)
-  const mileage = apiResponse.mileage || apiResponse.Mileage || 0;
+  // Extract mileage (handle both formats, parse strings with commas)
+  const mileage = parseNumericValue(apiResponse.mileage || apiResponse.Mileage);
   
   // Extract valuation data (handle both formats)
   const valuationList = apiResponse.ValuationList || apiResponse.estimatedValue || {};
@@ -119,9 +132,9 @@ function parseValuationResponse(apiResponse, isTestMode = false) {
     mileage,
     valuationDate: apiResponse.ValuationTime || apiResponse.valuationDate || new Date().toISOString(),
     estimatedValue: {
-      retail: valuationList.DealerForecourt || valuationList.retail || 0,
-      trade: valuationList.TradeAverage || valuationList.trade || valuationList.PartExchange || 0,
-      private: valuationList.PrivateClean || valuationList.private || 0,
+      retail: parseNumericValue(valuationList.DealerForecourt || valuationList.retail),
+      trade: parseNumericValue(valuationList.TradeAverage || valuationList.trade || valuationList.PartExchange),
+      private: parseNumericValue(valuationList.PrivateClean || valuationList.private),
     },
     confidence: apiResponse.confidence || 'medium',
     factors: parseValuationFactors(apiResponse.factors),
@@ -145,11 +158,24 @@ function parseValuationResponse(apiResponse, isTestMode = false) {
  * @returns {Object} ValuationResult with default values
  */
 function handlePartialValuationResponse(apiResponse, isTestMode = false) {
+  // Helper function to parse numeric values (handles strings with commas and numbers)
+  const parseNumericValue = (value) => {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return Math.round(value);
+    if (typeof value === 'string') {
+      // Remove commas and parse as integer
+      const cleaned = value.replace(/,/g, '');
+      const parsed = parseInt(cleaned, 10);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    return 0;
+  };
+
   // Extract VRM (handle both formats)
   const vrm = apiResponse.vrm || apiResponse.Vrm || 'unknown';
   
-  // Extract mileage (handle both formats)
-  const mileage = apiResponse.mileage || apiResponse.Mileage || 0;
+  // Extract mileage (handle both formats, parse strings with commas)
+  const mileage = parseNumericValue(apiResponse.mileage || apiResponse.Mileage);
   
   // Extract valuation data (handle both formats)
   const valuationList = apiResponse.ValuationList || apiResponse.estimatedValue || {};
@@ -159,9 +185,9 @@ function handlePartialValuationResponse(apiResponse, isTestMode = false) {
     mileage,
     valuationDate: apiResponse.ValuationTime || apiResponse.valuationDate || new Date().toISOString(),
     estimatedValue: {
-      retail: valuationList.DealerForecourt || valuationList.retail || 0,
-      trade: valuationList.TradeAverage || valuationList.trade || valuationList.PartExchange || 0,
-      private: valuationList.PrivateClean || valuationList.private || 0,
+      retail: parseNumericValue(valuationList.DealerForecourt || valuationList.retail),
+      trade: parseNumericValue(valuationList.TradeAverage || valuationList.trade || valuationList.PartExchange),
+      private: parseNumericValue(valuationList.PrivateClean || valuationList.private),
     },
     confidence: 'low',
     factors: [],

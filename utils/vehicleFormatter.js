@@ -6,24 +6,32 @@
 class VehicleFormatter {
   /**
    * Format variant in AutoTrader style
-   * Example: "M Sport" for BMW 3 Series
-   * Example: "SE" for Skoda Octavia
+   * Example: "2.2 i-CTDi Type S GT" for Honda Civic
+   * Example: "320d M Sport" for BMW 3 Series
    * 
-   * Format: TRIM LEVEL ONLY (NO doors, NO body type)
+   * Format: Complete variant including engine designation and trim
    * 
    * @param {Object} vehicleData - Raw vehicle data from API
    * @returns {string} Formatted variant string
    */
   formatVariant(vehicleData) {
-    // 1. Check if modelVariant has a clean trim level
+    // 1. If modelVariant is already in good format, use it directly
+    if (vehicleData.modelVariant && this.isGoodVariant(vehicleData.modelVariant)) {
+      return vehicleData.modelVariant;
+    }
+    
+    // 2. If modelVariant exists but needs cleaning, clean it
     if (vehicleData.modelVariant) {
-      const trimLevel = this.extractTrimLevel(vehicleData.modelVariant);
-      if (trimLevel) {
-        return trimLevel;
+      const cleaned = this.cleanVariant(vehicleData.modelVariant);
+      if (cleaned && this.isGoodVariant(cleaned)) {
+        return cleaned;
       }
     }
     
-    // 2. If no trim found, create basic variant from fuel type abbreviation
+    // 3. Build variant from components if modelVariant is not good
+    const parts = [];
+    
+    // Add fuel type abbreviation if available
     const fuelAbbrev = this.getFuelTypeAbbreviation(
       vehicleData.fuelType,
       vehicleData.engineDescription,
@@ -31,16 +39,50 @@ class VehicleFormatter {
     );
     
     if (fuelAbbrev) {
-      return fuelAbbrev;
+      parts.push(fuelAbbrev);
     }
     
-    // 3. Fallback: return modelVariant as-is if available
+    // Add trim level if available
+    if (vehicleData.modelVariant) {
+      const trimLevel = this.extractTrimLevel(vehicleData.modelVariant);
+      if (trimLevel && trimLevel !== fuelAbbrev) {
+        parts.push(trimLevel);
+      }
+    }
+    
+    // If we built something, return it
+    if (parts.length > 0) {
+      return parts.join(' ');
+    }
+    
+    // 4. Fallback: return modelVariant as-is if available
     if (vehicleData.modelVariant) {
       return vehicleData.modelVariant;
     }
     
-    // 4. Last resort: return null (displayTitle will handle full formatting)
+    // 5. Last resort: return null (displayTitle will handle full formatting)
     return null;
+  }
+  
+  /**
+   * Clean variant string by removing common noise
+   * @param {string} variant - Raw variant string
+   * @returns {string} Cleaned variant
+   */
+  cleanVariant(variant) {
+    if (!variant) return null;
+    
+    // Remove common noise words but keep the important parts
+    let cleaned = variant
+      .replace(/\b(HATCHBACK|SALOON|ESTATE|COUPE|CONVERTIBLE|SUV)\b/gi, '')
+      .replace(/\b(\d+)\s*DOOR\b/gi, '')
+      .replace(/\b(\d+)DR\b/gi, '')
+      .trim();
+    
+    // Remove extra spaces
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    
+    return cleaned || null;
   }
   
   /**

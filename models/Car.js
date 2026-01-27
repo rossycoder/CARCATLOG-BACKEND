@@ -302,6 +302,13 @@ const carSchema = new mongoose.Schema({
     index: true
   },
   
+  // Private Seller Fields
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    index: true
+  },
+  
   // Analytics
   viewCount: {
     type: Number,
@@ -432,6 +439,14 @@ carSchema.index({ vehicleType: 1, condition: 1 });
 
 // Pre-save hook for validation and normalization
 carSchema.pre('save', async function(next) {
+  // Prevent saving incomplete cars - they should be draft or active
+  if (this.advertStatus === 'incomplete') {
+    console.log(`⚠️  Preventing save of incomplete car: ${this.registrationNumber}`);
+    const error = new Error('Cannot save cars with "incomplete" status. Use "draft" or "active" instead.');
+    error.code = 'INVALID_STATUS';
+    return next(error);
+  }
+
   // Check for duplicate active adverts with same registration
   if (this.registrationNumber && this.advertStatus === 'active') {
     const duplicate = await this.constructor.findOne({
