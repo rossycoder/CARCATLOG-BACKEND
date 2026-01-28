@@ -179,9 +179,17 @@ const createAdvert = async (req, res) => {
       dataSource: vehicleData.registration ? 'DVLA' : 'manual',
       advertStatus: 'draft', // Changed from 'incomplete' to 'draft'
       condition: 'used',
+      // Set postcode if provided (for automatic coordinate lookup)
+      postcode: vehicleData.postcode || req.body.postcode || undefined,
+      // Set seller contact if provided (for automatic userId lookup)
+      sellerContact: vehicleData.sellerContact || req.body.sellerContact || undefined,
+      // Set userId if authenticated
+      userId: req.user?._id || req.userId || undefined,
       // Set dealer fields if this is a trade dealer request
       dealerId: req.dealerId || undefined,
-      isDealerListing: !!req.dealerId
+      isDealerListing: !!req.dealerId,
+      // Set history check to pending so pre-save hook will fetch it
+      historyCheckStatus: vehicleData.registration || vehicleData.registrationNumber ? 'pending' : 'not_required'
     });
     
     await car.save();

@@ -515,7 +515,7 @@ carSchema.pre('save', async function(next) {
       const HistoryService = require('../services/historyService');
       const historyService = new HistoryService();
       
-      console.log(`Triggering history check for new listing: ${this.registrationNumber}`);
+      console.log(`🔍 Triggering history check for new listing: ${this.registrationNumber}`);
       
       // Perform history check
       const historyResult = await historyService.checkVehicleHistory(this.registrationNumber);
@@ -525,13 +525,55 @@ carSchema.pre('save', async function(next) {
       this.historyCheckDate = new Date();
       this.historyCheckId = historyResult._id;
       
-      console.log(`History check completed for ${this.registrationNumber}: ${historyResult.checkStatus}`);
+      console.log(`✅ History check completed for ${this.registrationNumber}: ${historyResult.checkStatus}`);
     } catch (error) {
-      console.error(`History check failed for ${this.registrationNumber}:`, error.message);
+      console.error(`❌ History check failed for ${this.registrationNumber}:`, error.message);
       
       // Mark as failed but allow listing to proceed
       this.historyCheckStatus = 'failed';
       this.historyCheckDate = new Date();
+    }
+  }
+  
+  // Auto-fetch coordinates from postcode if missing
+  if (this.isNew && this.postcode && (!this.latitude || !this.longitude)) {
+    try {
+      const postcodeService = require('../services/postcodeService');
+      console.log(`📍 Fetching coordinates for postcode: ${this.postcode}`);
+      
+      const postcodeData = await postcodeService.lookupPostcode(this.postcode);
+      
+      this.latitude = postcodeData.latitude;
+      this.longitude = postcodeData.longitude;
+      this.location = {
+        type: 'Point',
+        coordinates: [postcodeData.longitude, postcodeData.latitude]
+      };
+      
+      console.log(`✅ Coordinates set: ${this.latitude}, ${this.longitude}`);
+    } catch (error) {
+      console.error(`⚠️  Could not fetch coordinates for postcode ${this.postcode}:`, error.message);
+      // Continue without coordinates
+    }
+  }
+  
+  // Auto-set userId from seller contact email if missing
+  if (this.isNew && !this.userId && this.sellerContact?.email) {
+    try {
+      const User = require('./User');
+      console.log(`👤 Looking up user for email: ${this.sellerContact.email}`);
+      
+      const user = await User.findOne({ email: this.sellerContact.email });
+      
+      if (user) {
+        this.userId = user._id;
+        console.log(`✅ User ID set: ${this.userId}`);
+      } else {
+        console.log(`⚠️  No user found for email: ${this.sellerContact.email}`);
+      }
+    } catch (error) {
+      console.error(`⚠️  Could not set userId:`, error.message);
+      // Continue without userId
     }
   }
   
