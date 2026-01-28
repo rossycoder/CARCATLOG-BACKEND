@@ -748,15 +748,14 @@ async function handlePaymentSuccess(paymentIntent) {
             const expiryDate = calculateExpiryDate(purchase.duration);
             
             // Geocode postcode to get coordinates and location name
-            let latitude, longitude, locationName;
+            // NOTE: Don't set coordinates here - let pre-save hook handle it automatically
+            let locationName;
             if (contactDetails.postcode) {
               try {
                 const postcodeData = await postcodeService.lookupPostcode(contactDetails.postcode);
-                latitude = postcodeData.latitude;
-                longitude = postcodeData.longitude;
                 locationName = postcodeData.locationName;
-                console.log(`   Coordinates: ${latitude}, ${longitude}`);
                 console.log(`   Location: ${locationName}`);
+                // Coordinates will be set by pre-save hook
               } catch (error) {
                 console.warn(`⚠️  Could not geocode postcode ${contactDetails.postcode}: ${error.message}`);
               }
@@ -787,15 +786,7 @@ async function handlePaymentSuccess(paymentIntent) {
               car.images = advertData.photos ? advertData.photos.map(p => p.url) : car.images;
               car.postcode = contactDetails.postcode || car.postcode;
               car.locationName = locationName || car.locationName;
-              car.latitude = latitude || car.latitude;
-              car.longitude = longitude || car.longitude;
-              
-              if (latitude && longitude) {
-                car.location = {
-                  type: 'Point',
-                  coordinates: [longitude, latitude]
-                };
-              }
+              // Don't set coordinates here - let pre-save hook handle it
               
               car.sellerContact = {
                 phoneNumber: contactDetails.phoneNumber || car.sellerContact?.phoneNumber,
@@ -847,6 +838,8 @@ async function handlePaymentSuccess(paymentIntent) {
               // Vehicle data
               make: vehicleData.make,
               model: vehicleData.model,
+              variant: vehicleData.variant,
+              displayTitle: vehicleData.displayTitle,
               year: vehicleData.year,
               mileage: vehicleData.mileage || 0,
               color: vehicleData.color || 'Not specified',
@@ -860,21 +853,19 @@ async function handlePaymentSuccess(paymentIntent) {
               co2Emissions: vehicleData.co2Emissions,
               taxStatus: vehicleData.taxStatus,
               motStatus: vehicleData.motStatus,
+              motDue: vehicleData.motDue,
+              motExpiry: vehicleData.motExpiry,
               dataSource: vehicleData.registrationNumber ? 'DVLA' : 'manual',
               condition: 'used',
               // Advert data
               price: advertData.price || vehicleData.estimatedValue || 0,
               description: advertData.description || '',
               images: advertData.photos ? advertData.photos.map(p => p.url) : [],
+              features: advertData.features || [],
+              videoUrl: advertData.videoUrl || '',
+              // Location data - only set postcode, let pre-save hook fetch coordinates
               postcode: contactDetails.postcode || '',
               locationName: locationName,
-              // Location data
-              latitude: latitude,
-              longitude: longitude,
-              location: latitude && longitude ? {
-                type: 'Point',
-                coordinates: [longitude, latitude]
-              } : undefined,
               // Seller contact
               sellerContact: {
                 phoneNumber: contactDetails.phoneNumber,
@@ -893,6 +884,8 @@ async function handlePaymentSuccess(paymentIntent) {
                 stripeSessionId: paymentData.sessionId,
                 stripePaymentIntentId: paymentIntent.id
               },
+              // History check - set to pending so pre-save hook will fetch it
+              historyCheckStatus: vehicleData.registrationNumber ? 'pending' : 'not_required',
               // Status
               advertStatus: 'active',
               publishedAt: new Date()
