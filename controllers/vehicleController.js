@@ -526,8 +526,15 @@ class VehicleController {
         vehicleType
       } = req.query;
 
-      // Build query - only count active cars
-      const query = { advertStatus: 'active' };
+      // Build query - count active cars (and draft in test mode)
+      const query = {};
+      
+      // In production, only count active cars. In test mode, count both active and draft
+      if (process.env.SHOW_DRAFT_CARS === 'true') {
+        query.advertStatus = { $in: ['active', 'draft'] };
+      } else {
+        query.advertStatus = 'active';
+      }
 
       if (make) query.make = new RegExp(make, 'i');
       if (model) query.model = new RegExp(model, 'i');
@@ -648,8 +655,16 @@ class VehicleController {
         skip = 0 
       } = req.query;
 
-      // Build query - only show active cars
-      const query = { advertStatus: 'active' };
+      // Build query - show active cars (and draft in test mode)
+      const query = {};
+      
+      // In production, only show active cars. In test mode, show both active and draft
+      if (process.env.SHOW_DRAFT_CARS === 'true') {
+        query.advertStatus = { $in: ['active', 'draft'] };
+        console.log('[Vehicle Controller] TEST MODE: Showing both active and draft cars');
+      } else {
+        query.advertStatus = 'active';
+      }
 
       // Make, Model, and Submodel filters (case-insensitive exact match)
       if (make) query.make = new RegExp(`^${make}$`, 'i');
@@ -765,8 +780,15 @@ class VehicleController {
       const { make, model, submodel } = req.query;
       console.log('[Vehicle Controller] Filter params:', { make, model, submodel });
       
-      // Build base query for active cars
-      const baseQuery = { advertStatus: 'active' };
+      // Build base query for active cars (and draft in test mode)
+      const baseQuery = {};
+      
+      // In production, only show active cars. In test mode, show both active and draft
+      if (process.env.SHOW_DRAFT_CARS === 'true') {
+        baseQuery.advertStatus = { $in: ['active', 'draft'] };
+      } else {
+        baseQuery.advertStatus = 'active';
+      }
       
       // Build filtered query based on selected filters
       const filteredQuery = { ...baseQuery };
@@ -780,12 +802,18 @@ class VehicleController {
       console.log('[Vehicle Controller] Found makes:', makes.length);
       
       // Get unique models
-      const models = await Car.distinct('model', { advertStatus: 'active' });
+      const statusQuery = process.env.SHOW_DRAFT_CARS === 'true' 
+        ? { advertStatus: { $in: ['active', 'draft'] } }
+        : { advertStatus: 'active' };
+      const models = await Car.distinct('model', statusQuery);
       console.log('[Vehicle Controller] Found models:', models.length);
       
       // Get hierarchical model and submodel data
+      const statusMatch = process.env.SHOW_DRAFT_CARS === 'true'
+        ? { advertStatus: { $in: ['active', 'draft'] } }
+        : { advertStatus: 'active' };
       const modelHierarchy = await Car.aggregate([
-        { $match: { advertStatus: 'active' } },
+        { $match: statusMatch },
         {
           $group: {
             _id: { make: '$make', model: '$model' },

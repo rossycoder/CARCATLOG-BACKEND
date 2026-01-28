@@ -125,6 +125,14 @@ async function searchCarsByLocation(latitude, longitude, radius = 25, vehicleTyp
       ]
     };
 
+    // Add advertStatus filter based on environment
+    if (process.env.SHOW_DRAFT_CARS === 'true') {
+      query.advertStatus = { $in: ['active', 'draft'] };
+      console.log('[Postcode Service] TEST MODE: Including draft cars in search');
+    } else {
+      query.advertStatus = 'active';
+    }
+
     // Add vehicleType filter if provided
     if (vehicleType) {
       query.vehicleType = vehicleType;
