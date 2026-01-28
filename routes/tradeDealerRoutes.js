@@ -30,12 +30,12 @@ const upload = multer({
 // Apply security middleware to all routes
 router.use(preventInjection);
 
-// Public routes with rate limiting and reCAPTCHA protection
+// Public routes with rate limiting and reCAPTCHA protection (temporarily disabled for deployment)
 // Increased limits for development/testing
-router.post('/register', rateLimitCheck(20, 60 * 60 * 1000), verifyRecaptcha, upload.single('logo'), validateTradeDealerRegistration, tradeDealerController.register);
-router.post('/login', rateLimitCheck(20, 15 * 60 * 1000), verifyRecaptcha, validateLoginCredentials, tradeDealerController.login);
+router.post('/register', rateLimitCheck(20, 60 * 60 * 1000), upload.single('logo'), validateTradeDealerRegistration, tradeDealerController.register);
+router.post('/login', rateLimitCheck(20, 15 * 60 * 1000), validateLoginCredentials, tradeDealerController.login);
 router.post('/verify-email', rateLimitCheck(10, 15 * 60 * 1000), tradeDealerController.verifyEmail);
-router.post('/forgot-password', rateLimitCheck(5, 60 * 60 * 1000), verifyRecaptcha, tradeDealerController.forgotPassword);
+router.post('/forgot-password', rateLimitCheck(5, 60 * 60 * 1000), tradeDealerController.forgotPassword);
 router.post('/reset-password', rateLimitCheck(5, 60 * 60 * 1000), tradeDealerController.resetPassword);
 
 // Protected routes

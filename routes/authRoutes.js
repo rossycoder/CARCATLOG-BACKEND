@@ -16,9 +16,9 @@ const {
 const { protect } = require('../middleware/authMiddleware');
 const { verifyRecaptcha } = require('../middleware/recaptchaMiddleware');
 
-// Public routes with reCAPTCHA protection
-router.post('/register', verifyRecaptcha, register);
-router.post('/login', verifyRecaptcha, login);
+// Public routes with reCAPTCHA protection (temporarily disabled for deployment)
+router.post('/register', register);
+router.post('/login', login);
 router.post('/check-email', checkEmail);
 router.get('/verify-email/:token', verifyEmail);
 router.post('/resend-verification', resendVerification);
