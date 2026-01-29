@@ -60,7 +60,40 @@ const vehicleHistorySchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  plateChangesList: [{
+    date: Date,
+    previousVrm: String,
+    newVrm: String
+  }],
   colourChanges: {
+    type: Number,
+    default: 0,
+  },
+  colourChangesList: [{
+    date: Date,
+    previousColour: String,
+    newColour: String
+  }],
+  colourChangeDetails: {
+    currentColour: String,
+    originalColour: String,
+    numberOfPreviousColours: Number,
+    lastColour: String,
+    dateOfLastColourChange: Date
+  },
+  v5cCertificateCount: {
+    type: Number,
+    default: 0,
+  },
+  v5cCertificateList: [{
+    certificateDate: Date
+  }],
+  keeperChangesList: [{
+    dateOfTransaction: Date,
+    numberOfPreviousKeepers: Number,
+    dateOfLastKeeperChange: Date
+  }],
+  vicCount: {
     type: Number,
     default: 0,
   },

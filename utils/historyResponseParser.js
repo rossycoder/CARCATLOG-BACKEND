@@ -163,6 +163,79 @@ function parseHistoryResponse(apiResponse, isTestMode = false) {
   
   console.log(`[HistoryParser] Previous Keepers: ${numberOfPreviousKeepers} (raw: ${vehicleHistory.NumberOfPreviousKeepers})`);
   
+  // Extract V5C certificate data
+  const v5cCertificateCount = vehicleHistory.V5CCertificateCount || 0;
+  const v5cCertificateList = [];
+  if (Array.isArray(vehicleHistory.V5CCertificateList)) {
+    vehicleHistory.V5CCertificateList.forEach(cert => {
+      if (cert.CertificateDate) {
+        v5cCertificateList.push({
+          certificateDate: new Date(cert.CertificateDate)
+        });
+      }
+    });
+  }
+  console.log(`[HistoryParser] V5C Certificates: ${v5cCertificateCount}, List entries: ${v5cCertificateList.length}`);
+  
+  // Extract plate change data
+  const plateChanges = vehicleHistory.PlateChangeCount || 0;
+  const plateChangesList = [];
+  if (Array.isArray(vehicleHistory.PlateChangeList)) {
+    vehicleHistory.PlateChangeList.forEach(change => {
+      plateChangesList.push({
+        date: change.Date ? new Date(change.Date) : null,
+        previousVrm: change.PreviousVrm || null,
+        newVrm: change.NewVrm || null
+      });
+    });
+  }
+  console.log(`[HistoryParser] Plate Changes: ${plateChanges}, List entries: ${plateChangesList.length}`);
+  
+  // Extract colour change data
+  const colourChanges = vehicleHistory.ColourChangeCount || 0;
+  const colourChangesList = [];
+  if (Array.isArray(vehicleHistory.ColourChangeList)) {
+    vehicleHistory.ColourChangeList.forEach(change => {
+      colourChangesList.push({
+        date: change.Date ? new Date(change.Date) : null,
+        previousColour: change.PreviousColour || null,
+        newColour: change.NewColour || null
+      });
+    });
+  }
+  
+  // Extract colour change details
+  let colourChangeDetails = null;
+  if (vehicleHistory.ColourChangeDetails) {
+    colourChangeDetails = {
+      currentColour: vehicleHistory.ColourChangeDetails.CurrentColour || null,
+      originalColour: vehicleHistory.ColourChangeDetails.OriginalColour || null,
+      numberOfPreviousColours: vehicleHistory.ColourChangeDetails.NumberOfPreviousColours || 0,
+      lastColour: vehicleHistory.ColourChangeDetails.LastColour || null,
+      dateOfLastColourChange: vehicleHistory.ColourChangeDetails.DateOfLastColourChange 
+        ? new Date(vehicleHistory.ColourChangeDetails.DateOfLastColourChange) 
+        : null
+    };
+  }
+  console.log(`[HistoryParser] Colour Changes: ${colourChanges}, List entries: ${colourChangesList.length}`);
+  
+  // Extract keeper changes list
+  const keeperChangesList = [];
+  if (Array.isArray(vehicleHistory.KeeperChangesList)) {
+    vehicleHistory.KeeperChangesList.forEach(change => {
+      keeperChangesList.push({
+        dateOfTransaction: change.DateOfTransaction ? new Date(change.DateOfTransaction) : null,
+        numberOfPreviousKeepers: change.NumberOfPreviousKeepers || 0,
+        dateOfLastKeeperChange: change.DateOfLastKeeperChange ? new Date(change.DateOfLastKeeperChange) : null
+      });
+    });
+  }
+  console.log(`[HistoryParser] Keeper Changes List: ${keeperChangesList.length} entries`);
+  
+  // Extract VIC count
+  const vicCount = vehicleHistory.VicCount || 0;
+  console.log(`[HistoryParser] VIC Count: ${vicCount}`);
+  
   // Parse the response from CheckCarDetails format
   const result = {
     vrm: vrm,
@@ -187,6 +260,16 @@ function parseHistoryResponse(apiResponse, isTestMode = false) {
     checkStatus: 'success',
     apiProvider: 'CheckCarDetails',
     testMode: isTestMode,
+    // Additional detailed history data
+    v5cCertificateCount: v5cCertificateCount,
+    v5cCertificateList: v5cCertificateList,
+    plateChanges: plateChanges,
+    plateChangesList: plateChangesList,
+    colourChanges: colourChanges,
+    colourChangesList: colourChangesList,
+    colourChangeDetails: colourChangeDetails,
+    keeperChangesList: keeperChangesList,
+    vicCount: vicCount
   };
 
   // Add write-off details if present

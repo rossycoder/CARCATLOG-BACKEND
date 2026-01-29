@@ -177,14 +177,19 @@ const createAdvert = async (req, res) => {
       motDue: motExpiry,
       motExpiry: motExpiry,
       dataSource: vehicleData.registration ? 'DVLA' : 'manual',
-      advertStatus: 'draft', // Changed from 'incomplete' to 'draft'
+      advertStatus: 'active', // Changed from 'draft' to 'active' - all new cars are active by default
+      publishedAt: new Date(), // Set published date immediately
       condition: 'used',
       // Set postcode if provided (for automatic coordinate lookup)
       postcode: vehicleData.postcode || req.body.postcode || undefined,
       // Set seller contact if provided (for automatic userId lookup)
-      sellerContact: vehicleData.sellerContact || req.body.sellerContact || undefined,
-      // Set userId if authenticated
-      userId: req.user?._id || req.userId || undefined,
+      sellerContact: vehicleData.sellerContact || req.body.sellerContact || {
+        email: req.user?.email || req.body.email || undefined,
+        phoneNumber: req.body.phoneNumber || undefined,
+        allowEmailContact: req.body.allowEmailContact || false
+      },
+      // Set userId if authenticated (pre-save hook will also try to set from email)
+      userId: req.user?._id || req.user?.id || req.userId || undefined,
       // Set dealer fields if this is a trade dealer request
       dealerId: req.dealerId || undefined,
       isDealerListing: !!req.dealerId,

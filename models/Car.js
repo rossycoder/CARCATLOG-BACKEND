@@ -397,7 +397,7 @@ const carSchema = new mongoose.Schema({
   advertStatus: {
     type: String,
     enum: ['draft', 'incomplete', 'pending_payment', 'active', 'sold', 'expired', 'removed'],
-    default: 'draft'
+    default: 'active' // Changed from 'draft' to 'active' - all new cars are active by default
   },
   advertId: {
     type: String,
@@ -558,7 +558,8 @@ carSchema.pre('save', async function(next) {
   }
   
   // Auto-set userId from seller contact email if missing
-  if (this.isNew && !this.userId && this.sellerContact?.email) {
+  // Check on EVERY save (not just new cars) to ensure userId is always set
+  if (!this.userId && this.sellerContact?.email) {
     try {
       const User = require('./User');
       console.log(`👤 Looking up user for email: ${this.sellerContact.email}`);
@@ -567,14 +568,25 @@ carSchema.pre('save', async function(next) {
       
       if (user) {
         this.userId = user._id;
-        console.log(`✅ User ID set: ${this.userId}`);
+        console.log(`✅ User ID set: ${this.userId} (from email: ${this.sellerContact.email})`);
       } else {
         console.log(`⚠️  No user found for email: ${this.sellerContact.email}`);
+        console.log(`⚠️  Car will be saved WITHOUT userId - it won't appear in My Listings!`);
       }
     } catch (error) {
       console.error(`⚠️  Could not set userId:`, error.message);
       // Continue without userId
     }
+  } else if (!this.userId) {
+    console.warn(`⚠️  WARNING: Car being saved without userId and no email provided!`);
+    console.warn(`⚠️  This car will NOT appear in My Listings page!`);
+    console.warn(`⚠️  Car ID: ${this._id}, Registration: ${this.registrationNumber}`);
+  }
+  
+  // Auto-set publishedAt date for active cars
+  if (this.isNew && this.advertStatus === 'active' && !this.publishedAt) {
+    this.publishedAt = new Date();
+    console.log(`✅ Published date set: ${this.publishedAt}`);
   }
   
   next();
