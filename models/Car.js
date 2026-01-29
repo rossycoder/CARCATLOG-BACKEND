@@ -529,8 +529,15 @@ carSchema.pre('save', async function(next) {
     } catch (error) {
       console.error(`❌ History check failed for ${this.registrationNumber}:`, error.message);
       
-      // Mark as failed but allow listing to proceed
-      this.historyCheckStatus = 'failed';
+      // Check if it's a daily limit error (403)
+      if (error.isDailyLimitError || error.details?.status === 403 || error.message.includes('daily limit')) {
+        console.log(`⏰ API daily limit exceeded - skipping history check for now`);
+        console.log(`   History can be added later when API limit resets`);
+        this.historyCheckStatus = 'pending'; // Keep as pending so it can be retried later
+      } else {
+        // Mark as failed for other errors
+        this.historyCheckStatus = 'failed';
+      }
       this.historyCheckDate = new Date();
     }
   }

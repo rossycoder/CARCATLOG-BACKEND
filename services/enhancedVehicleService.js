@@ -80,9 +80,63 @@ class EnhancedVehicleService {
   async callCheckCarDetailsAPI(registration) {
     try {
       console.log(`Calling CheckCarDetails API for ${registration}`);
-      const data = await CheckCarDetailsClient.getVehicleData(registration);
-      console.log(`CheckCarDetails API success for ${registration}:`, JSON.stringify(data, null, 2));
-      return data;
+      
+      // Fetch both vehicle data AND history
+      const [vehicleData, historyData] = await Promise.allSettled([
+        CheckCarDetailsClient.getVehicleData(registration),
+        CheckCarDetailsClient.getVehicleHistory(registration)
+      ]);
+      
+      const vehicle = vehicleData.status === 'fulfilled' ? vehicleData.value : null;
+      const history = historyData.status === 'fulfilled' ? historyData.value : null;
+      
+      // Merge vehicle data with history data
+      const mergedData = { ...vehicle };
+      
+      if (history) {
+        // Extract history data from API response
+        const vehicleHistory = history.VehicleHistory || {};
+        
+        // Add owner/keeper information
+        mergedData.numberOfPreviousKeepers = vehicleHistory.NumberOfPreviousKeepers || 0;
+        mergedData.previousOwners = vehicleHistory.NumberOfPreviousKeepers || 0;
+        mergedData.numberOfOwners = vehicleHistory.NumberOfPreviousKeepers || 0;
+        mergedData.v5cCertificateCount = vehicleHistory.V5CCertificateCount || 0;
+        mergedData.plateChanges = vehicleHistory.PlateChangeCount || 0;
+        mergedData.colourChanges = vehicleHistory.ColourChangeCount || 0;
+        mergedData.vicCount = vehicleHistory.VicCount || 0;
+        
+        // Add safety checks
+        mergedData.isStolen = Boolean(vehicleHistory.stolenRecord);
+        mergedData.isWrittenOff = Boolean(vehicleHistory.writeOffRecord);
+        mergedData.hasAccidentHistory = Boolean(vehicleHistory.writeOffRecord);
+        mergedData.hasOutstandingFinance = Boolean(vehicleHistory.financeRecord);
+        
+        // Add write-off category if present
+        if (vehicleHistory.writeOffRecord && vehicleHistory.writeoff) {
+          const writeoffData = Array.isArray(vehicleHistory.writeoff) 
+            ? vehicleHistory.writeoff[0] 
+            : vehicleHistory.writeoff;
+          
+          if (writeoffData.category) {
+            mergedData.writeOffCategory = writeoffData.category.toUpperCase();
+          } else if (writeoffData.status) {
+            // Extract category from status
+            const status = writeoffData.status.toUpperCase();
+            if (status.includes('CAT A')) mergedData.writeOffCategory = 'A';
+            else if (status.includes('CAT B')) mergedData.writeOffCategory = 'B';
+            else if (status.includes('CAT C')) mergedData.writeOffCategory = 'C';
+            else if (status.includes('CAT D')) mergedData.writeOffCategory = 'D';
+            else if (status.includes('CAT S')) mergedData.writeOffCategory = 'S';
+            else if (status.includes('CAT N')) mergedData.writeOffCategory = 'N';
+          }
+        }
+        
+        console.log(`✅ History data merged: ${mergedData.numberOfPreviousKeepers} owners`);
+      }
+      
+      console.log(`CheckCarDetails API success for ${registration}:`, JSON.stringify(mergedData, null, 2));
+      return mergedData;
     } catch (error) {
       console.error(`CheckCarDetails API error for ${registration}:`, error.message);
       console.error(`CheckCarDetails error details:`, error);
@@ -153,32 +207,34 @@ class EnhancedVehicleService {
       // Extract basic fields from merged data for schema compatibility
       const cacheData = {
         vrm: cleanedReg, // Use 'vrm' not 'registration' to match schema
-        make: mergedData.make?.value || null,
-        model: mergedData.model?.value || null,
-        colour: mergedData.color?.value || null,
-        fuelType: mergedData.fuelType?.value || null,
-        yearOfManufacture: mergedData.year?.value || null,
-        engineCapacity: mergedData.engineSize?.value || null,
-        transmission: mergedData.transmission?.value || null,
-        co2Emissions: mergedData.runningCosts?.co2Emissions?.value || null,
-        gearbox: mergedData.gearbox?.value || null,
-        emissionClass: mergedData.emissionClass?.value || null,
+        make: mergedData.make?.value || mergedData.make || null,
+        model: mergedData.model?.value || mergedData.model || null,
+        colour: mergedData.color?.value || mergedData.color || null,
+        fuelType: mergedData.fuelType?.value || mergedData.fuelType || null,
+        yearOfManufacture: mergedData.year?.value || mergedData.year || null,
+        engineCapacity: mergedData.engineSize?.value || mergedData.engineSize || null,
+        transmission: mergedData.transmission?.value || mergedData.transmission || null,
+        co2Emissions: mergedData.runningCosts?.co2Emissions?.value || mergedData.co2Emissions || null,
+        gearbox: mergedData.gearbox?.value || mergedData.gearbox || null,
+        emissionClass: mergedData.emissionClass?.value || mergedData.emissionClass || null,
         // CRITICAL: Extract owner/keeper information from merged data
-        numberOfPreviousKeepers: mergedData.numberOfPreviousKeepers?.value || 0,
-        previousOwners: mergedData.numberOfPreviousKeepers?.value || 0,
-        numberOfOwners: mergedData.numberOfPreviousKeepers?.value || 0,
-        v5cCertificateCount: mergedData.v5cCertificateCount?.value || 0,
-        plateChanges: mergedData.plateChanges?.value || 0,
-        colourChanges: mergedData.colourChanges?.value || 0,
-        vicCount: mergedData.vicCount?.value || 0,
+        numberOfPreviousKeepers: mergedData.numberOfPreviousKeepers?.value || mergedData.numberOfPreviousKeepers || 0,
+        previousOwners: mergedData.previousOwners?.value || mergedData.previousOwners || mergedData.numberOfPreviousKeepers || 0,
+        numberOfOwners: mergedData.numberOfOwners?.value || mergedData.numberOfOwners || mergedData.numberOfPreviousKeepers || 0,
+        v5cCertificateCount: mergedData.v5cCertificateCount?.value || mergedData.v5cCertificateCount || 0,
+        plateChanges: mergedData.plateChanges?.value || mergedData.plateChanges || 0,
+        colourChanges: mergedData.colourChanges?.value || mergedData.colourChanges || 0,
+        vicCount: mergedData.vicCount?.value || mergedData.vicCount || 0,
         // History flags
-        hasAccidentHistory: mergedData.hasAccidentHistory?.value || false,
-        isStolen: mergedData.isStolen?.value || false,
-        isWrittenOff: mergedData.isWrittenOff?.value || false,
-        isScrapped: mergedData.isScrapped?.value || false,
-        isImported: mergedData.isImported?.value || false,
-        isExported: mergedData.isExported?.value || false,
-        hasOutstandingFinance: mergedData.hasOutstandingFinance?.value || false,
+        hasAccidentHistory: mergedData.hasAccidentHistory?.value || mergedData.hasAccidentHistory || false,
+        isStolen: mergedData.isStolen?.value || mergedData.isStolen || false,
+        isWrittenOff: mergedData.isWrittenOff?.value || mergedData.isWrittenOff || false,
+        isScrapped: mergedData.isScrapped?.value || mergedData.isScrapped || false,
+        isImported: mergedData.isImported?.value || mergedData.isImported || false,
+        isExported: mergedData.isExported?.value || mergedData.isExported || false,
+        hasOutstandingFinance: mergedData.hasOutstandingFinance?.value || mergedData.hasOutstandingFinance || false,
+        // Write-off category
+        writeOffCategory: mergedData.writeOffCategory || null,
         numberOfKeys: 1,
         keys: 1,
         serviceHistory: 'Contact seller',
