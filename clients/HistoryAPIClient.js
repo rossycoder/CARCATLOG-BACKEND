@@ -396,6 +396,33 @@ class HistoryAPIClient {
         dates: []
       },
       
+      // Write-off category (direct field for easy access)
+      writeOffCategory: (vehicleHistory.writeOffRecord && vehicleHistory.writeoff) ? 
+        (vehicleHistory.writeoff.category || 
+         (vehicleHistory.writeoff.status?.includes('CAT D') ? 'D' :
+          vehicleHistory.writeoff.status?.includes('CAT C') ? 'C' :
+          vehicleHistory.writeoff.status?.includes('CAT B') ? 'B' :
+          vehicleHistory.writeoff.status?.includes('CAT A') ? 'A' :
+          vehicleHistory.writeoff.status?.includes('CAT S') ? 'S' :
+          vehicleHistory.writeoff.status?.includes('CAT N') ? 'N' : 'none')) : 'none',
+      
+      // Write-off details
+      writeOffDetails: (vehicleHistory.writeOffRecord && vehicleHistory.writeoff) ? {
+        category: vehicleHistory.writeoff.category || 
+                 (vehicleHistory.writeoff.status?.includes('CAT D') ? 'D' :
+                  vehicleHistory.writeoff.status?.includes('CAT C') ? 'C' :
+                  vehicleHistory.writeoff.status?.includes('CAT B') ? 'B' :
+                  vehicleHistory.writeoff.status?.includes('CAT A') ? 'A' :
+                  vehicleHistory.writeoff.status?.includes('CAT S') ? 'S' :
+                  vehicleHistory.writeoff.status?.includes('CAT N') ? 'N' : 'unknown'),
+        date: vehicleHistory.writeoff.lossdate ? new Date(vehicleHistory.writeoff.lossdate) : null,
+        description: vehicleHistory.writeoff.status || null
+      } : {
+        category: 'none',
+        date: null,
+        description: null
+      },
+      
       // Stolen details
       stolenDetails: (vehicleHistory.stolenRecord && vehicleHistory.stolen) ? {
         reportedDate: vehicleHistory.stolen.date ? new Date(vehicleHistory.stolen.date) : new Date(),
@@ -416,8 +443,8 @@ class HistoryAPIClient {
       },
       
       // Additional fields for compatibility
-      numberOfKeys: 1,
-      keys: 1,
+      numberOfKeys: null, // Not provided by API - frontend will show "Contact seller"
+      keys: null,
       serviceHistory: 'Contact seller',
       checkStatus: 'success',
       apiProvider: 'unknown',
