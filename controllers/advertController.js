@@ -80,14 +80,16 @@ const createAdvert = async (req, res) => {
     let enhancedData = null;
     if (vehicleData.registration || vehicleData.registrationNumber) {
       try {
-        const CheckCarDetailsClient = require('../clients/CheckCarDetailsClient');
+        const EnhancedVehicleService = require('../services/enhancedVehicleService');
         const registration = vehicleData.registration || vehicleData.registrationNumber;
-        console.log(`📡 [AdvertController] Fetching enhanced data from CheckCarDetails API for: ${registration}`);
-        enhancedData = await CheckCarDetailsClient.getVehicleData(registration);
+        const mileage = vehicleData.mileage || 50000;
+        console.log(`📡 [AdvertController] Fetching enhanced data (with valuation) for: ${registration}`);
+        enhancedData = await EnhancedVehicleService.getEnhancedVehicleData(registration, false, mileage);
         console.log(`✅ [AdvertController] Enhanced data fetched:`, {
-          modelVariant: enhancedData?.modelVariant,
-          variant: enhancedData?.variant,
-          engineSize: enhancedData?.engineSize
+          modelVariant: enhancedData?.modelVariant?.value || enhancedData?.modelVariant,
+          variant: enhancedData?.variant?.value || enhancedData?.variant,
+          engineSize: enhancedData?.engineSize?.value || enhancedData?.engineSize,
+          hasValuation: !!enhancedData?.valuation
         });
       } catch (error) {
         console.log(`⚠️  [AdvertController] Could not fetch enhanced data: ${error.message}`);
@@ -98,13 +100,22 @@ const createAdvert = async (req, res) => {
     // Priority: enhancedData.modelVariant > enhancedData.variant > vehicleData.modelVariant > vehicleData.variant
     let variant = null;
     
-    // First try enhanced data from API
-    if (enhancedData?.modelVariant && enhancedData.modelVariant !== 'null' && enhancedData.modelVariant !== 'undefined' && enhancedData.modelVariant.trim() !== '') {
-      variant = enhancedData.modelVariant;
-      console.log(`✅ [AdvertController] Using ModelVariant from CheckCarDetails API: "${variant}"`);
-    } else if (enhancedData?.variant && enhancedData.variant !== 'null' && enhancedData.variant !== 'undefined' && enhancedData.variant.trim() !== '') {
-      variant = enhancedData.variant;
-      console.log(`✅ [AdvertController] Using variant from CheckCarDetails API: "${variant}"`);
+    // First try enhanced data from API (handle both direct values and {value, source} structure)
+    const getEnhancedValue = (field) => {
+      if (!field) return null;
+      return typeof field === 'object' && field.value !== undefined ? field.value : field;
+    };
+    
+    const enhancedModelVariant = getEnhancedValue(enhancedData?.modelVariant);
+    const enhancedVariant = getEnhancedValue(enhancedData?.variant);
+    const enhancedEngineSize = getEnhancedValue(enhancedData?.engineSize);
+    
+    if (enhancedModelVariant && enhancedModelVariant !== 'null' && enhancedModelVariant !== 'undefined' && enhancedModelVariant.trim() !== '') {
+      variant = enhancedModelVariant;
+      console.log(`✅ [AdvertController] Using ModelVariant from API: "${variant}"`);
+    } else if (enhancedVariant && enhancedVariant !== 'null' && enhancedVariant !== 'undefined' && enhancedVariant.trim() !== '') {
+      variant = enhancedVariant;
+      console.log(`✅ [AdvertController] Using variant from API: "${variant}"`);
     } else if (vehicleData.variant && vehicleData.variant !== 'null' && vehicleData.variant !== 'undefined' && vehicleData.variant.trim() !== '') {
       variant = vehicleData.variant;
     } else if (vehicleData.modelVariant && vehicleData.modelVariant !== 'null' && vehicleData.modelVariant !== 'undefined' && vehicleData.modelVariant.trim() !== '') {
@@ -112,24 +123,42 @@ const createAdvert = async (req, res) => {
     }
     
     // Use enhanced engine size if available (already in litres)
-    const engineSize = enhancedData?.engineSize || parseEngineSize(vehicleData.engineSize);
+    const engineSize = enhancedEngineSize || parseEngineSize(vehicleData.engineSize);
     
     // Calculate estimated price if not provided
     // For private sellers, prefer PRIVATE price from valuation
     let estimatedPrice = 0;
     
-    if (vehicleData.estimatedValue) {
-      // Check if estimatedValue is an object with private/retail/trade values
+    // First priority: Check if privatePrice is directly provided
+    if (vehicleData.privatePrice && vehicleData.privatePrice > 0) {
+      estimatedPrice = vehicleData.privatePrice;
+      console.log(`💰 Using direct privatePrice: £${estimatedPrice}`);
+    }
+    // Second priority: Check if we have valuation data from EnhancedVehicleService
+    else if (enhancedData?.valuation?.estimatedValue) {
+      const valuation = enhancedData.valuation.estimatedValue;
+      // Prefer private sale price for private sellers
+      estimatedPrice = valuation.private || valuation.retail || valuation.trade || 0;
+      console.log(`💰 Using valuation price from EnhancedVehicleService (PRIVATE preferred): £${estimatedPrice}`, {
+        private: valuation.private,
+        retail: valuation.retail,
+        trade: valuation.trade
+      });
+    }
+    // Third priority: Check vehicleData.estimatedValue
+    else if (vehicleData.estimatedValue) {
+      // Fallback to vehicleData if available
       if (typeof vehicleData.estimatedValue === 'object') {
         // Prefer private sale price for private sellers
         estimatedPrice = vehicleData.estimatedValue.private || 
                         vehicleData.estimatedValue.Private ||
                         vehicleData.estimatedValue.retail || 
                         vehicleData.estimatedValue.trade || 0;
-        console.log(`💰 Using valuation price (PRIVATE preferred): £${estimatedPrice}`);
+        console.log(`💰 Using valuation price from vehicleData (PRIVATE preferred): £${estimatedPrice}`);
       } else {
         // It's a single number
         estimatedPrice = vehicleData.estimatedValue;
+        console.log(`💰 Using single estimatedValue: £${estimatedPrice}`);
       }
     }
     
@@ -181,6 +210,13 @@ const createAdvert = async (req, res) => {
       transmission: normalizeTransmission(vehicleData.transmission),
       price: estimatedPrice,
       estimatedValue: estimatedPrice,
+      // Store all valuation prices if available
+      valuation: (vehicleData.privatePrice || vehicleData.tradePrice || vehicleData.retailPrice || enhancedData?.valuation) ? {
+        privatePrice: vehicleData.privatePrice || enhancedData?.valuation?.estimatedValue?.private || 0,
+        tradePrice: vehicleData.tradePrice || enhancedData?.valuation?.estimatedValue?.trade || 0,
+        retailPrice: vehicleData.retailPrice || enhancedData?.valuation?.estimatedValue?.retail || 0,
+        confidence: vehicleData.valuationConfidence || enhancedData?.valuation?.confidence || 'medium'
+      } : undefined,
       description: '',
       images: [],
       registrationNumber: vehicleData.registration || vehicleData.registrationNumber || null,
