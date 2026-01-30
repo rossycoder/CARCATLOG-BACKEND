@@ -153,6 +153,11 @@ class HistoryService {
         testMode: result.testMode || this.isTestMode,
       };
 
+      // IMPORTANT: Delete any existing records for this VRM first to prevent duplicates
+      await VehicleHistory.deleteMany({ vrm: vrm.toUpperCase() });
+      console.log(`🗑️  Deleted existing history records for ${vrm}`);
+      
+      // Now create the new record
       const historyDoc = new VehicleHistory(historyData);
       await historyDoc.save();
       

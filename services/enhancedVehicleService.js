@@ -66,8 +66,14 @@ class EnhancedVehicleService {
     // Add registration number to merged data
     mergedData.registration = registration;
 
-    // Cache the merged data
-    await this.cacheData(registration, mergedData);
+    // Cache the merged data and get the saved history document
+    const savedHistory = await this.cacheData(registration, mergedData);
+    
+    // Add the history document ID to merged data so it can be linked to the car
+    if (savedHistory && savedHistory._id) {
+      mergedData.historyCheckId = savedHistory._id;
+      console.log(`✅ History document ID added to merged data: ${savedHistory._id}`);
+    }
 
     return mergedData;
   }
@@ -224,7 +230,8 @@ class EnhancedVehicleService {
         mergedData.mileageHistory = [];
       }
       
-      console.log(`CheckCarDetails API success for ${registration}:`, JSON.stringify(mergedData, null, 2));
+      console.log(`✅ CheckCarDetails API success for ${registration}`);
+      console.log(`   Owners: ${mergedData.numberOfPreviousKeepers}, Write-off: ${mergedData.isWrittenOff}, Category: ${mergedData.writeOffCategory}`);
       return mergedData;
     } catch (error) {
       console.error(`CheckCarDetails API error for ${registration}:`, error.message);
@@ -287,7 +294,7 @@ class EnhancedVehicleService {
    * Cache merged vehicle data
    * @param {string} registration - Vehicle registration number
    * @param {Object} mergedData - Merged vehicle data
-   * @returns {Promise<void>}
+   * @returns {Promise<Object>} Saved VehicleHistory document
    */
   async cacheData(registration, mergedData) {
     try {
@@ -307,42 +314,55 @@ class EnhancedVehicleService {
         gearbox: mergedData.gearbox?.value || mergedData.gearbox || null,
         emissionClass: mergedData.emissionClass?.value || mergedData.emissionClass || null,
         // CRITICAL: Extract owner/keeper information from merged data
-        numberOfPreviousKeepers: mergedData.numberOfPreviousKeepers?.value || mergedData.numberOfPreviousKeepers || 0,
-        previousOwners: mergedData.previousOwners?.value || mergedData.previousOwners || mergedData.numberOfPreviousKeepers || 0,
-        numberOfOwners: mergedData.numberOfOwners?.value || mergedData.numberOfOwners || mergedData.numberOfPreviousKeepers || 0,
-        v5cCertificateCount: mergedData.v5cCertificateCount?.value || mergedData.v5cCertificateCount || 0,
-        plateChanges: mergedData.plateChanges?.value || mergedData.plateChanges || 0,
-        colourChanges: mergedData.colourChanges?.value || mergedData.colourChanges || 0,
-        vicCount: mergedData.vicCount?.value || mergedData.vicCount || 0,
+        // The data comes directly from checkCarData (not wrapped in value/source)
+        numberOfPreviousKeepers: mergedData.numberOfPreviousKeepers || mergedData.previousOwners?.value || mergedData.previousOwners || 0,
+        previousOwners: mergedData.numberOfPreviousKeepers || mergedData.previousOwners?.value || mergedData.previousOwners || 0,
+        numberOfOwners: mergedData.numberOfPreviousKeepers || mergedData.previousOwners?.value || mergedData.previousOwners || 0,
+        v5cCertificateCount: mergedData.v5cCertificateCount || 0,
+        plateChanges: mergedData.plateChanges || 0,
+        colourChanges: mergedData.colourChanges || 0,
+        vicCount: mergedData.vicCount || 0,
         // History flags
-        hasAccidentHistory: mergedData.hasAccidentHistory?.value || mergedData.hasAccidentHistory || false,
-        isStolen: mergedData.isStolen?.value || mergedData.isStolen || false,
-        isWrittenOff: mergedData.isWrittenOff?.value || mergedData.isWrittenOff || false,
-        isScrapped: mergedData.isScrapped?.value || mergedData.isScrapped || false,
-        isImported: mergedData.isImported?.value || mergedData.isImported || false,
-        isExported: mergedData.isExported?.value || mergedData.isExported || false,
-        hasOutstandingFinance: mergedData.hasOutstandingFinance?.value || mergedData.hasOutstandingFinance || false,
-        // Write-off category
-        writeOffCategory: mergedData.writeOffCategory || null,
-        numberOfKeys: 1,
-        keys: 1,
-        serviceHistory: 'Contact seller',
+        hasAccidentHistory: mergedData.hasAccidentHistory || false,
+        isStolen: mergedData.isStolen || false,
+        isWrittenOff: mergedData.isWrittenOff || false,
+        isScrapped: mergedData.isScrapped || false,
+        isImported: mergedData.isImported || false,
+        isExported: mergedData.isExported || false,
+        hasOutstandingFinance: mergedData.hasOutstandingFinance || false,
+        // Write-off category and details
+        writeOffCategory: mergedData.writeOffCategory || mergedData.writeOffDetails?.category || 'none',
+        writeOffDetails: mergedData.writeOffDetails || {
+          category: mergedData.writeOffCategory || 'none',
+          date: null,
+          description: null
+        },
+        numberOfKeys: mergedData.numberOfKeys || 1,
+        keys: mergedData.numberOfKeys || 1,
+        serviceHistory: mergedData.serviceHistory || 'Contact seller',
         checkDate: new Date(),
         checkStatus: 'success',
         apiProvider: 'enhanced-vehicle-service',
         testMode: process.env.API_ENVIRONMENT !== 'production'
       };
       
-      await VehicleHistory.findOneAndUpdate(
-        { vrm: cleanedReg },
-        cacheData,
-        { upsert: true, new: true }
-      );
+      // IMPORTANT: Delete any existing records for this VRM first to prevent duplicates
+      // This ensures only ONE history record exists per VRM
+      await VehicleHistory.deleteMany({ vrm: cleanedReg });
+      console.log(`🗑️  Deleted existing history records for ${cleanedReg}`);
+      
+      // Now create the new record
+      const savedHistory = new VehicleHistory(cacheData);
+      await savedHistory.save();
 
-      console.log(`Cached enhanced data for ${registration}`);
+      console.log(`✅ Cached enhanced data for ${registration} with ID: ${savedHistory._id}`);
+      console.log(`   Owners: ${cacheData.numberOfPreviousKeepers}, Write-off: ${cacheData.isWrittenOff}, Category: ${cacheData.writeOffCategory}`);
+      
+      return savedHistory;
     } catch (error) {
-      console.error(`Cache storage error for ${registration}:`, error.message);
+      console.error(`❌ Cache storage error for ${registration}:`, error.message);
       // Don't throw - caching failure shouldn't break the request
+      return null;
     }
   }
 
