@@ -35,6 +35,13 @@ class DataMerger {
       // Performance data - CheckCarDetails
       performance: 'checkcardetails',
       
+      // MOT and Mileage History - CheckCarDetails
+      motHistory: 'checkcardetails',
+      mileageHistory: 'checkcardetails',
+      motStatus: 'checkcardetails',
+      motExpiry: 'checkcardetails',
+      motDueDate: 'checkcardetails',
+      
       // Valuation data - Valuation API
       valuation: 'valuation'
     };
@@ -96,6 +103,12 @@ class DataMerger {
 
       // Performance data from CheckCarDetails
       performance: this.mergePerformanceData(checkCarData),
+      
+      // MOT and Mileage History from CheckCarDetails (direct arrays, not wrapped)
+      motHistory: checkCarData?.motHistory || [],
+      mileageHistory: checkCarData?.mileageHistory || [],
+      motStatus: this.selectValue('motStatus', checkCarData?.motStatus),
+      motExpiry: this.selectValue('motExpiry', checkCarData?.motExpiry || checkCarData?.motDueDate),
 
       // Valuation data from Valuation API
       valuation: this.mergeValuationData(valuationData),

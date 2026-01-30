@@ -781,7 +781,9 @@ async function handlePaymentSuccess(paymentIntent) {
                 console.log(`   Setting userId: ${userId}`);
               }
               
-              car.price = advertData.price || vehicleData.estimatedValue || car.price;
+              // Use private sale price from valuation if available
+              const privatePrice = vehicleData.estimatedValue?.private || vehicleData.allValuations?.private;
+              car.price = advertData.price || privatePrice || vehicleData.estimatedValue || car.price;
               car.description = advertData.description || car.description;
               car.images = advertData.photos ? advertData.photos.map(p => p.url) : car.images;
               car.postcode = contactDetails.postcode || car.postcode;
@@ -858,7 +860,8 @@ async function handlePaymentSuccess(paymentIntent) {
               dataSource: vehicleData.registrationNumber ? 'DVLA' : 'manual',
               condition: 'used',
               // Advert data
-              price: advertData.price || vehicleData.estimatedValue || 0,
+              // Use private sale price from valuation if available
+              price: advertData.price || vehicleData.estimatedValue?.private || vehicleData.allValuations?.private || vehicleData.estimatedValue || 0,
               description: advertData.description || '',
               images: advertData.photos ? advertData.photos.map(p => p.url) : [],
               features: advertData.features || [],

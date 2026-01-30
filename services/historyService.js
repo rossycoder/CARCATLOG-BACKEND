@@ -55,17 +55,116 @@ class HistoryService {
    */
   async storeHistoryResult(vrm, result) {
     try {
-      const historyDoc = new VehicleHistory({
-        ...result,
+      // Map API response to VehicleHistory schema
+      const historyData = {
         vrm: vrm.toUpperCase(),
-      });
+        make: result.make,
+        model: result.model,
+        colour: result.colour,
+        fuelType: result.fuelType,
+        yearOfManufacture: result.yearOfManufacture,
+        firstRegistered: result.firstRegistered,
+        engineCapacity: result.engineCapacity,
+        bodyType: result.bodyType,
+        transmission: result.transmission,
+        vin: result.vin,
+        engineNumber: result.engineNumber,
+        co2Emissions: result.co2Emissions,
+        
+        // Owner information - map from API response
+        // Try multiple possible field names from different API sources
+        numberOfPreviousKeepers: result.numberOfPreviousKeepers || 
+                                result.previousOwners || 
+                                result.numberOfOwners || 
+                                result.NumberOfPreviousKeepers ||
+                                result.PreviousOwners ||
+                                result.NumberOfOwners ||
+                                0,
+        previousOwners: result.numberOfPreviousKeepers || 
+                       result.previousOwners || 
+                       result.numberOfOwners || 
+                       result.NumberOfPreviousKeepers ||
+                       result.PreviousOwners ||
+                       result.NumberOfOwners ||
+                       0,
+        numberOfOwners: result.numberOfPreviousKeepers || 
+                       result.previousOwners || 
+                       result.numberOfOwners || 
+                       result.NumberOfPreviousKeepers ||
+                       result.PreviousOwners ||
+                       result.NumberOfOwners ||
+                       0,
+        
+        // Plate changes
+        plateChanges: result.plateChanges || 0,
+        plateChangesList: result.plateChangesList || [],
+        
+        // Colour changes
+        colourChanges: result.colourChanges || 0,
+        colourChangesList: result.colourChangesList || [],
+        colourChangeDetails: result.colourChangeDetails || {},
+        
+        // V5C certificates
+        v5cCertificateCount: result.v5cCertificateCount || 0,
+        v5cCertificateList: result.v5cCertificateList || [],
+        
+        // Keeper changes
+        keeperChangesList: result.keeperChangesList || [],
+        
+        // VIC
+        vicCount: result.vicCount || 0,
+        
+        // Status flags
+        exported: result.exported || result.isExported || false,
+        scrapped: result.scrapped || result.isScrapped || false,
+        imported: result.imported || result.isImported || false,
+        isExported: result.exported || result.isExported || false,
+        isScrapped: result.scrapped || result.isScrapped || false,
+        isImported: result.imported || result.isImported || false,
+        isWrittenOff: result.isWrittenOff || false,
+        writeOffCategory: result.writeOffCategory || result.writeOffDetails?.category || 'none',
+        writeOffDetails: result.writeOffDetails || {
+          category: result.writeOffCategory || 'none',
+          date: result.writeOffDate || null,
+          description: result.writeOffDescription || null,
+        },
+        
+        // Keys
+        numberOfKeys: result.numberOfKeys || result.keys || 1,
+        keys: result.numberOfKeys || result.keys || 1,
+        
+        // Service history
+        serviceHistory: result.serviceHistory || 'Contact seller',
+        
+        // MOT
+        motStatus: result.motStatus,
+        motExpiryDate: result.motExpiryDate,
+        
+        // Check metadata
+        checkDate: result.checkDate || new Date(),
+        hasAccidentHistory: result.hasAccidentHistory || false,
+        accidentDetails: result.accidentDetails || { count: 0, severity: 'unknown', dates: [] },
+        isStolen: result.isStolen || false,
+        stolenDetails: result.stolenDetails || {},
+        hasOutstandingFinance: result.hasOutstandingFinance || false,
+        financeDetails: result.financeDetails || { amount: 0, lender: 'Unknown', type: 'unknown' },
+        checkStatus: result.checkStatus || 'success',
+        apiProvider: result.apiProvider || 'checkcardetails',
+        testMode: result.testMode || this.isTestMode,
+      };
 
+      const historyDoc = new VehicleHistory(historyData);
       await historyDoc.save();
-      console.log(`Stored history check for VRM ${vrm}`);
+      
+      console.log(`✅ Stored history check for VRM ${vrm}`);
+      console.log(`   Owners: ${historyData.numberOfPreviousKeepers}`);
+      console.log(`   Colour: ${historyData.colour}`);
+      console.log(`   Make/Model: ${historyData.make} ${historyData.model}`);
       
       return historyDoc;
     } catch (error) {
-      console.error('Error storing history result:', error);
+      console.error('❌ Error storing history result:', error.message);
+      console.error('   Result data:', JSON.stringify(result, null, 2));
       throw error;
     }
   }

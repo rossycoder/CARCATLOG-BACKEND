@@ -86,6 +86,7 @@ const tradeSubscriptionRoutes = require('./routes/tradeSubscriptionRoutes');
 const tradeAnalyticsRoutes = require('./routes/tradeAnalyticsRoutes');
 const bikeRoutes = require('./routes/bikeRoutes');
 const vanRoutes = require('./routes/vanRoutes');
+const seoRoutes = require('./routes/seoRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/vehicles', vehicleRoutes);
@@ -103,6 +104,7 @@ app.use('/api/trade/subscriptions', tradeSubscriptionRoutes);
 app.use('/api/trade/analytics', tradeAnalyticsRoutes);
 app.use('/api/bikes', bikeRoutes);
 app.use('/api/vans', vanRoutes);
+app.use('/api/seo', seoRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

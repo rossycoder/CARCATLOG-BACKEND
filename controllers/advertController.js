@@ -115,7 +115,24 @@ const createAdvert = async (req, res) => {
     const engineSize = enhancedData?.engineSize || parseEngineSize(vehicleData.engineSize);
     
     // Calculate estimated price if not provided
-    let estimatedPrice = vehicleData.estimatedValue || 0;
+    // For private sellers, prefer PRIVATE price from valuation
+    let estimatedPrice = 0;
+    
+    if (vehicleData.estimatedValue) {
+      // Check if estimatedValue is an object with private/retail/trade values
+      if (typeof vehicleData.estimatedValue === 'object') {
+        // Prefer private sale price for private sellers
+        estimatedPrice = vehicleData.estimatedValue.private || 
+                        vehicleData.estimatedValue.Private ||
+                        vehicleData.estimatedValue.retail || 
+                        vehicleData.estimatedValue.trade || 0;
+        console.log(`💰 Using valuation price (PRIVATE preferred): £${estimatedPrice}`);
+      } else {
+        // It's a single number
+        estimatedPrice = vehicleData.estimatedValue;
+      }
+    }
+    
     if (!estimatedPrice || estimatedPrice === 0) {
       // Calculate based on year, mileage, make
       const currentYear = new Date().getFullYear();
@@ -207,10 +224,16 @@ const createAdvert = async (req, res) => {
       id: advertId,
       vehicleData: {
         ...vehicleData,
-        estimatedValue: vehicleData.estimatedValue || calculateEstimatedValue(vehicleData)
+        // Ensure estimatedValue is properly set (prefer private sale price)
+        estimatedValue: typeof vehicleData.estimatedValue === 'object' 
+          ? (vehicleData.estimatedValue.private || vehicleData.estimatedValue.Private || vehicleData.estimatedValue.retail || vehicleData.estimatedValue.trade)
+          : (vehicleData.estimatedValue || calculateEstimatedValue(vehicleData))
       },
       advertData: {
-        price: vehicleData.estimatedValue || '',
+        // Use the same price logic as above
+        price: typeof vehicleData.estimatedValue === 'object'
+          ? (vehicleData.estimatedValue.private || vehicleData.estimatedValue.Private || vehicleData.estimatedValue.retail || vehicleData.estimatedValue.trade || '')
+          : (vehicleData.estimatedValue || ''),
         description: '',
         photos: [],
         contactPhone: '',
@@ -253,6 +276,9 @@ const getAdvert = async (req, res) => {
     }
     
     // Format response to match expected structure
+    // Prefer private sale price from valuation if available
+    const privatePrice = car.valuation?.privatePrice || car.price || car.estimatedValue || 0;
+    
     const advert = {
       id: car.advertId,
       vehicleData: {
@@ -270,7 +296,13 @@ const getAdvert = async (req, res) => {
         bodyType: car.bodyType,
         doors: car.doors,
         seats: car.seats,
-        estimatedValue: car.estimatedValue || car.price || 0,
+        estimatedValue: privatePrice,
+        // Include all valuation prices for reference
+        allValuations: car.valuation ? {
+          private: car.valuation.privatePrice,
+          retail: car.valuation.dealerPrice,
+          trade: car.valuation.partExchangePrice
+        } : null,
         motDue: car.motDue || car.motExpiry || car.motStatus,
         motStatus: car.motStatus,
         motExpiry: car.motExpiry,
@@ -285,7 +317,7 @@ const getAdvert = async (req, res) => {
         emissionClass: car.emissionClass
       },
       advertData: {
-        price: car.price || car.estimatedValue || 0,
+        price: privatePrice,
         description: car.description,
         photos: car.images.map((url, index) => ({
           id: `photo-${index}`,

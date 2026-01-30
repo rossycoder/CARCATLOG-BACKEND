@@ -81,14 +81,16 @@ class EnhancedVehicleService {
     try {
       console.log(`Calling CheckCarDetails API for ${registration}`);
       
-      // Fetch both vehicle data AND history
-      const [vehicleData, historyData] = await Promise.allSettled([
+      // Fetch vehicle data, history, AND MOT history
+      const [vehicleData, historyData, motData] = await Promise.allSettled([
         CheckCarDetailsClient.getVehicleData(registration),
-        CheckCarDetailsClient.getVehicleHistory(registration)
+        CheckCarDetailsClient.getVehicleHistory(registration),
+        CheckCarDetailsClient.getMOTHistory(registration)
       ]);
       
       const vehicle = vehicleData.status === 'fulfilled' ? vehicleData.value : null;
       const history = historyData.status === 'fulfilled' ? historyData.value : null;
+      const mot = motData.status === 'fulfilled' ? motData.value : null;
       
       // Merge vehicle data with history data
       const mergedData = { ...vehicle };
@@ -112,27 +114,114 @@ class EnhancedVehicleService {
         mergedData.hasAccidentHistory = Boolean(vehicleHistory.writeOffRecord);
         mergedData.hasOutstandingFinance = Boolean(vehicleHistory.financeRecord);
         
-        // Add write-off category if present
-        if (vehicleHistory.writeOffRecord && vehicleHistory.writeoff) {
-          const writeoffData = Array.isArray(vehicleHistory.writeoff) 
-            ? vehicleHistory.writeoff[0] 
-            : vehicleHistory.writeoff;
+        // Enhanced write-off category extraction
+        if (vehicleHistory.writeOffRecord) {
+          console.log(`⚠️ Write-off detected for ${registration}`);
           
-          if (writeoffData.category) {
-            mergedData.writeOffCategory = writeoffData.category.toUpperCase();
-          } else if (writeoffData.status) {
-            // Extract category from status
-            const status = writeoffData.status.toUpperCase();
-            if (status.includes('CAT A')) mergedData.writeOffCategory = 'A';
-            else if (status.includes('CAT B')) mergedData.writeOffCategory = 'B';
-            else if (status.includes('CAT C')) mergedData.writeOffCategory = 'C';
-            else if (status.includes('CAT D')) mergedData.writeOffCategory = 'D';
-            else if (status.includes('CAT S')) mergedData.writeOffCategory = 'S';
-            else if (status.includes('CAT N')) mergedData.writeOffCategory = 'N';
+          // Try to extract write-off data from multiple possible locations
+          const writeoffData = vehicleHistory.writeoff || 
+                              vehicleHistory.writeOffData || 
+                              vehicleHistory.WriteOff ||
+                              vehicleHistory.writeOff;
+          
+          if (writeoffData) {
+            const writeoffItem = Array.isArray(writeoffData) ? writeoffData[0] : writeoffData;
+            
+            console.log(`Write-off data found:`, writeoffItem);
+            
+            // Extract category from multiple possible fields
+            let category = writeoffItem.category || 
+                          writeoffItem.Category || 
+                          writeoffItem.insuranceCategory ||
+                          writeoffItem.InsuranceCategory ||
+                          writeoffItem.damageCategory;
+            
+            // If no direct category, try to extract from status/description
+            if (!category && writeoffItem.status) {
+              const status = writeoffItem.status.toUpperCase();
+              if (status.includes('CAT A') || status.includes('CATEGORY A')) category = 'A';
+              else if (status.includes('CAT B') || status.includes('CATEGORY B')) category = 'B';
+              else if (status.includes('CAT C') || status.includes('CATEGORY C')) category = 'C';
+              else if (status.includes('CAT D') || status.includes('CATEGORY D')) category = 'D';
+              else if (status.includes('CAT S') || status.includes('CATEGORY S')) category = 'S';
+              else if (status.includes('CAT N') || status.includes('CATEGORY N')) category = 'N';
+            }
+            
+            if (category) {
+              // Clean up category format
+              mergedData.writeOffCategory = category.toUpperCase().replace('CATEGORY', '').replace('CAT', '').trim();
+              console.log(`✅ Write-off category extracted: ${mergedData.writeOffCategory}`);
+            } else {
+              console.log(`⚠️ Write-off category not found in data`);
+            }
+            
+            // Store full write-off details for debugging and display
+            mergedData.writeOffDetails = {
+              date: writeoffItem.date || writeoffItem.Date || writeoffItem.reportedDate,
+              category: category,
+              status: writeoffItem.status || writeoffItem.Status,
+              description: writeoffItem.description || writeoffItem.Description,
+              miic: writeoffItem.miic || writeoffItem.MIIC
+            };
+            
+            console.log(`Write-off details stored:`, mergedData.writeOffDetails);
+          } else {
+            console.log(`⚠️ Write-off record exists but no detailed data found`);
           }
         }
         
         console.log(`✅ History data merged: ${mergedData.numberOfPreviousKeepers} owners`);
+      }
+      
+      // Add MOT history if available
+      if (mot) {
+        console.log(`✅ MOT data received for ${registration}`);
+        
+        // Extract MOT history from API response - handle actual API structure
+        const motHistory = mot.motHistory || mot.MotHistory || mot.MOTHistory || [];
+        
+        if (Array.isArray(motHistory) && motHistory.length > 0) {
+          // Format MOT history for frontend - map actual API fields
+          mergedData.motHistory = motHistory.map(record => ({
+            date: record.completedDate || record.testDate || record.TestDate || record.date,
+            mileage: parseInt(record.odometerValue) || record.mileage || record.OdometerValue,
+            result: record.testResult || record.result || record.TestResult,
+            expiry: record.expiryDate || record.expiry || record.ExpiryDate,
+            testNumber: record.motTestNumber || record.testNumber,
+            advisories: record.defects?.filter(d => d.type === 'ADVISORY').map(d => d.text) || [],
+            failures: record.defects?.filter(d => d.type === 'PRS' || d.type === 'FAIL').map(d => d.text) || []
+          }));
+          
+          console.log(`✅ MOT history formatted: ${mergedData.motHistory.length} records`);
+          
+          // Extract mileage history from MOT records
+          mergedData.mileageHistory = motHistory
+            .filter(record => record.odometerValue || record.OdometerValue)
+            .map(record => ({
+              date: new Date(record.completedDate || record.testDate || record.TestDate).toLocaleDateString('en-GB'),
+              year: new Date(record.completedDate || record.testDate || record.TestDate).getFullYear(),
+              mileage: parseInt(record.odometerValue) || parseInt(record.OdometerValue),
+              source: 'MOT'
+            }))
+            .sort((a, b) => new Date(a.date) - new Date(b.date));
+          
+          console.log(`✅ Mileage history extracted: ${mergedData.mileageHistory.length} records`);
+          
+          // Add MOT status from API
+          if (mot.mot) {
+            mergedData.motStatus = mot.mot.motStatus;
+            mergedData.motDueDate = mot.mot.motDueDate;
+            mergedData.motExpiry = mot.mot.motDueDate;
+          }
+        } else {
+          console.log(`⚠️ No MOT history records found`);
+          mergedData.motHistory = [];
+          mergedData.mileageHistory = [];
+        }
+      } else {
+        console.log(`⚠️ No MOT data available for ${registration}`);
+        mergedData.motHistory = [];
+        mergedData.mileageHistory = [];
       }
       
       console.log(`CheckCarDetails API success for ${registration}:`, JSON.stringify(mergedData, null, 2));

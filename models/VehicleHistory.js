@@ -165,6 +165,24 @@ const vehicleHistorySchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  writeOffCategory: {
+    type: String,
+    enum: ['A', 'B', 'C', 'D', 'S', 'N', 'none', 'unknown'],
+    default: 'none',
+  },
+  writeOffDetails: {
+    category: {
+      type: String,
+      enum: ['A', 'B', 'C', 'D', 'S', 'N', 'none', 'unknown'],
+      default: 'none',
+    },
+    date: {
+      type: Date,
+    },
+    description: {
+      type: String,
+    },
+  },
   previousOwners: {
     type: Number,
     default: 0,

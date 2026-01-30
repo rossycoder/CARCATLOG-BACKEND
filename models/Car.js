@@ -564,6 +564,50 @@ carSchema.pre('save', async function(next) {
     }
   }
   
+  // Auto-fetch valuation and set PRIVATE sale price if missing or incorrect
+  if (this.isNew && this.registrationNumber && this.mileage) {
+    // Check if valuation is missing or price is not set correctly
+    const needsValuation = !this.valuation?.privatePrice || 
+                          !this.price || 
+                          this.price === 0 ||
+                          (this.valuation?.privatePrice && this.price !== this.valuation.privatePrice);
+    
+    if (needsValuation) {
+      try {
+        const ValuationService = require('../services/valuationService');
+        const valuationService = new ValuationService();
+        
+        console.log(`💰 Fetching valuation for: ${this.registrationNumber} (${this.mileage} miles)`);
+        
+        const valuation = await valuationService.getValuation(this.registrationNumber, this.mileage);
+        
+        // Store all valuation data
+        this.valuation = {
+          privatePrice: valuation.estimatedValue.private,
+          dealerPrice: valuation.estimatedValue.retail,
+          partExchangePrice: valuation.estimatedValue.trade,
+          confidence: valuation.confidence,
+          valuationDate: new Date()
+        };
+        
+        // Set price to PRIVATE sale price (for private sellers)
+        this.price = valuation.estimatedValue.private;
+        this.estimatedValue = valuation.estimatedValue.private;
+        
+        console.log(`✅ Valuation fetched and price set to £${this.price} (Private Sale)`);
+        console.log(`   Private: £${valuation.estimatedValue.private}, Retail: £${valuation.estimatedValue.retail}, Trade: £${valuation.estimatedValue.trade}`);
+      } catch (error) {
+        console.error(`⚠️  Could not fetch valuation for ${this.registrationNumber}:`, error.message);
+        // Continue without valuation - use existing price or default
+        if (!this.price || this.price === 0) {
+          console.warn(`⚠️  No price set and valuation failed - car may have incorrect price`);
+        }
+      }
+    } else {
+      console.log(`ℹ️  Valuation already exists for ${this.registrationNumber}: £${this.valuation.privatePrice}`);
+    }
+  }
+  
   // Auto-set userId from seller contact email if missing
   // Check on EVERY save (not just new cars) to ensure userId is always set
   if (!this.userId && this.sellerContact?.email) {
