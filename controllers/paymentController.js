@@ -747,22 +747,22 @@ async function handlePaymentSuccess(paymentIntent) {
             // Calculate expiry date
             const expiryDate = calculateExpiryDate(purchase.duration);
             
-            // Geocode postcode to get coordinates and location name
-            // NOTE: Don't set coordinates here - let pre-save hook handle it automatically
-            let locationName;
+            // Check if car already exists (from createAdvert step)
+            let car = await Car.findOne({ advertId });
+            
+            // Fetch location data from postcode (for both new and existing cars)
+            let locationName, latitude, longitude;
             if (contactDetails.postcode) {
               try {
                 const postcodeData = await postcodeService.lookupPostcode(contactDetails.postcode);
                 locationName = postcodeData.locationName;
-                console.log(`   Location: ${locationName}`);
-                // Coordinates will be set by pre-save hook
+                latitude = postcodeData.latitude;
+                longitude = postcodeData.longitude;
+                console.log(`   Location: ${locationName} (${latitude}, ${longitude})`);
               } catch (error) {
                 console.warn(`⚠️  Could not geocode postcode ${contactDetails.postcode}: ${error.message}`);
               }
             }
-            
-            // Check if car already exists (from createAdvert step)
-            let car = await Car.findOne({ advertId });
             
             if (car) {
               // Check if car is already active (prevent duplicate activation)
@@ -788,9 +788,19 @@ async function handlePaymentSuccess(paymentIntent) {
               car.images = advertData.photos ? advertData.photos.map(p => p.url) : car.images;
               car.postcode = contactDetails.postcode || car.postcode;
               car.locationName = locationName || car.locationName;
-              // Don't set coordinates here - let pre-save hook handle it
+              car.latitude = latitude || car.latitude;
+              car.longitude = longitude || car.longitude;
+              
+              // Set location object if coordinates are available
+              if (longitude && latitude) {
+                car.location = {
+                  type: 'Point',
+                  coordinates: [longitude, latitude]
+                };
+              }
               
               car.sellerContact = {
+                type: purchase.sellerType || 'private', // Set seller type from purchase (trade or private)
                 phoneNumber: contactDetails.phoneNumber || car.sellerContact?.phoneNumber,
                 email: contactDetails.email || car.sellerContact?.email,
                 allowEmailContact: contactDetails.allowEmailContact || car.sellerContact?.allowEmailContact || false,
@@ -866,11 +876,18 @@ async function handlePaymentSuccess(paymentIntent) {
               images: advertData.photos ? advertData.photos.map(p => p.url) : [],
               features: advertData.features || [],
               videoUrl: advertData.videoUrl || '',
-              // Location data - only set postcode, let pre-save hook fetch coordinates
+              // Location data
               postcode: contactDetails.postcode || '',
               locationName: locationName,
+              latitude: latitude,
+              longitude: longitude,
+              location: latitude && longitude ? {
+                type: 'Point',
+                coordinates: [longitude, latitude]
+              } : undefined,
               // Seller contact
               sellerContact: {
+                type: purchase.sellerType || 'private', // Set seller type from purchase (trade or private)
                 phoneNumber: contactDetails.phoneNumber,
                 email: contactDetails.email,
                 allowEmailContact: contactDetails.allowEmailContact || false,

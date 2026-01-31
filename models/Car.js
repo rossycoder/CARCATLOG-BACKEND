@@ -542,8 +542,8 @@ carSchema.pre('save', async function(next) {
     }
   }
   
-  // Auto-fetch coordinates from postcode if missing
-  if (this.isNew && this.postcode && (!this.latitude || !this.longitude)) {
+  // Auto-fetch coordinates from postcode if missing (works for both new and updated cars)
+  if (this.postcode && (!this.latitude || !this.longitude || !this.locationName)) {
     try {
       const postcodeService = require('../services/postcodeService');
       console.log(`📍 Fetching coordinates for postcode: ${this.postcode}`);
@@ -571,6 +571,12 @@ carSchema.pre('save', async function(next) {
       console.error(`⚠️  Could not fetch coordinates for postcode ${this.postcode}:`, error.message);
       // Continue without coordinates
     }
+  }
+  
+  // Ensure sellerContact.type is set (default to 'private' if missing)
+  if (this.sellerContact && !this.sellerContact.type) {
+    this.sellerContact.type = 'private';
+    console.log(`✅ Set default seller type to 'private'`);
   }
   
   // Auto-fetch valuation and set PRIVATE sale price if missing or incorrect
