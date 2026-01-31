@@ -186,6 +186,32 @@ class VehicleController {
         transmission
       });
 
+      // Step 3: Automatically fetch coordinates and location name from postcode
+      if (postcode) {
+        try {
+          console.log(`[Vehicle Controller] Fetching coordinates for postcode: ${postcode}`);
+          const postcodeService = require('../services/postcodeService');
+          const postcodeData = await postcodeService.lookupPostcode(postcode);
+          
+          if (postcodeData) {
+            // Add coordinates to car data
+            carData.coordinates = {
+              latitude: postcodeData.latitude,
+              longitude: postcodeData.longitude
+            };
+            
+            // Add location name to car data
+            carData.locationName = postcodeData.locationName;
+            
+            console.log(`[Vehicle Controller] Coordinates set: ${postcodeData.latitude}, ${postcodeData.longitude}`);
+            console.log(`[Vehicle Controller] Location name set: ${postcodeData.locationName}`);
+          }
+        } catch (postcodeError) {
+          // Don't fail car creation if postcode lookup fails
+          console.warn(`[Vehicle Controller] Failed to fetch postcode data: ${postcodeError.message}`);
+        }
+      }
+
       // Add purchase information to car data
       carData.purchaseId = purchaseId;
       carData.packageName = purchase.packageName;
@@ -436,13 +462,16 @@ class VehicleController {
   /**
    * GET /api/vehicles/:id
    * Get a single car by ID
+   * Optional query param: postcode - to calculate distance from user location
    */
   async getCarById(req, res, next) {
     try {
       const { id } = req.params;
+      const { postcode } = req.query;
 
       // Find car by ID
-      const car = await Car.findById(id);
+      const car = await Car.findById(id)
+        .populate('historyCheckId', 'writeOffCategory writeOffDetails');
 
       if (!car) {
         return res.status(404).json({
@@ -459,6 +488,47 @@ class VehicleController {
 
       // Clean up "null" string values
       this.cleanNullStrings(carData);
+
+      // Calculate distance if postcode is provided
+      if (postcode) {
+        try {
+          const postcodeService = require('../services/postcodeService');
+          const haversine = require('../utils/haversine');
+          
+          // Check if car has coordinates (either in coordinates object or separate fields)
+          let carLat, carLon;
+          
+          if (car.coordinates && car.coordinates.latitude && car.coordinates.longitude) {
+            // Coordinates in object format
+            carLat = car.coordinates.latitude;
+            carLon = car.coordinates.longitude;
+          } else if (car.latitude && car.longitude) {
+            // Coordinates in separate fields
+            carLat = car.latitude;
+            carLon = car.longitude;
+          }
+          
+          if (carLat && carLon) {
+            const postcodeData = await postcodeService.lookupPostcode(postcode);
+            
+            if (postcodeData) {
+              const distance = haversine(
+                postcodeData.latitude,
+                postcodeData.longitude,
+                carLat,
+                carLon
+              );
+              carData.distance = Math.round(distance);
+              console.log(`[Vehicle Controller] Calculated distance: ${carData.distance} miles from ${postcode}`);
+            }
+          } else {
+            console.log(`[Vehicle Controller] Car has no coordinates, cannot calculate distance`);
+          }
+        } catch (distanceError) {
+          console.warn(`[Vehicle Controller] Failed to calculate distance:`, distanceError.message);
+          // Don't fail the request if distance calculation fails
+        }
+      }
 
       // If this is a trade dealer listing, fetch dealer information
       if (car.dealerId) {
@@ -603,6 +673,7 @@ class VehicleController {
 
       // Execute query
       const cars = await Car.find(query)
+        .populate('historyCheckId', 'writeOffCategory writeOffDetails')
         .limit(parseInt(limit))
         .skip(parseInt(skip))
         .sort({ createdAt: -1 });
@@ -650,6 +721,8 @@ class VehicleController {
         seats,
         fuelType,
         engineSize,
+        sellerType,
+        writeOffStatus,
         sort,
         limit = 50,
         skip = 0 
@@ -703,6 +776,70 @@ class VehicleController {
       if (doors) query.doors = parseInt(doors);
       if (seats) query.seats = parseInt(seats);
       
+      // Engine size filter
+      if (engineSize) {
+        // Frontend sends values like: "1.0", "1.5", "2.0", "2.5", "3.0", "3.0+"
+        // We need to convert engineCapacity (in cc) to liters and filter accordingly
+        const engineSizeValue = parseFloat(engineSize);
+        
+        if (engineSize === '1.0') {
+          // Up to 1.0L = up to 1000cc
+          query.engineCapacity = { $lte: 1000 };
+        } else if (engineSize === '1.5') {
+          // 1.0L - 1.5L = 1001cc to 1500cc
+          query.engineCapacity = { $gt: 1000, $lte: 1500 };
+        } else if (engineSize === '2.0') {
+          // 1.5L - 2.0L = 1501cc to 2000cc
+          query.engineCapacity = { $gt: 1500, $lte: 2000 };
+        } else if (engineSize === '2.5') {
+          // 2.0L - 2.5L = 2001cc to 2500cc
+          query.engineCapacity = { $gt: 2000, $lte: 2500 };
+        } else if (engineSize === '3.0') {
+          // 2.5L - 3.0L = 2501cc to 3000cc
+          query.engineCapacity = { $gt: 2500, $lte: 3000 };
+        } else if (engineSize === '3.0+') {
+          // 3.0L+ = 3001cc and above
+          query.engineCapacity = { $gt: 3000 };
+        }
+        
+        console.log('[Vehicle Controller] Engine size filter applied:', engineSize, '→', query.engineCapacity);
+      }
+      
+      // Seller type filter
+      if (sellerType) {
+        if (sellerType === 'private') {
+          // Private sellers: userId exists (not null)
+          query.userId = { $ne: null, $exists: true };
+          query.tradeDealerId = null; // Ensure no trade dealer
+          console.log('[Vehicle Controller] Seller type filter: Private sellers only');
+        } else if (sellerType === 'trade') {
+          // Trade sellers: tradeDealerId exists (not null)
+          query.tradeDealerId = { $ne: null, $exists: true };
+          console.log('[Vehicle Controller] Seller type filter: Trade sellers only');
+        }
+      }
+      
+      // Write-off status filter
+      if (writeOffStatus) {
+        if (writeOffStatus === 'exclude') {
+          // Exclude written off vehicles
+          // Check both the car's direct field and the populated historyCheckId
+          query.$or = [
+            { historyCheckId: null }, // No history check
+            { 'historyCheckId.writeOffCategory': { $in: ['none', 'unknown', null] } } // Not written off
+          ];
+          console.log('[Vehicle Controller] Write-off filter: Excluding written off vehicles');
+        } else if (writeOffStatus === 'only') {
+          // Show only written off vehicles
+          query.historyCheckId = { $ne: null, $exists: true };
+          query['historyCheckId.writeOffCategory'] = { 
+            $nin: ['none', 'unknown', null],
+            $exists: true 
+          };
+          console.log('[Vehicle Controller] Write-off filter: Only written off vehicles');
+        }
+      }
+      
       console.log('[Vehicle Controller] Constructed query:', JSON.stringify(query, null, 2));
 
       // Determine sort order
@@ -733,6 +870,7 @@ class VehicleController {
 
       // Execute query
       const cars = await Car.find(query)
+        .populate('historyCheckId', 'writeOffCategory writeOffDetails')
         .limit(Math.min(parseInt(limit), 100)) // Cap at 100
         .skip(parseInt(skip))
         .sort(sortOption);
@@ -882,6 +1020,53 @@ class VehicleController {
       
       const yearRange = years.length > 0 ? years[0] : { minYear: 2000, maxYear: new Date().getFullYear() };
 
+      // Get seller type counts
+      const privateSellerCount = await Car.countDocuments({
+        ...baseQuery,
+        userId: { $ne: null, $exists: true },
+        tradeDealerId: null
+      });
+      
+      const tradeSellerCount = await Car.countDocuments({
+        ...baseQuery,
+        tradeDealerId: { $ne: null, $exists: true }
+      });
+      
+      console.log('[Vehicle Controller] Seller counts - Private:', privateSellerCount, 'Trade:', tradeSellerCount);
+      
+      // Get write-off status counts
+      // First, get all cars with history check populated
+      const carsWithHistory = await Car.find({
+        ...baseQuery,
+        historyCheckId: { $ne: null, $exists: true }
+      }).populate('historyCheckId', 'writeOffCategory isWrittenOff');
+      
+      let writtenOffCount = 0;
+      let cleanCount = 0;
+      
+      carsWithHistory.forEach(car => {
+        if (car.historyCheckId && 
+            car.historyCheckId.writeOffCategory && 
+            car.historyCheckId.writeOffCategory !== 'none' && 
+            car.historyCheckId.writeOffCategory !== 'unknown') {
+          writtenOffCount++;
+        } else {
+          cleanCount++;
+        }
+      });
+      
+      // Add cars without history check to clean count
+      const carsWithoutHistory = await Car.countDocuments({
+        ...baseQuery,
+        historyCheckId: null
+      });
+      
+      cleanCount += carsWithoutHistory;
+      
+      const totalCars = await Car.countDocuments(baseQuery);
+      
+      console.log('[Vehicle Controller] Write-off counts - Total:', totalCars, 'Written off:', writtenOffCount, 'Clean:', cleanCount);
+
       const result = {
         success: true,
         data: {
@@ -897,11 +1082,18 @@ class VehicleController {
           yearRange: {
             min: yearRange.minYear,
             max: yearRange.maxYear
+          },
+          counts: {
+            total: totalCars,
+            privateSellers: privateSellerCount,
+            tradeSellers: tradeSellerCount,
+            writtenOff: writtenOffCount,
+            clean: cleanCount
           }
         }
       };
       
-      console.log('[Vehicle Controller] Returning filter options with submodels and variants');
+      console.log('[Vehicle Controller] Returning filter options with counts');
       
       return res.json(result);
 

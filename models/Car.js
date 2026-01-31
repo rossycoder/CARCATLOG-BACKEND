@@ -552,12 +552,21 @@ carSchema.pre('save', async function(next) {
       
       this.latitude = postcodeData.latitude;
       this.longitude = postcodeData.longitude;
+      this.locationName = postcodeData.locationName; // Set location name
       this.location = {
         type: 'Point',
         coordinates: [postcodeData.longitude, postcodeData.latitude]
       };
       
-      console.log(`✅ Coordinates set: ${this.latitude}, ${this.longitude}`);
+      // Also set city in sellerContact if not already set
+      if (!this.sellerContact) {
+        this.sellerContact = {};
+      }
+      if (!this.sellerContact.city) {
+        this.sellerContact.city = postcodeData.locationName;
+      }
+      
+      console.log(`✅ Coordinates and location set: ${this.latitude}, ${this.longitude} - ${this.locationName}`);
     } catch (error) {
       console.error(`⚠️  Could not fetch coordinates for postcode ${this.postcode}:`, error.message);
       // Continue without coordinates

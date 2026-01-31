@@ -302,12 +302,34 @@ function parseHistoryResponse(apiResponse, isTestMode = false) {
       severity: category,
       dates: writeoffData.lossdate ? [new Date(writeoffData.lossdate)] : [],
     };
+    
+    // Add write-off category as a direct field for easy access
+    result.writeOffCategory = category;
+    
+    // Add write-off details object
+    result.writeOffDetails = {
+      category: category,
+      date: writeoffData.lossdate ? new Date(writeoffData.lossdate) : null,
+      status: writeoffData.status || null,
+      description: writeoffData.status || null
+    };
   } else {
     // Add default empty accident details
     result.accidentDetails = {
       count: 0,
       severity: 'unknown',
       dates: [],
+    };
+    
+    // Add default write-off category
+    result.writeOffCategory = 'none';
+    
+    // Add default write-off details
+    result.writeOffDetails = {
+      category: 'none',
+      date: null,
+      status: null,
+      description: null
     };
   }
 
