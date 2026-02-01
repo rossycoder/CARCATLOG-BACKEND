@@ -392,11 +392,12 @@ class EnhancedVehicleService {
    * Get vehicle data with fallback handling
    * Returns data even if one API fails
    * @param {string} registration - Vehicle registration number
+   * @param {number} mileage - Optional mileage for valuation
    * @returns {Promise<Object>} Vehicle data with status information
    */
-  async getVehicleDataWithFallback(registration) {
+  async getVehicleDataWithFallback(registration, mileage = null) {
     try {
-      const enhancedData = await this.getEnhancedVehicleData(registration);
+      const enhancedData = await this.getEnhancedVehicleData(registration, true, mileage);
       
       return {
         success: true,

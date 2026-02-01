@@ -488,6 +488,23 @@ class VehicleController {
 
       // Clean up "null" string values
       this.cleanNullStrings(carData);
+      
+      // Ensure allValuations is properly structured for frontend
+      // Frontend expects: allValuations.private, allValuations.retail, allValuations.trade
+      if (carData.valuation && !carData.allValuations) {
+        carData.allValuations = {
+          private: carData.valuation.privatePrice || carData.price,
+          retail: carData.valuation.dealerPrice || carData.price,
+          trade: carData.valuation.partExchangePrice || carData.price
+        };
+        console.log('💰 Structured allValuations from database valuation:', carData.allValuations);
+      }
+      
+      // If allValuations exists but estimatedValue doesn't match private price, update it
+      if (carData.allValuations?.private && carData.estimatedValue !== carData.allValuations.private) {
+        console.log(`💰 Updating estimatedValue: £${carData.estimatedValue} → £${carData.allValuations.private} (Private Sale)`);
+        carData.estimatedValue = carData.allValuations.private;
+      }
 
       // Calculate distance if postcode is provided
       if (postcode) {
@@ -1111,9 +1128,9 @@ class VehicleController {
   async enhancedVehicleLookup(req, res, next) {
     try {
       const { registration } = req.params;
-      const { useCache = 'true' } = req.query;
+      const { useCache = 'true', mileage } = req.query;
 
-      console.log(`[Vehicle Controller] Enhanced lookup request for: ${registration}`);
+      console.log(`[Vehicle Controller] Enhanced lookup request for: ${registration}, mileage: ${mileage || 'not provided'}`);
 
       if (!registration) {
         return res.status(400).json({
@@ -1139,8 +1156,11 @@ class VehicleController {
 
       const enhancedVehicleService = require('../services/enhancedVehicleService');
       
+      // Parse mileage if provided
+      const parsedMileage = mileage ? parseInt(mileage, 10) : null;
+      
       // Get enhanced vehicle data with fallback handling
-      const result = await enhancedVehicleService.getVehicleDataWithFallback(cleanedReg);
+      const result = await enhancedVehicleService.getVehicleDataWithFallback(cleanedReg, parsedMileage);
 
       if (!result.success) {
         console.error(`[Vehicle Controller] Enhanced lookup failed for ${registration}:`, result.error);
