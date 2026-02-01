@@ -23,6 +23,9 @@ router.post('/webhook', express.raw({type: 'application/json'}), paymentControll
 // POST /api/payments/test-complete-purchase - Complete test purchase (development only)
 router.post('/test-complete-purchase', paymentController.completeTestPurchase);
 
+// POST /api/payments/auto-complete-purchase - Auto-complete purchase after payment (bypasses webhook)
+router.post('/auto-complete-purchase', paymentController.autoCompletePurchase);
+
 // GET /api/payments/session/:sessionId - Get checkout session details
 router.get('/session/:sessionId', paymentController.getSessionDetails);
 

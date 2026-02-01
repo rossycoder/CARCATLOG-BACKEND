@@ -1700,6 +1700,76 @@ async function completeTestPurchase(req, res) {
   }
 }
 
+/**
+ * Auto-complete purchase after payment success (bypasses webhook)
+ * POST /api/payments/auto-complete-purchase
+ */
+async function autoCompletePurchase(req, res) {
+  try {
+    const { sessionId } = req.body;
+    
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Session ID is required'
+      });
+    }
+
+    console.log(`🚀 AUTO-COMPLETE: Processing session ${sessionId}`);
+
+    const purchase = await AdvertisingPackagePurchase.findOne({ stripeSessionId: sessionId });
+    
+    if (!purchase) {
+      return res.status(404).json({
+        success: false,
+        error: 'Purchase not found for this session'
+      });
+    }
+
+    if (purchase.paymentStatus === 'paid') {
+      return res.json({
+        success: true,
+        message: 'Purchase already completed',
+        vehicleId: purchase.vehicleId
+      });
+    }
+
+    // Simulate payment intent
+    const testPaymentIntent = {
+      id: 'auto_pi_' + Date.now(),
+      metadata: {
+        type: 'advertising_package',
+        sessionId: purchase.stripeSessionId
+      }
+    };
+
+    // Call the same handler as webhook
+    await handlePaymentSuccess(testPaymentIntent);
+
+    // Fetch updated purchase
+    const updatedPurchase = await AdvertisingPackagePurchase.findOne({ stripeSessionId: sessionId });
+
+    res.json({
+      success: true,
+      message: 'Purchase auto-completed successfully',
+      vehicleId: updatedPurchase.vehicleId,
+      purchase: {
+        id: updatedPurchase._id,
+        status: updatedPurchase.paymentStatus,
+        packageStatus: updatedPurchase.packageStatus,
+        vehicleId: updatedPurchase.vehicleId
+      }
+    });
+
+  } catch (error) {
+    console.error('Error auto-completing purchase:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to auto-complete purchase'
+    });
+  }
+}
+
 module.exports = {
   createCheckoutSession,
   createAdvertCheckoutSession,
@@ -1710,6 +1780,7 @@ module.exports = {
   getPurchaseDetails,
   handleWebhook,
   completeTestPurchase,
+  autoCompletePurchase,
   getCreditBalance,
   useCreditForCheck,
   createRefund,
