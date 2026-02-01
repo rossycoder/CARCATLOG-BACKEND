@@ -8,7 +8,6 @@ const createAdvert = async (req, res) => {
   try {
     console.log('📝 [createAdvert] Request received');
     console.log('📝 [createAdvert] Request body keys:', Object.keys(req.body));
-    console.log('📝 [createAdvert] Headers:', req.headers);
     
     const { vehicleData } = req.body;
     
@@ -22,14 +21,118 @@ const createAdvert = async (req, res) => {
     }
     
     const advertId = uuidv4();
+    console.log(`📝 [createAdvert] Creating advert with ID: ${advertId}`);
     
-    // Log vehicle data to debug registration number
-    console.log('📝 Creating advert with vehicle data:', {
-      registration: vehicleData.registration,
-      registrationNumber: vehicleData.registrationNumber,
-      make: vehicleData.make,
-      model: vehicleData.model
+    // Calculate estimated price with fallback
+    let estimatedPrice = 10000; // Default fallback
+    
+    try {
+      if (vehicleData.privatePrice && vehicleData.privatePrice > 0) {
+        estimatedPrice = vehicleData.privatePrice;
+      } else if (vehicleData.estimatedValue) {
+        if (typeof vehicleData.estimatedValue === 'object') {
+          estimatedPrice = vehicleData.estimatedValue.private || 
+                          vehicleData.estimatedValue.retail || 
+                          vehicleData.estimatedValue.trade || 10000;
+        } else {
+          estimatedPrice = vehicleData.estimatedValue;
+        }
+      } else {
+        // Simple calculation based on year and mileage
+        const currentYear = new Date().getFullYear();
+        const vehicleYear = parseInt(vehicleData.year) || currentYear;
+        const vehicleAge = currentYear - vehicleYear;
+        const mileage = parseInt(vehicleData.mileage) || 0;
+        
+        let baseValue = 15000;
+        baseValue -= (vehicleAge * 1000);
+        baseValue -= Math.floor(mileage / 10000) * 500;
+        estimatedPrice = Math.max(baseValue, 1000);
+      }
+    } catch (priceError) {
+      console.warn('⚠️  [createAdvert] Price calculation error, using default:', priceError.message);
+      estimatedPrice = 10000;
+    }
+    
+    console.log(`💰 [createAdvert] Estimated price: £${estimatedPrice}`);
+    
+    // Create car with minimal required fields
+    const car = new Car({
+      advertId: advertId,
+      make: vehicleData.make || 'Unknown',
+      model: vehicleData.model || 'Unknown',
+      variant: vehicleData.variant || null,
+      year: parseInt(vehicleData.year) || new Date().getFullYear(),
+      mileage: parseInt(vehicleData.mileage) || 0,
+      color: vehicleData.color || 'Not specified',
+      fuelType: vehicleData.fuelType || 'Petrol',
+      transmission: vehicleData.transmission || 'manual',
+      price: estimatedPrice,
+      estimatedValue: estimatedPrice,
+      description: '',
+      images: [],
+      registrationNumber: vehicleData.registration || vehicleData.registrationNumber || null,
+      engineSize: parseFloat(vehicleData.engineSize) || undefined,
+      bodyType: vehicleData.bodyType || undefined,
+      doors: parseInt(vehicleData.doors) || undefined,
+      seats: parseInt(vehicleData.seats) || undefined,
+      dataSource: vehicleData.registration ? 'DVLA' : 'manual',
+      advertStatus: 'active',
+      publishedAt: new Date(),
+      condition: 'used',
+      postcode: vehicleData.postcode || undefined,
+      sellerContact: {
+        email: vehicleData.email || undefined,
+        phoneNumber: vehicleData.phoneNumber || undefined,
+        allowEmailContact: false
+      }
     });
+    
+    console.log(`💾 [createAdvert] Saving car to database...`);
+    await car.save();
+    console.log(`✅ [createAdvert] Car saved successfully: ${advertId}`);
+    
+    // Return advert data
+    const advert = {
+      id: advertId,
+      vehicleData: {
+        ...vehicleData,
+        estimatedValue: estimatedPrice
+      },
+      advertData: {
+        price: estimatedPrice,
+        description: '',
+        photos: [],
+        contactPhone: '',
+        contactEmail: '',
+        location: ''
+      },
+      status: 'incomplete',
+      createdAt: car.createdAt
+    };
+    
+    res.status(201).json({
+      success: true,
+      data: advert
+    });
+    
+  } catch (error) {
+    console.error('❌ [createAdvert] Error:', error.message);
+    console.error('❌ [createAdvert] Stack:', error.stack);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create advert',
+      error: error.message,
+      errorType: error.name
+    });
+  }
+};
+
+/**
+ * Get advert by ID
+ */
+const getAdvert = async (req, res) => {
     
     // Helper function to parse CO2 emissions (removes "g/km" suffix)
     const parseCO2 = (value) => {

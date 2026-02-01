@@ -70,7 +70,9 @@ app.get('/health', async (req, res) => {
       jwtConfigured: !!process.env.JWT_SECRET,
       stripeConfigured: !!process.env.STRIPE_SECRET_KEY,
       cloudinaryConfigured: !!process.env.CLOUDINARY_CLOUD_NAME,
-      emailConfigured: !!process.env.EMAIL_SERVICE
+      emailConfigured: !!process.env.EMAIL_SERVICE,
+      checkCardApiConfigured: !!process.env.CHECKCARD_API_KEY,
+      dvlaApiConfigured: !!process.env.DVLA_API_KEY
     };
     
     res.json({ 
@@ -86,6 +88,41 @@ app.get('/health', async (req, res) => {
       status: 'ERROR',
       message: error.message,
       timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Test endpoint for debugging
+app.get('/test-advert', async (req, res) => {
+  try {
+    const Car = require('./models/Car');
+    const testCar = new Car({
+      advertId: 'test-' + Date.now(),
+      make: 'Test',
+      model: 'Car',
+      year: 2020,
+      mileage: 50000,
+      price: 10000,
+      color: 'Blue',
+      fuelType: 'Petrol',
+      transmission: 'manual',
+      advertStatus: 'active',
+      publishedAt: new Date()
+    });
+    
+    await testCar.save();
+    
+    res.json({
+      success: true,
+      message: 'Test car created successfully',
+      carId: testCar._id
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      errorName: error.name,
+      stack: error.stack
     });
   }
 });
