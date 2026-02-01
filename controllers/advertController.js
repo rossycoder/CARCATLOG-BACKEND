@@ -9,6 +9,11 @@ const createAdvert = async (req, res) => {
     console.log('📝 [createAdvert] Request received');
     
     const { vehicleData } = req.body;
+    const user = req.user; // From authentication middleware
+    const dealer = req.dealer; // From trade dealer auth middleware
+    
+    console.log('👤 User:', user ? user.email : 'Not authenticated');
+    console.log('🏢 Dealer:', dealer ? dealer.businessName : 'Not a dealer');
     
     if (!vehicleData) {
       return res.status(400).json({
@@ -71,11 +76,30 @@ const createAdvert = async (req, res) => {
       advertStatus: 'active',
       publishedAt: new Date(),
       condition: 'used',
-      postcode: vehicleData.postcode || undefined
+      postcode: vehicleData.postcode || undefined,
+      // Set user/dealer information
+      userId: user ? user._id : undefined,
+      dealerId: dealer ? dealer._id : undefined,
+      isDealerListing: !!dealer,
+      // Set seller contact information
+      sellerContact: {
+        type: dealer ? 'trade' : 'private',
+        email: user ? user.email : undefined,
+        phoneNumber: user ? user.phoneNumber : undefined,
+        postcode: vehicleData.postcode || undefined,
+        // Trade dealer specific fields
+        businessName: dealer ? dealer.businessName : undefined,
+        tradingName: dealer ? dealer.tradingName : undefined,
+        city: dealer ? dealer.city : undefined,
+        logo: dealer ? dealer.logo : undefined
+      }
     });
     
     await car.save();
     console.log(`✅ Car saved: ${advertId}`);
+    console.log(`   User ID: ${car.userId || 'NOT SET'}`);
+    console.log(`   Dealer ID: ${car.dealerId || 'NOT SET'}`);
+    console.log(`   Seller Email: ${car.sellerContact?.email || 'NOT SET'}`);
     
     res.status(201).json({
       success: true,
