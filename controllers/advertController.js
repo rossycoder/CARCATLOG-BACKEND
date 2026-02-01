@@ -6,12 +6,18 @@ const Car = require('../models/Car');
  */
 const createAdvert = async (req, res) => {
   try {
+    console.log('📝 [createAdvert] Request received');
+    console.log('📝 [createAdvert] Request body keys:', Object.keys(req.body));
+    console.log('📝 [createAdvert] Headers:', req.headers);
+    
     const { vehicleData } = req.body;
     
     if (!vehicleData) {
+      console.error('❌ [createAdvert] Missing vehicleData in request body');
       return res.status(400).json({
         success: false,
-        message: 'Vehicle data is required'
+        message: 'Vehicle data is required',
+        receivedKeys: Object.keys(req.body)
       });
     }
     
@@ -285,11 +291,13 @@ const createAdvert = async (req, res) => {
       data: advert
     });
   } catch (error) {
-    console.error('Error creating advert:', error);
+    console.error('❌ [createAdvert] Error creating advert:', error);
+    console.error('❌ [createAdvert] Error stack:', error.stack);
     res.status(500).json({
       success: false,
       message: 'Failed to create advert',
-      error: error.message
+      error: error.message,
+      ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
     });
   }
 };

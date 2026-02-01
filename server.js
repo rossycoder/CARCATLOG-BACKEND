@@ -58,15 +58,36 @@ app.get('/', (req, res) => {
 });
 
 // Health check endpoint
-app.get('/health', (req, res) => {
-  const { checkDatabaseHealth } = require('./utils/dbHealthCheck');
-  const dbHealth = checkDatabaseHealth();
-  
-  res.json({ 
-    status: 'OK',
-    database: dbHealth,
-    timestamp: new Date().toISOString() 
-  });
+app.get('/health', async (req, res) => {
+  try {
+    const { checkDatabaseHealth } = require('./utils/dbHealthCheck');
+    const dbHealth = checkDatabaseHealth();
+    
+    // Check environment configuration
+    const envCheck = {
+      nodeEnv: process.env.NODE_ENV || 'not set',
+      mongodbConfigured: !!process.env.MONGODB_URI,
+      jwtConfigured: !!process.env.JWT_SECRET,
+      stripeConfigured: !!process.env.STRIPE_SECRET_KEY,
+      cloudinaryConfigured: !!process.env.CLOUDINARY_CLOUD_NAME,
+      emailConfigured: !!process.env.EMAIL_SERVICE
+    };
+    
+    res.json({ 
+      status: 'OK',
+      database: dbHealth,
+      environment: envCheck,
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      memory: process.memoryUsage()
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'ERROR',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // API Routes
