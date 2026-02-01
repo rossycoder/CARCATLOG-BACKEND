@@ -82,23 +82,31 @@ const createAdvert = async (req, res) => {
     };
 
     // Create car document in database immediately
-    // If we have a registration number, fetch enhanced data from CheckCarDetails API
+    // If we have a registration number, try to fetch enhanced data from CheckCarDetails API
+    // This is optional - if it fails, we'll just use the basic data provided
     let enhancedData = null;
     if (vehicleData.registration || vehicleData.registrationNumber) {
       try {
         const EnhancedVehicleService = require('../services/enhancedVehicleService');
         const registration = vehicleData.registration || vehicleData.registrationNumber;
         const mileage = vehicleData.mileage || 50000;
-        console.log(`📡 [AdvertController] Fetching enhanced data (with valuation) for: ${registration}`);
-        enhancedData = await EnhancedVehicleService.getEnhancedVehicleData(registration, false, mileage);
-        console.log(`✅ [AdvertController] Enhanced data fetched:`, {
-          modelVariant: enhancedData?.modelVariant?.value || enhancedData?.modelVariant,
-          variant: enhancedData?.variant?.value || enhancedData?.variant,
-          engineSize: enhancedData?.engineSize?.value || enhancedData?.engineSize,
-          hasValuation: !!enhancedData?.valuation
-        });
+        console.log(`📡 [AdvertController] Fetching enhanced data for: ${registration}`);
+        
+        // Set a timeout for the API call (5 seconds max)
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('API timeout')), 5000)
+        );
+        
+        enhancedData = await Promise.race([
+          EnhancedVehicleService.getEnhancedVehicleData(registration, false, mileage),
+          timeoutPromise
+        ]);
+        
+        console.log(`✅ [AdvertController] Enhanced data fetched successfully`);
       } catch (error) {
-        console.log(`⚠️  [AdvertController] Could not fetch enhanced data: ${error.message}`);
+        console.log(`⚠️  [AdvertController] Could not fetch enhanced data (${error.message}) - continuing with basic data`);
+        // Continue without enhanced data - this is not critical
+        enhancedData = null;
       }
     }
     
@@ -293,10 +301,23 @@ const createAdvert = async (req, res) => {
   } catch (error) {
     console.error('❌ [createAdvert] Error creating advert:', error);
     console.error('❌ [createAdvert] Error stack:', error.stack);
+    console.error('❌ [createAdvert] Error name:', error.name);
+    
+    // Handle specific error types
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error',
+        error: error.message,
+        details: error.errors
+      });
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Failed to create advert',
       error: error.message,
+      errorType: error.name,
       ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
     });
   }
