@@ -35,6 +35,18 @@ const createAdvert = async (req, res) => {
       }
     }
     
+    // Normalize transmission value to match enum
+    let normalizedTransmission = vehicleData.transmission || 'manual';
+    if (normalizedTransmission) {
+      normalizedTransmission = normalizedTransmission.toLowerCase().replace(/\s+/g, '-');
+      // Map common variations
+      if (normalizedTransmission === 'semi-automatic' || normalizedTransmission === 'semiautomatic') {
+        normalizedTransmission = 'semi-automatic';
+      } else if (normalizedTransmission === 'auto') {
+        normalizedTransmission = 'automatic';
+      }
+    }
+    
     // Create car
     const car = new Car({
       advertId,
@@ -45,7 +57,7 @@ const createAdvert = async (req, res) => {
       mileage: parseInt(vehicleData.mileage) || 0,
       color: vehicleData.color || 'Not specified',
       fuelType: vehicleData.fuelType || 'Petrol',
-      transmission: vehicleData.transmission || 'manual',
+      transmission: normalizedTransmission,
       price: estimatedPrice,
       estimatedValue: estimatedPrice,
       description: '',

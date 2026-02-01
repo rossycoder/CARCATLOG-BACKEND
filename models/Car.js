@@ -66,7 +66,7 @@ const carSchema = new mongoose.Schema({
       // Transmission is required for manual entries, but can be fetched from API
       return this.dataSource === 'manual' && !this.dataSources?.checkCarDetails;
     },
-    enum: ['automatic', 'manual']
+    enum: ['automatic', 'manual', 'semi-automatic']
   },
   fuelType: {
     type: String,
