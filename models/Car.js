@@ -509,6 +509,142 @@ carSchema.pre('save', async function(next) {
     }
   }
   
+  // CRITICAL: Auto-fetch variant from API if missing (for ANY car with registration)
+  // This runs on EVERY save to ensure variant is always populated
+  if (this.registrationNumber && (!this.variant || this.variant === 'null' || this.variant === 'undefined' || this.variant.trim() === '')) {
+    try {
+      console.log(`🔍 VARIANT MISSING - Fetching from API for: ${this.registrationNumber}`);
+      console.log(`   Current variant value: "${this.variant}"`);
+      
+      const enhancedVehicleService = require('../services/enhancedVehicleService');
+      
+      // Force fresh API call (no cache) to get latest variant data
+      const vehicleData = await enhancedVehicleService.getEnhancedVehicleData(this.registrationNumber, false, this.mileage);
+      
+      console.log(`🔍 API Response for ${this.registrationNumber}:`, {
+        variant: vehicleData.variant,
+        make: vehicleData.make,
+        model: vehicleData.model,
+        engineSize: vehicleData.engineSize
+      });
+      
+      // Extract variant from wrapped API response (handle both direct and wrapped formats)
+      let extractedVariant = null;
+      
+      if (vehicleData.variant) {
+        // Handle wrapped format: { value: "TDI", source: "checkcardetails" }
+        if (typeof vehicleData.variant === 'object' && vehicleData.variant.value) {
+          extractedVariant = vehicleData.variant.value;
+        } 
+        // Handle direct format: "TDI"
+        else if (typeof vehicleData.variant === 'string') {
+          extractedVariant = vehicleData.variant;
+        }
+      }
+      
+      console.log(`🔍 Extracted variant: "${extractedVariant}"`);
+      
+      if (extractedVariant && extractedVariant !== 'null' && extractedVariant !== 'undefined' && extractedVariant.trim() !== '') {
+        this.variant = extractedVariant.trim();
+        console.log(`✅ VARIANT FETCHED FROM API: "${this.variant}"`);
+        
+        // Also update other missing fields from API if available
+        if (!this.engineSize && vehicleData.engineSize) {
+          const engineSize = typeof vehicleData.engineSize === 'object' ? vehicleData.engineSize.value : vehicleData.engineSize;
+          if (engineSize) {
+            this.engineSize = parseFloat(engineSize);
+            console.log(`✅ Engine size updated from API: ${this.engineSize}L`);
+          }
+        }
+        
+        // Regenerate displayTitle with variant
+        const parts = [];
+        if (this.engineSize) {
+          const size = parseFloat(this.engineSize);
+          if (!isNaN(size) && size > 0) {
+            parts.push(size.toFixed(1));
+          }
+        }
+        parts.push(this.variant);
+        if (this.doors && this.doors >= 2 && this.doors <= 5) {
+          parts.push(`${this.doors}dr`);
+        }
+        if (parts.length > 0) {
+          this.displayTitle = parts.join(' ');
+          console.log(`🎯 DISPLAY TITLE UPDATED: "${this.displayTitle}"`);
+        }
+      } else {
+        console.log(`⚠️  NO VARIANT FOUND IN API DATA - Generating fallback variant`);
+        
+        // Generate fallback variant from available data
+        let fallbackVariant = '';
+        
+        if (this.engineSize && this.fuelType) {
+          fallbackVariant = `${this.engineSize}L ${this.fuelType}`;
+        } else if (this.fuelType) {
+          fallbackVariant = this.fuelType;
+        } else {
+          fallbackVariant = 'Standard';
+        }
+        
+        this.variant = fallbackVariant;
+        console.log(`✅ FALLBACK VARIANT GENERATED: "${this.variant}"`);
+        
+        // Update displayTitle with fallback variant
+        const parts = [];
+        if (this.engineSize) {
+          const size = parseFloat(this.engineSize);
+          if (!isNaN(size) && size > 0) {
+            parts.push(size.toFixed(1));
+          }
+        }
+        parts.push(this.variant);
+        if (this.doors && this.doors >= 2 && this.doors <= 5) {
+          parts.push(`${this.doors}dr`);
+        }
+        if (parts.length > 0) {
+          this.displayTitle = parts.join(' ');
+          console.log(`🎯 DISPLAY TITLE WITH FALLBACK: "${this.displayTitle}"`);
+        }
+      }
+    } catch (error) {
+      console.error(`❌ VARIANT FETCH FAILED for ${this.registrationNumber}:`, error.message);
+      
+      // Generate emergency fallback variant even if API fails
+      let emergencyVariant = '';
+      
+      if (this.engineSize && this.fuelType) {
+        emergencyVariant = `${this.engineSize}L ${this.fuelType}`;
+      } else if (this.fuelType) {
+        emergencyVariant = this.fuelType;
+      } else {
+        emergencyVariant = 'Standard';
+      }
+      
+      this.variant = emergencyVariant;
+      console.log(`🚨 EMERGENCY VARIANT SET: "${this.variant}"`);
+      
+      // Update displayTitle with emergency variant
+      const parts = [];
+      if (this.engineSize) {
+        const size = parseFloat(this.engineSize);
+        if (!isNaN(size) && size > 0) {
+          parts.push(size.toFixed(1));
+        }
+      }
+      parts.push(this.variant);
+      if (this.doors && this.doors >= 2 && this.doors <= 5) {
+        parts.push(`${this.doors}dr`);
+      }
+      if (parts.length > 0) {
+        this.displayTitle = parts.join(' ');
+        console.log(`🚨 EMERGENCY DISPLAY TITLE: "${this.displayTitle}"`);
+      }
+    }
+  } else if (this.variant) {
+    console.log(`✅ Variant already exists: "${this.variant}"`);
+  }
+  
   // History check for new listings with registration numbers
   if (this.isNew && this.registrationNumber && this.historyCheckStatus === 'pending') {
     try {

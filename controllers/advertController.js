@@ -47,12 +47,12 @@ const createAdvert = async (req, res) => {
       }
     }
     
-    // Create car
+    // Create car with enhanced variant handling
     const car = new Car({
       advertId,
       make: vehicleData.make || 'Unknown',
       model: vehicleData.model || 'Unknown',
-      variant: vehicleData.variant || null,
+      variant: vehicleData.variant || null, // Will be auto-fetched in pre-save hook if missing
       year: parseInt(vehicleData.year) || new Date().getFullYear(),
       mileage: parseInt(vehicleData.mileage) || 0,
       color: vehicleData.color || 'Not specified',
@@ -74,7 +74,13 @@ const createAdvert = async (req, res) => {
       postcode: vehicleData.postcode || undefined
     });
     
-    await car.save();
+    console.log(`🚗 Creating car with registration: ${car.registrationNumber}`);
+    console.log(`   Initial variant: ${car.variant || 'NOT SET - will be fetched from API'}`);
+    
+    await car.save(); // Pre-save hook will automatically fetch variant if missing
+    
+    console.log(`✅ Car saved with final variant: "${car.variant}"`);
+    console.log(`✅ Car saved with displayTitle: "${car.displayTitle}"`);
     console.log(`✅ Car saved: ${advertId}`);
     
     res.status(201).json({
