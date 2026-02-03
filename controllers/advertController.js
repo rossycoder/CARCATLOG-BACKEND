@@ -403,9 +403,61 @@ const publishAdvert = async (req, res) => {
   }
 };
 
+/**
+ * Delete an advert with automatic cleanup of Vehicle History
+ */
+const deleteAdvert = async (req, res) => {
+  try {
+    console.log('🗑️ [deleteAdvert] Request received');
+    
+    const { id } = req.params;
+    
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Car ID is required'
+      });
+    }
+    
+    console.log(`🗑️ [deleteAdvert] Deleting car: ${id}`);
+    
+    // Use the safe delete method from Car model
+    const result = await Car.deleteCarWithCleanup(id);
+    
+    if (result.success) {
+      console.log('✅ [deleteAdvert] Car and associated data deleted successfully');
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Car and associated data deleted successfully',
+        data: {
+          deletedCarId: id,
+          deletedCar: result.deletedCar
+        }
+      });
+    } else {
+      console.error('❌ [deleteAdvert] Delete failed:', result.error);
+      
+      return res.status(404).json({
+        success: false,
+        message: result.error || 'Car not found'
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ [deleteAdvert] Error:', error);
+    
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to delete advert'
+    });
+  }
+};
+
 module.exports = {
   createAdvert,
   getAdvert,
   updateAdvert,
-  publishAdvert
+  publishAdvert,
+  deleteAdvert
 };
