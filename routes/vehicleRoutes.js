@@ -22,6 +22,12 @@ router.get(
   vehicleController.getFilterOptions.bind(vehicleController)
 );
 
+// GET /api/vehicles/basic-lookup/:registration - Basic vehicle lookup for CarFinder (cheap API)
+router.get(
+  '/basic-lookup/:registration',
+  vehicleController.basicVehicleLookup.bind(vehicleController)
+);
+
 // GET /api/vehicles/enhanced-lookup/:registration - Enhanced vehicle lookup with both APIs
 router.get(
   '/enhanced-lookup/:registration',

@@ -52,6 +52,40 @@ const vehicleHistorySchema = new mongoose.Schema({
   co2Emissions: {
     type: Number,
   },
+  // Running Costs Data
+  urbanMpg: {
+    type: Number,
+  },
+  extraUrbanMpg: {
+    type: Number,
+  },
+  combinedMpg: {
+    type: Number,
+  },
+  annualTax: {
+    type: Number,
+  },
+  insuranceGroup: {
+    type: String,
+  },
+  // Additional vehicle specs
+  doors: {
+    type: Number,
+  },
+  seats: {
+    type: Number,
+  },
+  variant: {
+    type: String,
+    trim: true,
+  },
+  gearbox: {
+    type: Number,
+  },
+  emissionClass: {
+    type: String,
+    trim: true,
+  },
   numberOfPreviousKeepers: {
     type: Number,
     default: 0,
@@ -210,6 +244,40 @@ const vehicleHistorySchema = new mongoose.Schema({
   motExpiryDate: {
     type: Date,
   },
+  // Complete MOT History from API
+  motHistory: [{
+    testDate: Date,
+    expiryDate: Date,
+    testResult: {
+      type: String,
+      enum: ['PASSED', 'FAILED', 'REFUSED']
+    },
+    odometerValue: Number,
+    odometerUnit: {
+      type: String,
+      default: 'mi'
+    },
+    testNumber: String,
+    testCertificateNumber: String,
+    defects: [{
+      type: {
+        type: String,
+        enum: ['ADVISORY', 'MINOR', 'MAJOR', 'DANGEROUS', 'FAIL', 'PRS', 'USER ENTERED']
+      },
+      text: String,
+      dangerous: Boolean
+    }],
+    advisoryText: [String],
+    testClass: String,
+    testType: String,
+    completedDate: Date,
+    testStation: {
+      name: String,
+      number: String,
+      address: String,
+      postcode: String
+    }
+  }],
   hasOutstandingFinance: {
     type: Boolean,
     required: true,
@@ -243,6 +311,31 @@ const vehicleHistorySchema = new mongoose.Schema({
   testMode: {
     type: Boolean,
     default: false,
+  },
+  // CRITICAL FIX: Add valuation data storage
+  valuation: {
+    privatePrice: {
+      type: Number,
+    },
+    dealerPrice: {
+      type: Number,
+    },
+    partExchangePrice: {
+      type: Number,
+    },
+    confidence: {
+      type: String,
+      enum: ['low', 'medium', 'high'],
+      default: 'medium',
+    },
+    estimatedValue: {
+      private: Number,
+      retail: Number,
+      trade: Number,
+    },
+  },
+  mileage: {
+    type: Number,
   },
 }, {
   timestamps: true,

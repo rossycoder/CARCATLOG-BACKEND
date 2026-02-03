@@ -28,6 +28,8 @@ async function checkLatestActiveCar() {
     console.log('Advert ID:', latestCar.advertId);
     console.log('Registration:', latestCar.registrationNumber);
     console.log('Make/Model:', `${latestCar.make} ${latestCar.model}`);
+    console.log('Variant:', latestCar.variant || 'NOT SET');
+    console.log('Display Title:', latestCar.displayTitle || 'NOT SET');
     console.log('Year:', latestCar.year);
     console.log('Mileage:', latestCar.mileage);
     console.log('Price:', `£${latestCar.price}`);

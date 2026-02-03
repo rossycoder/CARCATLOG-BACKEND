@@ -177,69 +177,187 @@ const getAdvert = async (req, res) => {
  */
 const updateAdvert = async (req, res) => {
   try {
+    console.log('📝 [updateAdvert] Request received');
+    console.log('📝 [updateAdvert] Params:', req.params);
+    console.log('📝 [updateAdvert] Body keys:', Object.keys(req.body));
+    
     const { advertId } = req.params;
     const { advertData, vehicleData, contactDetails } = req.body;
     
-    let car;
-    if (/^[0-9a-fA-F]{24}$/.test(advertId)) {
-      car = await Car.findById(advertId);
-    } else {
-      car = await Car.findOne({ advertId });
+    // Use findOneAndUpdate with retry logic to handle version conflicts
+    const maxRetries = 3;
+    let attempt = 0;
+    
+    while (attempt < maxRetries) {
+      try {
+        // Refresh car document for each attempt to get latest version
+        let car;
+        if (/^[0-9a-fA-F]{24}$/.test(advertId)) {
+          car = await Car.findById(advertId);
+        } else {
+          car = await Car.findOne({ advertId });
+        }
+        
+        if (!car) {
+          console.log('❌ [updateAdvert] Car not found:', advertId);
+          return res.status(404).json({
+            success: false,
+            message: 'Advert not found'
+          });
+        }
+        
+        console.log(`✅ [updateAdvert] Car found (attempt ${attempt + 1}):`, car.advertId);
+        console.log(`📊 [updateAdvert] Current car version: ${car.__v}`);
+        console.log(`📊 [updateAdvert] Request data:`, {
+          hasAdvertData: !!advertData,
+          hasVehicleData: !!vehicleData,
+          hasContactDetails: !!contactDetails,
+          advertDataKeys: advertData ? Object.keys(advertData) : [],
+          vehicleDataKeys: vehicleData ? Object.keys(vehicleData) : [],
+          contactDetailsKeys: contactDetails ? Object.keys(contactDetails) : []
+        });
+        
+        // Build update object instead of modifying the document directly
+        const updateObj = {};
+        
+        // Update vehicle data (exclude version field to avoid conflicts)
+        if (vehicleData) {
+          console.log('📝 [updateAdvert] Updating vehicle data');
+          const { __v, _id, createdAt, updatedAt, ...cleanVehicleData } = vehicleData;
+          Object.assign(updateObj, cleanVehicleData);
+        }
+        
+        // Update advert data
+        if (advertData) {
+          console.log('📝 [updateAdvert] Updating advert data');
+          if (advertData.price) updateObj.price = parseFloat(advertData.price);
+          if (advertData.hasOwnProperty('description')) {
+            // Handle description explicitly, including empty strings
+            // If description is empty and car requires description, provide a default
+            let description = advertData.description || '';
+            if (!description && car.dataSource !== 'DVLA') {
+              description = 'No description provided.';
+              console.log('📝 [updateAdvert] Empty description provided for non-DVLA car, using default');
+            }
+            updateObj.description = description;
+            console.log('📝 [updateAdvert] Updating description:', `"${description}"`);
+          }
+          if (advertData.photos) updateObj.images = advertData.photos.map(p => p.url || p);
+          if (advertData.features) {
+            console.log('📝 [updateAdvert] Updating features:', advertData.features);
+            updateObj.features = advertData.features;
+          }
+        }
+        
+        // Update contact details
+        if (contactDetails) {
+          console.log('📝 [updateAdvert] Updating contact details');
+          updateObj.sellerContact = {
+            phoneNumber: contactDetails.phoneNumber,
+            email: contactDetails.email,
+            postcode: contactDetails.postcode,
+            allowEmailContact: contactDetails.allowEmailContact
+          };
+          if (contactDetails.postcode) updateObj.postcode = contactDetails.postcode;
+        }
+        
+        // Auto-activate if complete
+        const hasImages = (updateObj.images || car.images) && (updateObj.images || car.images).length > 0;
+        const hasContact = (updateObj.sellerContact || car.sellerContact)?.phoneNumber && 
+                          (updateObj.sellerContact || car.sellerContact)?.email;
+        const hasPrice = (updateObj.price || car.price) > 0;
+        
+        if (hasImages && hasContact && hasPrice && car.advertStatus === 'incomplete') {
+          updateObj.advertStatus = 'active';
+          updateObj.publishedAt = new Date();
+        }
+        
+        console.log('💾 [updateAdvert] Using findOneAndUpdate to avoid version conflicts...');
+        
+        // Remove any MongoDB internal fields that might cause conflicts
+        const mongoInternalFields = ['__v', '_id', 'createdAt', 'updatedAt'];
+        mongoInternalFields.forEach(field => {
+          if (updateObj.hasOwnProperty(field)) {
+            console.log(`⚠️ [updateAdvert] Removing internal field: ${field}`);
+            delete updateObj[field];
+          }
+        });
+        
+        console.log('💾 [updateAdvert] Update object keys:', Object.keys(updateObj));
+        console.log('💾 [updateAdvert] Query:', { _id: car._id, __v: car.__v });
+        
+        // Use findOneAndUpdate with the current version to handle concurrency
+        const updatedCar = await Car.findOneAndUpdate(
+          { 
+            _id: car._id,
+            __v: car.__v  // Include version in query to handle optimistic concurrency
+          },
+          { 
+            $set: updateObj,
+            $inc: { __v: 1 }  // Increment version
+          },
+          { 
+            new: true,  // Return updated document
+            runValidators: true,  // Run schema validators
+            context: 'query'  // Set validation context to 'query' for proper 'this' binding
+          }
+        );
+        
+        console.log('💾 [updateAdvert] findOneAndUpdate result:', !!updatedCar);
+        
+        if (!updatedCar) {
+          // Document was modified by another process, retry
+          console.log(`⚠️ [updateAdvert] Version conflict on attempt ${attempt + 1}, retrying...`);
+          attempt++;
+          await new Promise(resolve => setTimeout(resolve, 100 * attempt)); // Exponential backoff
+          continue;
+        }
+        
+        console.log('✅ [updateAdvert] Car updated successfully');
+        
+        return res.json({
+          success: true,
+          data: {
+            id: advertId,
+            status: updatedCar.advertStatus
+          },
+          message: 'Advert updated successfully'
+        });
+        
+      } catch (error) {
+        console.error(`❌ [updateAdvert] Error on attempt ${attempt + 1}:`, error.message);
+        
+        if (error.name === 'VersionError' && attempt < maxRetries - 1) {
+          console.log(`⚠️ [updateAdvert] Version error on attempt ${attempt + 1}, retrying...`);
+          attempt++;
+          await new Promise(resolve => setTimeout(resolve, 100 * attempt)); // Exponential backoff
+          continue;
+        }
+        
+        if (error.name === 'MongoServerError' && error.code === 11000 && attempt < maxRetries - 1) {
+          console.log(`⚠️ [updateAdvert] Duplicate key error on attempt ${attempt + 1}, retrying...`);
+          attempt++;
+          await new Promise(resolve => setTimeout(resolve, 100 * attempt)); // Exponential backoff
+          continue;
+        }
+        
+        if (error.message && error.message.includes('version') && attempt < maxRetries - 1) {
+          console.log(`⚠️ [updateAdvert] Version-related error on attempt ${attempt + 1}, retrying...`);
+          attempt++;
+          await new Promise(resolve => setTimeout(resolve, 100 * attempt)); // Exponential backoff
+          continue;
+        }
+        
+        throw error; // Re-throw if not a retryable error or max retries reached
+      }
     }
     
-    if (!car) {
-      return res.status(404).json({
-        success: false,
-        message: 'Advert not found'
-      });
-    }
+    // If we get here, all retries failed
+    throw new Error('Failed to update after multiple attempts due to concurrent modifications');
     
-    // Update vehicle data
-    if (vehicleData) {
-      Object.assign(car, vehicleData);
-    }
-    
-    // Update advert data
-    if (advertData) {
-      if (advertData.price) car.price = parseFloat(advertData.price);
-      if (advertData.description) car.description = advertData.description;
-      if (advertData.photos) car.images = advertData.photos.map(p => p.url || p);
-      if (advertData.features) car.features = advertData.features;
-    }
-    
-    // Update contact details
-    if (contactDetails) {
-      car.sellerContact = {
-        phoneNumber: contactDetails.phoneNumber,
-        email: contactDetails.email,
-        postcode: contactDetails.postcode,
-        allowEmailContact: contactDetails.allowEmailContact
-      };
-      if (contactDetails.postcode) car.postcode = contactDetails.postcode;
-    }
-    
-    // Auto-activate if complete
-    const hasImages = car.images && car.images.length > 0;
-    const hasContact = car.sellerContact?.phoneNumber && car.sellerContact?.email;
-    const hasPrice = car.price > 0;
-    
-    if (hasImages && hasContact && hasPrice && car.advertStatus === 'incomplete') {
-      car.advertStatus = 'active';
-      car.publishedAt = new Date();
-    }
-    
-    await car.save();
-    
-    res.json({
-      success: true,
-      data: {
-        id: advertId,
-        status: car.advertStatus
-      },
-      message: 'Advert updated successfully'
-    });
   } catch (error) {
-    console.error('Error updating advert:', error);
+    console.error('❌ [updateAdvert] Error updating advert:', error);
+    console.error('❌ [updateAdvert] Error stack:', error.stack);
     res.status(500).json({
       success: false,
       message: 'Failed to update advert',

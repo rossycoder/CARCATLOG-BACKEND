@@ -28,15 +28,94 @@ class EnhancedVehicleService {
    * @returns {Promise<Object>} Merged vehicle data with source tracking
    */
   async getEnhancedVehicleData(registration, useCache = true, mileage = null) {
-    console.log(`Enhanced vehicle lookup for: ${registration}`);
+    console.log(`Enhanced vehicle lookup for: ${registration}, useCache: ${useCache}`);
     
-    // Check cache first if enabled
-    if (useCache) {
-      const cachedData = await this.checkCache(registration);
-      if (cachedData) {
-        console.log(`Cache hit for ${registration}`);
+    // Check cache first to prevent duplicate API calls
+    const cachedData = await this.checkCache(registration);
+    if (cachedData) {
+      // CRITICAL FIX: Check if cached data includes valuation
+      const hasValuation = cachedData.valuation || 
+                          (cachedData.runningCosts && cachedData.runningCosts.annualTax) ||
+                          cachedData.dataSources?.valuation;
+      
+      console.log(`🔍 Cache analysis for ${registration}:`);
+      console.log(`   - Has valuation object: ${!!cachedData.valuation}`);
+      console.log(`   - Has running costs with tax: ${!!(cachedData.runningCosts && cachedData.runningCosts.annualTax)}`);
+      console.log(`   - Data sources valuation flag: ${cachedData.dataSources?.valuation}`);
+      console.log(`   - Overall hasValuation: ${hasValuation}`);
+      
+      if (hasValuation) {
+        console.log(`✅ CACHE HIT for ${registration} - Using complete cached data with valuation`);
         return cachedData;
+      } else {
+        console.log(`⚠️ CACHE HIT for ${registration} but missing valuation data - fetching valuation only`);
+        
+        // Get valuation data only (vehicle data is already cached)
+        const estimatedMileage = mileage || cachedData.mileage || 50000;
+        console.log(`🔍 Fetching valuation with mileage: ${estimatedMileage}`);
+        
+        const valuationResult = await Promise.allSettled([
+          this.callValuationAPI(registration, estimatedMileage)
+        ]);
+        
+        const valuationData = valuationResult[0].status === 'fulfilled' ? valuationResult[0].value : null;
+        
+        if (valuationData) {
+          console.log(`✅ Valuation data fetched for cached vehicle: ${registration}`);
+          console.log(`💰 Valuation prices:`, valuationData.estimatedValue);
+          
+          // Merge valuation with cached data
+          const mergedData = dataMerger.merge(cachedData, valuationData);
+          mergedData.registration = registration;
+          
+          // CRITICAL FIX: Add runningCosts object for frontend compatibility
+          if (!mergedData.runningCosts) {
+            mergedData.runningCosts = {
+              fuelEconomy: {
+                urban: mergedData.fuelEconomy?.urban?.value || mergedData.fuelEconomy?.urban || mergedData.urbanMpg || null,
+                extraUrban: mergedData.fuelEconomy?.extraUrban?.value || mergedData.fuelEconomy?.extraUrban || mergedData.extraUrbanMpg || null,
+                combined: mergedData.fuelEconomy?.combined?.value || mergedData.fuelEconomy?.combined || mergedData.combinedMpg || null
+              },
+              annualTax: mergedData.annualTax?.value || mergedData.annualTax || null,
+              insuranceGroup: mergedData.insuranceGroup?.value || mergedData.insuranceGroup || null,
+              co2Emissions: mergedData.co2Emissions?.value || mergedData.co2Emissions || null
+            };
+            console.log(`✅ Added runningCosts object to cached merged data:`, mergedData.runningCosts);
+          }
+          
+          // Update cache with valuation data
+          await this.cacheData(registration, mergedData);
+          
+          return mergedData;
+        } else {
+          console.log(`⚠️ Valuation fetch failed, returning cached data without valuation`);
+          
+          // CRITICAL FIX: Add runningCosts object to cached data too
+          if (!cachedData.runningCosts) {
+            cachedData.runningCosts = {
+              fuelEconomy: {
+                urban: cachedData.fuelEconomy?.urban?.value || cachedData.fuelEconomy?.urban || cachedData.urbanMpg || null,
+                extraUrban: cachedData.fuelEconomy?.extraUrban?.value || cachedData.fuelEconomy?.extraUrban || cachedData.extraUrbanMpg || null,
+                combined: cachedData.fuelEconomy?.combined?.value || cachedData.fuelEconomy?.combined || cachedData.combinedMpg || null
+              },
+              annualTax: cachedData.annualTax?.value || cachedData.annualTax || null,
+              insuranceGroup: cachedData.insuranceGroup?.value || cachedData.insuranceGroup || null,
+              co2Emissions: cachedData.co2Emissions?.value || cachedData.co2Emissions || null
+            };
+            console.log(`✅ Added runningCosts object to cached data:`, cachedData.runningCosts);
+          }
+          
+          return cachedData;
+        }
       }
+    }
+    
+    console.log(`❌ CACHE MISS for ${registration} - Making fresh API calls`);
+    
+    // If useCache is false and we have cached data, we still return cached data to prevent duplicates
+    // Only make fresh API calls if no cache exists at all
+    if (!useCache) {
+      console.log(`⚠️  useCache=false but we still check cache to prevent duplicate API calls`);
     }
 
     // Call CheckCarDetails first to get vehicle data and mileage if not provided
@@ -74,6 +153,20 @@ class EnhancedVehicleService {
       mergedData.historyCheckId = savedHistory._id;
       console.log(`✅ History document ID added to merged data: ${savedHistory._id}`);
     }
+
+    // CRITICAL FIX: Add runningCosts object for frontend compatibility
+    // Always ensure runningCosts has unwrapped values for frontend
+    mergedData.runningCosts = {
+      fuelEconomy: {
+        urban: mergedData.runningCosts?.fuelEconomy?.urban?.value || mergedData.fuelEconomy?.urban?.value || mergedData.fuelEconomy?.urban || mergedData.urbanMpg || null,
+        extraUrban: mergedData.runningCosts?.fuelEconomy?.extraUrban?.value || mergedData.fuelEconomy?.extraUrban?.value || mergedData.fuelEconomy?.extraUrban || mergedData.extraUrbanMpg || null,
+        combined: mergedData.runningCosts?.fuelEconomy?.combined?.value || mergedData.fuelEconomy?.combined?.value || mergedData.fuelEconomy?.combined || mergedData.combinedMpg || null
+      },
+      annualTax: mergedData.runningCosts?.annualTax?.value || mergedData.annualTax?.value || mergedData.annualTax || null,
+      insuranceGroup: mergedData.runningCosts?.insuranceGroup?.value || mergedData.insuranceGroup?.value || mergedData.insuranceGroup || null,
+      co2Emissions: mergedData.runningCosts?.co2Emissions?.value || mergedData.co2Emissions?.value || mergedData.co2Emissions || null
+    };
+    console.log(`✅ Unwrapped runningCosts object:`, JSON.stringify(mergedData.runningCosts, null, 2));
 
     return mergedData;
   }
@@ -272,18 +365,105 @@ class EnhancedVehicleService {
         return null;
       }
 
-      // Check if cache is still valid (within TTL)
+      // Check if cache is still valid (within TTL - 30 days)
       const cacheAge = Date.now() - new Date(cached.checkDate).getTime();
       if (cacheAge > this.cacheTTL) {
         console.log(`Cache expired for ${registration} (age: ${Math.round(cacheAge / (24 * 60 * 60 * 1000))} days)`);
         return null;
       }
 
-      // Reconstruct merged data format from cached fields
-      // Note: We don't cache the full merged data structure, just basic fields
-      // So we return null to force a fresh API call for complete data
-      console.log(`Cache found for ${registration} but returning null to get fresh complete data`);
-      return null;
+      // Check if cache has all important fields - if missing, force refresh
+      const importantFields = ['bodyType', 'doors', 'seats', 'variant', 'gearbox', 'emissionClass', 'urbanMpg', 'extraUrbanMpg', 'combinedMpg', 'annualTax'];
+      const missingFields = importantFields.filter(field => !cached[field]);
+      
+      if (missingFields.length > 0) {
+        console.log(`Cache incomplete for ${registration} - missing fields: ${missingFields.join(', ')}`);
+        console.log(`Forcing fresh API call to get complete data including running costs`);
+        return null;
+      }
+
+      // Reconstruct merged data format from cached VehicleHistory
+      const cachedData = {
+        registration: cached.vrm,
+        make: { value: cached.make, source: 'cached' },
+        model: { value: cached.model, source: 'cached' },
+        variant: { value: cached.variant, source: 'cached' },
+        color: { value: cached.colour, source: 'cached' },
+        fuelType: { value: cached.fuelType, source: 'cached' },
+        year: { value: cached.yearOfManufacture, source: 'cached' },
+        engineSize: { value: cached.engineCapacity, source: 'cached' },
+        bodyType: { value: cached.bodyType, source: 'cached' },
+        transmission: { value: cached.transmission, source: 'cached' },
+        doors: { value: cached.doors, source: 'cached' },
+        seats: { value: cached.seats, source: 'cached' },
+        gearbox: { value: cached.gearbox, source: 'cached' },
+        emissionClass: { value: cached.emissionClass, source: 'cached' },
+        
+        // History data (direct values, not wrapped)
+        numberOfPreviousKeepers: cached.numberOfPreviousKeepers || cached.previousOwners || 0,
+        previousOwners: cached.numberOfPreviousKeepers || cached.previousOwners || 0,
+        numberOfOwners: cached.numberOfPreviousKeepers || cached.previousOwners || 0,
+        v5cCertificateCount: cached.v5cCertificateCount || 0,
+        plateChanges: cached.plateChanges || 0,
+        colourChanges: cached.colourChanges || 0,
+        vicCount: cached.vicCount || 0,
+        
+        // Safety checks
+        isStolen: cached.isStolen || false,
+        isWrittenOff: cached.isWrittenOff || false,
+        hasAccidentHistory: cached.hasAccidentHistory || false,
+        hasOutstandingFinance: cached.hasOutstandingFinance || false,
+        
+        // Write-off details
+        writeOffCategory: cached.writeOffCategory || 'none',
+        writeOffDetails: cached.writeOffDetails || {},
+        
+        // MOT data
+        motHistory: cached.motHistory || [],
+        motStatus: cached.motStatus,
+        motExpiryDate: cached.motExpiryDate,
+        
+        // Running costs
+        runningCosts: {
+          fuelEconomy: {
+            urban: { value: cached.urbanMpg, source: 'cached' },
+            extraUrban: { value: cached.extraUrbanMpg, source: 'cached' },
+            combined: { value: cached.combinedMpg, source: 'cached' }
+          },
+          co2Emissions: { value: cached.co2Emissions, source: 'cached' },
+          annualTax: { value: cached.annualTax, source: 'cached' },
+          insuranceGroup: { value: cached.insuranceGroup, source: 'cached' }
+        },
+        
+        // CRITICAL FIX: Include valuation data if available in cache
+        valuation: cached.valuation ? {
+          vrm: cached.vrm,
+          mileage: cached.mileage || 50000,
+          estimatedValue: cached.valuation.estimatedValue || {
+            private: cached.valuation.privatePrice,
+            retail: cached.valuation.dealerPrice,
+            trade: cached.valuation.partExchangePrice
+          },
+          confidence: cached.valuation.confidence || 'medium',
+          source: 'cached'
+        } : null,
+        
+        // Metadata
+        historyCheckId: cached._id,
+        checkDate: cached.checkDate,
+        apiProvider: cached.apiProvider || 'CheckCarDetails',
+        
+        // Data sources tracking - CRITICAL: Include valuation source
+        dataSources: {
+          checkCarDetails: true,
+          cached: true,
+          valuation: !!cached.valuation // Mark if valuation data is available
+        }
+      };
+
+      console.log(`✅ Cache hit for ${registration} (age: ${Math.round(cacheAge / (60 * 60 * 1000))} hours) - Using complete cached data`);
+      return cachedData;
+      
     } catch (error) {
       console.error(`Cache check error for ${registration}:`, error.message);
       return null;
@@ -330,13 +510,38 @@ class EnhancedVehicleService {
         isImported: mergedData.isImported || false,
         isExported: mergedData.isExported || false,
         hasOutstandingFinance: mergedData.hasOutstandingFinance || false,
-        // Write-off category and details
+        // CRITICAL FIX: Write-off category and details - preserve the extracted category
         writeOffCategory: mergedData.writeOffCategory || mergedData.writeOffDetails?.category || 'none',
         writeOffDetails: mergedData.writeOffDetails || {
           category: mergedData.writeOffCategory || 'none',
           date: null,
           description: null
         },
+        // CRITICAL: Store all important fields from merged data
+        variant: mergedData.variant?.value || mergedData.variant || mergedData.modelVariant?.value || mergedData.modelVariant || null,
+        bodyType: mergedData.bodyType?.value || mergedData.bodyType || null,
+        doors: mergedData.doors?.value || mergedData.doors || null,
+        seats: mergedData.seats?.value || mergedData.seats || null,
+        gearbox: mergedData.gearbox?.value || mergedData.gearbox || null,
+        emissionClass: mergedData.emissionClass?.value || mergedData.emissionClass || null,
+        
+        // CRITICAL: Store running costs data
+        urbanMpg: mergedData.runningCosts?.fuelEconomy?.urban?.value || mergedData.fuelEconomy?.urban || null,
+        extraUrbanMpg: mergedData.runningCosts?.fuelEconomy?.extraUrban?.value || mergedData.fuelEconomy?.extraUrban || null,
+        combinedMpg: mergedData.runningCosts?.fuelEconomy?.combined?.value || mergedData.fuelEconomy?.combined || null,
+        annualTax: mergedData.runningCosts?.annualTax?.value || mergedData.annualTax || null,
+        insuranceGroup: mergedData.runningCosts?.insuranceGroup?.value || mergedData.insuranceGroup || null,
+        
+        // CRITICAL FIX: Store valuation data properly
+        valuation: mergedData.valuation ? {
+          privatePrice: mergedData.valuation.estimatedValue?.private,
+          dealerPrice: mergedData.valuation.estimatedValue?.retail,
+          partExchangePrice: mergedData.valuation.estimatedValue?.trade,
+          confidence: mergedData.valuation.confidence,
+          estimatedValue: mergedData.valuation.estimatedValue
+        } : null,
+        mileage: mergedData.valuation?.mileage || mergedData.mileage || null,
+        
         numberOfKeys: mergedData.numberOfKeys || 1,
         keys: mergedData.numberOfKeys || 1,
         serviceHistory: mergedData.serviceHistory || 'Contact seller',

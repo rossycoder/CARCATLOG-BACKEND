@@ -408,11 +408,13 @@ async function handlePaymentSuccess(paymentIntent) {
     const paymentData = await stripeService.processSuccessfulPayment(paymentIntent);
     
     if (paymentData.type === 'vehicle_history_report' && paymentData.vrm) {
-      // Generate vehicle history report
-      const historyService = new HistoryService();
-      await historyService.checkVehicleHistory(paymentData.vrm, true);
-      
-      console.log(`Vehicle history report generated for VRM: ${paymentData.vrm}`);
+      // CRITICAL: Only call API during payment processing, not for display
+      // Generate vehicle history report only if payment is successful
+      if (paymentData.vrm) {
+        const historyService = new HistoryService();
+        await historyService.checkVehicleHistory(paymentData.vrm, true);
+        console.log(`Vehicle history report generated for VRM: ${paymentData.vrm}`);
+      }
       
       // TODO: Send email with report link
       // TODO: Store payment record in database
@@ -774,8 +776,43 @@ async function handlePaymentSuccess(paymentIntent) {
               // UPDATE existing car with payment data
               console.log(`📝 Updating existing car: ${car._id}`);
               
-              // Get userId from purchase metadata
-              const userId = purchase.metadata.get('userId');
+              // Get userId from purchase metadata or create user automatically
+              let userId = purchase.metadata.get('userId');
+              
+              // AUTOMATIC FIX: Create user account if it doesn't exist
+              if (!userId && contactDetails.email) {
+                console.log(`👤 No userId found, checking if user exists for email: ${contactDetails.email}`);
+                
+                const User = require('../models/User');
+                let user = await User.findOne({ email: contactDetails.email });
+                
+                if (!user) {
+                  // Create user account automatically
+                  console.log(`👤 Creating new user account for: ${contactDetails.email}`);
+                  const bcrypt = require('bcryptjs');
+                  
+                  const tempPassword = Math.random().toString(36).slice(-8);
+                  const hashedPassword = await bcrypt.hash(tempPassword, 10);
+                  
+                  user = new User({
+                    name: contactDetails.email.split('@')[0],
+                    email: contactDetails.email,
+                    password: hashedPassword,
+                    isEmailVerified: true, // Auto-verify since they completed payment
+                    provider: 'local',
+                    role: 'user'
+                  });
+                  
+                  await user.save();
+                  console.log(`✅ User created automatically: ${user._id}`);
+                  console.log(`   Temp password: ${tempPassword}`);
+                } else {
+                  console.log(`✅ Found existing user: ${user._id}`);
+                }
+                
+                userId = user._id;
+              }
+              
               if (userId && !car.userId) {
                 car.userId = userId;
                 console.log(`   Setting userId: ${userId}`);
@@ -823,6 +860,33 @@ async function handlePaymentSuccess(paymentIntent) {
               
               await car.save();
               console.log(`✅ Car advert UPDATED and published!`);
+              
+              // CRITICAL: Fetch comprehensive vehicle data after payment (Vehicle History + MOT + Valuation)
+              if (car.registrationNumber) {
+                try {
+                  console.log(`🔍 Fetching comprehensive vehicle data for: ${car.registrationNumber}`);
+                  const ComprehensiveVehicleService = require('../services/comprehensiveVehicleService');
+                  const comprehensiveService = new ComprehensiveVehicleService();
+                  
+                  const result = await comprehensiveService.fetchCompleteVehicleData(
+                    car.registrationNumber,
+                    car.mileage,
+                    false // Use cache if available
+                  );
+                  
+                  console.log(`✅ Comprehensive data fetched - API calls: ${result.apiCalls}, Cost: £${result.totalCost.toFixed(2)}`);
+                  
+                  // Update car with historyCheckId if available
+                  if (result.historyCheckId) {
+                    car.historyCheckId = result.historyCheckId;
+                    await car.save();
+                    console.log(`✅ Car linked to vehicle history: ${result.historyCheckId}`);
+                  }
+                } catch (error) {
+                  console.error(`⚠️ Failed to fetch comprehensive data: ${error.message}`);
+                  // Don't fail the payment - car is still published
+                }
+              }
             } else {
               // Check if a car with this payment intent already exists (prevent duplicates)
               const existingCarWithPayment = await Car.findOne({
@@ -837,11 +901,56 @@ async function handlePaymentSuccess(paymentIntent) {
               // CREATE new car document with ALL data
               console.log(`📝 Creating NEW car document`);
               
-              // Get userId from purchase metadata
-              const userId = purchase.metadata.get('userId');
+              // Get userId from purchase metadata or create user automatically
+              let userId = purchase.metadata.get('userId');
+              
+              // AUTOMATIC FIX: Create user account if it doesn't exist
+              if (!userId && contactDetails.email) {
+                console.log(`👤 No userId found, checking if user exists for email: ${contactDetails.email}`);
+                
+                const User = require('../models/User');
+                let user = await User.findOne({ email: contactDetails.email });
+                
+                if (!user) {
+                  // Create user account automatically
+                  console.log(`👤 Creating new user account for: ${contactDetails.email}`);
+                  const bcrypt = require('bcryptjs');
+                  
+                  const tempPassword = Math.random().toString(36).slice(-8);
+                  const hashedPassword = await bcrypt.hash(tempPassword, 10);
+                  
+                  user = new User({
+                    name: contactDetails.email.split('@')[0],
+                    email: contactDetails.email,
+                    password: hashedPassword,
+                    isEmailVerified: true, // Auto-verify since they completed payment
+                    provider: 'local',
+                    role: 'user'
+                  });
+                  
+                  await user.save();
+                  console.log(`✅ User created automatically: ${user._id}`);
+                  console.log(`   Temp password: ${tempPassword}`);
+                } else {
+                  console.log(`✅ Found existing user: ${user._id}`);
+                }
+                
+                userId = user._id;
+              }
+              
               if (userId) {
                 console.log(`   Setting userId: ${userId}`);
               }
+              
+              // CRITICAL FIX: Normalize data before creating car
+              const normalizedEngineSize = vehicleData.engineSize ? 
+                parseFloat(String(vehicleData.engineSize).replace(/[^0-9.]/g, '')) : null;
+              
+              const normalizedTransmission = vehicleData.transmission ? 
+                vehicleData.transmission.toLowerCase().replace(/\s+/g, '-') : 'manual';
+              
+              console.log(`   Engine size: "${vehicleData.engineSize}" → ${normalizedEngineSize}`);
+              console.log(`   Transmission: "${vehicleData.transmission}" → "${normalizedTransmission}"`);
               
               car = new Car({
               advertId: advertId,
@@ -856,9 +965,9 @@ async function handlePaymentSuccess(paymentIntent) {
               mileage: vehicleData.mileage || 0,
               color: vehicleData.color || 'Not specified',
               fuelType: vehicleData.fuelType || 'Petrol',
-              transmission: vehicleData.transmission || 'manual',
+              transmission: normalizedTransmission,
               registrationNumber: vehicleData.registrationNumber,
-              engineSize: vehicleData.engineSize,
+              engineSize: normalizedEngineSize,
               bodyType: vehicleData.bodyType,
               doors: vehicleData.doors,
               seats: vehicleData.seats,
@@ -913,6 +1022,33 @@ async function handlePaymentSuccess(paymentIntent) {
             
               await car.save();
               console.log(`✅ Car advert CREATED and published in database!`);
+              
+              // CRITICAL: Fetch comprehensive vehicle data after payment (Vehicle History + MOT + Valuation)
+              if (car.registrationNumber) {
+                try {
+                  console.log(`🔍 Fetching comprehensive vehicle data for: ${car.registrationNumber}`);
+                  const ComprehensiveVehicleService = require('../services/comprehensiveVehicleService');
+                  const comprehensiveService = new ComprehensiveVehicleService();
+                  
+                  const result = await comprehensiveService.fetchCompleteVehicleData(
+                    car.registrationNumber,
+                    car.mileage,
+                    false // Use cache if available
+                  );
+                  
+                  console.log(`✅ Comprehensive data fetched - API calls: ${result.apiCalls}, Cost: £${result.totalCost.toFixed(2)}`);
+                  
+                  // Update car with historyCheckId if available
+                  if (result.historyCheckId) {
+                    car.historyCheckId = result.historyCheckId;
+                    await car.save();
+                    console.log(`✅ Car linked to vehicle history: ${result.historyCheckId}`);
+                  }
+                } catch (error) {
+                  console.error(`⚠️ Failed to fetch comprehensive data: ${error.message}`);
+                  // Don't fail the payment - car is still published
+                }
+              }
             }
             
             // Log final car details

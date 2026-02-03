@@ -1,8 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const historyController = require('../controllers/historyController');
+const vehicleHistoryController = require('../controllers/vehicleHistoryController');
 
-// POST /api/vehicle-history/check - Perform new history check
+// GET /api/vehicle-history/cached/:vrm - Get cached history (no API calls)
+router.get('/cached/:vrm', vehicleHistoryController.getCachedVehicleHistory);
+
+// POST /api/vehicle-history/check - Perform new history check (admin only)
 router.post('/check', historyController.checkVehicleHistory);
 
 // GET /api/vehicle-history/mot/:vrm - Get MOT history for a vehicle

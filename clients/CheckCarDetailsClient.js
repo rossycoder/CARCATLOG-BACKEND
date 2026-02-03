@@ -18,7 +18,8 @@ class CheckCarDetailsClient {
     
     // Log configuration (without exposing full API key)
     const keyPreview = this.apiKey ? `${this.apiKey.substring(0, 8)}...` : 'NOT SET';
-    console.log(`CheckCarDetails Client initialized: ${this.isTestMode ? 'TEST' : 'PRODUCTION'} mode, API Key: ${keyPreview}`);
+    console.log(`CheckCarDetails Client initialized: ${this.isTestMode ? 'TEST' : 'PRODUCTION'} mode`);
+    console.log(`Base URL: ${this.baseURL}, API Key: ${keyPreview}`);
   }
 
   /**
@@ -334,7 +335,7 @@ class CheckCarDetailsClient {
       ),
       aspiration: powerSource.IceDetails?.Aspiration || smmtDetails.Aspiration || data.Aspiration || null,
       fuelDelivery: powerSource.IceDetails?.FuelDelivery || data.FuelDelivery || null,
-      bodyType: vehicleId.DvlaBodyType || bodyDetails.BodyStyle || smmtDetails.BodyStyle || data.BodyType || null,
+      bodyType: bodyDetails.BodyStyle || vehicleId.DvlaBodyType || smmtDetails.BodyStyle || data.BodyType || null,
       bodyShape: bodyDetails.BodyShape || smmtDetails.BodyShape || data.BodyShape || null,
       doors: this.extractNumber(
         bodyDetails.NumberOfDoors || 

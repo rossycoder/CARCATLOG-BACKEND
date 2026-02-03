@@ -59,6 +59,10 @@ async function checkVehicleHistory(req, res) {
   // Extract vrm outside try block so it's available in catch
   const { vrm, forceRefresh = false } = req.body;
   
+  // CRITICAL: Prevent API charges - only allow forceRefresh for admin/creation
+  // For regular page views, always use cached data
+  const shouldForceRefresh = forceRefresh && req.headers['x-admin-request'] === 'true';
+  
   try {
     if (!vrm) {
       return res.status(400).json({
@@ -68,7 +72,7 @@ async function checkVehicleHistory(req, res) {
     }
 
     const historyService = new HistoryService();
-    const history = await historyService.checkVehicleHistory(vrm, forceRefresh);
+    const history = await historyService.checkVehicleHistory(vrm, shouldForceRefresh);
 
     res.json({
       success: true,

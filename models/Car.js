@@ -198,6 +198,67 @@ const carSchema = new mongoose.Schema({
   motExpiry: {
     type: Date
   },
+  // MOT History Array - Complete test history
+  motHistory: [{
+    testDate: {
+      type: Date,
+      required: true
+    },
+    expiryDate: {
+      type: Date
+    },
+    testResult: {
+      type: String,
+      enum: ['PASSED', 'FAILED', 'REFUSED'],
+      required: true
+    },
+    odometerValue: {
+      type: Number,
+      min: 0
+    },
+    odometerUnit: {
+      type: String,
+      enum: ['mi', 'km'],
+      default: 'mi'
+    },
+    testNumber: {
+      type: String,
+      trim: true
+    },
+    testCertificateNumber: {
+      type: String,
+      trim: true
+    },
+    defects: [{
+      type: {
+        type: String,
+        enum: ['ADVISORY', 'MINOR', 'MAJOR', 'DANGEROUS', 'FAIL', 'PRS', 'USER ENTERED']
+      },
+      text: String,
+      dangerous: {
+        type: Boolean,
+        default: false
+      }
+    }],
+    advisoryText: [String],
+    testClass: {
+      type: String,
+      trim: true
+    },
+    testType: {
+      type: String,
+      trim: true
+    },
+    completedDate: {
+      type: Date
+    },
+    testStation: {
+      name: String,
+      number: String,
+      address: String,
+      postcode: String
+    }
+  }],
   dvlaLastUpdated: {
     type: Date
   },
@@ -513,19 +574,21 @@ carSchema.pre('save', async function(next) {
   // This runs on EVERY save to ensure variant is always populated
   if (this.registrationNumber && (!this.variant || this.variant === 'null' || this.variant === 'undefined' || this.variant.trim() === '')) {
     try {
-      console.log(`🔍 VARIANT MISSING - Fetching from API for: ${this.registrationNumber}`);
+      console.log(`🔍 VARIANT MISSING - Checking cache first for: ${this.registrationNumber}`);
       console.log(`   Current variant value: "${this.variant}"`);
       
-      const enhancedVehicleService = require('../services/enhancedVehicleService');
+      const variantOnlyService = require('../services/variantOnlyService');
       
-      // Force fresh API call (no cache) to get latest variant data
-      const vehicleData = await enhancedVehicleService.getEnhancedVehicleData(this.registrationNumber, false, this.mileage);
+      // ONLY fetch variant data (cheap API call - no expensive history/MOT/valuation)
+      const vehicleData = await variantOnlyService.getVariantOnly(this.registrationNumber, true);
       
-      console.log(`🔍 API Response for ${this.registrationNumber}:`, {
+      console.log(`🔍 Data source for ${this.registrationNumber}:`, {
         variant: vehicleData.variant,
         make: vehicleData.make,
         model: vehicleData.model,
-        engineSize: vehicleData.engineSize
+        engineSize: vehicleData.engineSize,
+        cached: vehicleData.dataSources?.cached,
+        historyCheckId: vehicleData.historyCheckId
       });
       
       // Extract variant from wrapped API response (handle both direct and wrapped formats)
@@ -545,36 +608,59 @@ carSchema.pre('save', async function(next) {
       console.log(`🔍 Extracted variant: "${extractedVariant}"`);
       
       if (extractedVariant && extractedVariant !== 'null' && extractedVariant !== 'undefined' && extractedVariant.trim() !== '') {
+        // ALWAYS use the real API variant - no matter how complex it is
         this.variant = extractedVariant.trim();
-        console.log(`✅ VARIANT FETCHED FROM API: "${this.variant}"`);
+        console.log(`✅ REAL API VARIANT SAVED: "${this.variant}" (from ${vehicleData.dataSources?.cached ? 'CACHE' : 'API'})`);
+        
+        // Link to vehicle history if available and not already linked
+        if (vehicleData.historyCheckId && !this.historyCheckId) {
+          this.historyCheckId = vehicleData.historyCheckId;
+          this.historyCheckStatus = 'verified';
+          this.historyCheckDate = new Date();
+          console.log(`✅ LINKED TO EXISTING HISTORY: ${vehicleData.historyCheckId}`);
+        }
         
         // Also update other missing fields from API if available
         if (!this.engineSize && vehicleData.engineSize) {
           const engineSize = typeof vehicleData.engineSize === 'object' ? vehicleData.engineSize.value : vehicleData.engineSize;
           if (engineSize) {
             this.engineSize = parseFloat(engineSize);
-            console.log(`✅ Engine size updated from API: ${this.engineSize}L`);
+            console.log(`✅ Engine size updated from ${vehicleData.dataSources?.cached ? 'cache' : 'API'}: ${this.engineSize}L`);
           }
         }
         
-        // Regenerate displayTitle with variant
+        // For displayTitle, use AutoTrader format: "EngineSize Variant EuroStatus Doors"
+        // Example: "2.0 TDI GT DSG Euro 5 3dr"
         const parts = [];
+        
+        // 1. Engine size (without 'L' suffix for AutoTrader style)
         if (this.engineSize) {
           const size = parseFloat(this.engineSize);
           if (!isNaN(size) && size > 0) {
             parts.push(size.toFixed(1));
           }
         }
+        
+        // 2. Real API variant (the main technical specification)
         parts.push(this.variant);
+        
+        // 3. Euro status if available (like "Euro 5", "Euro 6")
+        if (this.emissionClass && this.emissionClass.includes('Euro')) {
+          parts.push(this.emissionClass);
+        }
+        
+        // 4. Doors (like "3dr", "5dr")
         if (this.doors && this.doors >= 2 && this.doors <= 5) {
           parts.push(`${this.doors}dr`);
         }
+        
         if (parts.length > 0) {
           this.displayTitle = parts.join(' ');
-          console.log(`🎯 DISPLAY TITLE UPDATED: "${this.displayTitle}"`);
+          console.log(`🎯 AUTOTRADER STYLE DISPLAY TITLE: "${this.displayTitle}"`);
+          console.log(`🎯 DATABASE VARIANT: "${this.variant}" (real API variant saved)`);
         }
       } else {
-        console.log(`⚠️  NO VARIANT FOUND IN API DATA - Generating fallback variant`);
+        console.log(`⚠️  NO VARIANT FOUND IN ${vehicleData.dataSources?.cached ? 'CACHE' : 'API'} DATA - Generating fallback variant`);
         
         // Generate fallback variant from available data
         let fallbackVariant = '';
@@ -590,21 +676,33 @@ carSchema.pre('save', async function(next) {
         this.variant = fallbackVariant;
         console.log(`✅ FALLBACK VARIANT GENERATED: "${this.variant}"`);
         
-        // Update displayTitle with fallback variant
+        // Update displayTitle with fallback variant in AutoTrader format
         const parts = [];
+        
+        // 1. Engine size (without 'L' suffix)
         if (this.engineSize) {
           const size = parseFloat(this.engineSize);
           if (!isNaN(size) && size > 0) {
             parts.push(size.toFixed(1));
           }
         }
+        
+        // 2. Variant (fallback generated)
         parts.push(this.variant);
+        
+        // 3. Euro status if available
+        if (this.emissionClass && this.emissionClass.includes('Euro')) {
+          parts.push(this.emissionClass);
+        }
+        
+        // 4. Doors
         if (this.doors && this.doors >= 2 && this.doors <= 5) {
           parts.push(`${this.doors}dr`);
         }
+        
         if (parts.length > 0) {
           this.displayTitle = parts.join(' ');
-          console.log(`🎯 DISPLAY TITLE WITH FALLBACK: "${this.displayTitle}"`);
+          console.log(`🎯 AUTOTRADER STYLE DISPLAY TITLE (FALLBACK): "${this.displayTitle}"`);
         }
       }
     } catch (error) {
@@ -624,25 +722,82 @@ carSchema.pre('save', async function(next) {
       this.variant = emergencyVariant;
       console.log(`🚨 EMERGENCY VARIANT SET: "${this.variant}"`);
       
-      // Update displayTitle with emergency variant
+      // Update displayTitle with emergency variant in AutoTrader format
       const parts = [];
+      
+      // 1. Engine size
       if (this.engineSize) {
         const size = parseFloat(this.engineSize);
         if (!isNaN(size) && size > 0) {
           parts.push(size.toFixed(1));
         }
       }
+      
+      // 2. Emergency variant
       parts.push(this.variant);
+      
+      // 3. Euro status if available
+      if (this.emissionClass && this.emissionClass.includes('Euro')) {
+        parts.push(this.emissionClass);
+      }
+      
+      // 4. Doors
       if (this.doors && this.doors >= 2 && this.doors <= 5) {
         parts.push(`${this.doors}dr`);
       }
+      
       if (parts.length > 0) {
         this.displayTitle = parts.join(' ');
-        console.log(`🚨 EMERGENCY DISPLAY TITLE: "${this.displayTitle}"`);
+        console.log(`🚨 AUTOTRADER STYLE EMERGENCY DISPLAY TITLE: "${this.displayTitle}"`);
       }
     }
   } else if (this.variant) {
     console.log(`✅ Variant already exists: "${this.variant}"`);
+  } else {
+    // Cars without registration number - generate variant from engine + fuel
+    console.log(`🔍 No registration number - generating variant from engine + fuel type`);
+    
+    let generatedVariant = '';
+    
+    if (this.engineSize && this.fuelType) {
+      generatedVariant = `${this.engineSize}L ${this.fuelType}`;
+    } else if (this.fuelType) {
+      generatedVariant = this.fuelType;
+    } else {
+      generatedVariant = 'Standard';
+    }
+    
+    this.variant = generatedVariant;
+    console.log(`✅ VARIANT GENERATED FOR NO-REG CAR: "${this.variant}"`);
+    
+    // Update displayTitle with generated variant in AutoTrader format
+    const parts = [];
+    
+    // 1. Engine size
+    if (this.engineSize) {
+      const size = parseFloat(this.engineSize);
+      if (!isNaN(size) && size > 0) {
+        parts.push(size.toFixed(1));
+      }
+    }
+    
+    // 2. Generated variant
+    parts.push(this.variant);
+    
+    // 3. Euro status if available
+    if (this.emissionClass && this.emissionClass.includes('Euro')) {
+      parts.push(this.emissionClass);
+    }
+    
+    // 4. Doors
+    if (this.doors && this.doors >= 2 && this.doors <= 5) {
+      parts.push(`${this.doors}dr`);
+    }
+    
+    if (parts.length > 0) {
+      this.displayTitle = parts.join(' ');
+      console.log(`🎯 AUTOTRADER STYLE DISPLAY TITLE (NO-REG): "${this.displayTitle}"`);
+    }
   }
   
   // History check for new listings with registration numbers
@@ -675,6 +830,43 @@ carSchema.pre('save', async function(next) {
         this.historyCheckStatus = 'failed';
       }
       this.historyCheckDate = new Date();
+    }
+  }
+
+  // MOT History check for new listings with registration numbers
+  if (this.isNew && this.registrationNumber && (!this.motHistory || this.motHistory.length === 0)) {
+    try {
+      const MOTHistoryService = require('../services/motHistoryService');
+      const motHistoryService = new MOTHistoryService();
+      
+      console.log(`🔍 Triggering MOT history check for new listing: ${this.registrationNumber}`);
+      
+      // Perform MOT history check
+      const motResult = await motHistoryService.fetchAndSaveMOTHistory(this.registrationNumber, false);
+      
+      if (motResult.success && motResult.data && motResult.data.length > 0) {
+        console.log(`✅ MOT history fetched: ${motResult.data.length} tests for ${this.registrationNumber}`);
+        
+        // Update MOT status from latest test
+        const latestTest = motResult.data[0]; // Most recent test
+        if (latestTest) {
+          this.motStatus = latestTest.testResult === 'PASSED' ? 'Valid' : 'Invalid';
+          this.motExpiry = latestTest.expiryDate;
+          this.motDue = latestTest.expiryDate;
+          console.log(`✅ Updated MOT status: ${this.motStatus}, expires: ${this.motExpiry}`);
+        }
+      } else {
+        console.log(`ℹ️  No MOT history found for ${this.registrationNumber}`);
+      }
+    } catch (error) {
+      console.error(`❌ MOT history check failed for ${this.registrationNumber}:`, error.message);
+      
+      // Check if it's a daily limit error (403)
+      if (error.isDailyLimitError || error.details?.status === 403 || error.message.includes('daily limit')) {
+        console.log(`⏰ API daily limit exceeded - skipping MOT history check for now`);
+        console.log(`   MOT history can be added later when API limit resets`);
+      }
+      // Don't fail car creation if MOT history fails - it's optional data
     }
   }
   

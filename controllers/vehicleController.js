@@ -1,4 +1,5 @@
 const { body, validationResult } = require('express-validator');
+const mongoose = require('mongoose');
 const dvlaService = require('../services/dvlaService');
 const HistoryService = require('../services/historyService');
 const Car = require('../models/Car');
@@ -230,24 +231,32 @@ class VehicleController {
 
       await car.save();
 
-      // Step 5: Fetch vehicle history data (non-blocking)
-      // This ensures the history data is available when the car is viewed
+      // Step 5: Fetch ALL vehicle data comprehensively (Vehicle History + MOT + Valuation)
+      // This ensures complete data is available when the car is viewed
       try {
-        console.log(`[Vehicle Controller] Fetching vehicle history for: ${registrationNumber}`);
-        const historyData = await historyService.checkVehicleHistory(registrationNumber, false);
+        console.log(`[Vehicle Controller] Fetching comprehensive vehicle data for: ${registrationNumber}`);
+        const ComprehensiveVehicleService = require('../services/comprehensiveVehicleService');
+        const comprehensiveService = new ComprehensiveVehicleService();
         
-        if (historyData && historyData._id) {
-          car.historyCheckId = historyData._id;
-          car.historyCheckStatus = 'verified';
-          car.historyCheckDate = new Date();
-          await car.save();
-          console.log(`[Vehicle Controller] Vehicle history data saved for: ${registrationNumber}`);
+        const comprehensiveResult = await comprehensiveService.fetchCompleteVehicleData(
+          registrationNumber, 
+          mileage, 
+          false // Don't force refresh - use cache if available
+        );
+        
+        console.log(`[Vehicle Controller] Comprehensive data fetch completed:`);
+        console.log(`   API Calls: ${comprehensiveResult.apiCalls}`);
+        console.log(`   Total Cost: £${comprehensiveResult.totalCost.toFixed(2)}`);
+        console.log(`   Errors: ${comprehensiveResult.errors.length}`);
+        
+        if (comprehensiveResult.errors.length > 0) {
+          console.log(`   Failed Services: ${comprehensiveResult.errors.map(e => e.service).join(', ')}`);
         }
-      } catch (historyError) {
-        // Don't fail the car creation if history check fails
-        console.warn(`[Vehicle Controller] Failed to fetch vehicle history: ${historyError.message}`);
-        car.historyCheckStatus = 'failed';
-        await car.save();
+        
+      } catch (comprehensiveError) {
+        // Don't fail the car creation if comprehensive data fetch fails
+        console.warn(`[Vehicle Controller] Comprehensive data fetch failed: ${comprehensiveError.message}`);
+        // Individual services will handle their own fallbacks
       }
 
       // Update purchase record with vehicle ID
@@ -461,7 +470,7 @@ class VehicleController {
 
   /**
    * GET /api/vehicles/:id
-   * Get a single car by ID
+   * Get a single car by ID (MongoDB _id) or advertId (UUID)
    * Optional query param: postcode - to calculate distance from user location
    */
   async getCarById(req, res, next) {
@@ -469,9 +478,21 @@ class VehicleController {
       const { id } = req.params;
       const { postcode } = req.query;
 
-      // Find car by ID
-      const car = await Car.findById(id)
-        .populate('historyCheckId', 'writeOffCategory writeOffDetails');
+      let car;
+      
+      // Try to find by MongoDB _id first, then by advertId if that fails
+      try {
+        if (mongoose.Types.ObjectId.isValid(id)) {
+          car = await Car.findById(id).populate('historyCheckId');
+        }
+      } catch (castError) {
+        // Ignore cast errors and try advertId lookup
+      }
+      
+      // If not found by _id or not a valid ObjectId, try advertId (UUID)
+      if (!car) {
+        car = await Car.findOne({ advertId: id }).populate('historyCheckId');
+      }
 
       if (!car) {
         return res.status(404).json({
@@ -1121,6 +1142,83 @@ class VehicleController {
   }
 
   /**
+   * GET /api/vehicles/basic-lookup/:registration
+   * Lightweight vehicle lookup for CarFinder form - only basic data, no expensive APIs
+   */
+  async basicVehicleLookup(req, res, next) {
+    try {
+      const { registration } = req.params;
+      const { mileage } = req.query;
+
+      console.log(`[Vehicle Controller] Basic lookup request for: ${registration}, mileage: ${mileage || 'not provided'}`);
+
+      if (!registration) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: 'MISSING_REGISTRATION',
+            message: 'Registration number is required'
+          }
+        });
+      }
+
+      // Validate registration format
+      const cleanedReg = registration.toUpperCase().replace(/\s/g, '');
+      if (cleanedReg.length < 2 || cleanedReg.length > 10) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_REGISTRATION',
+            message: 'Invalid registration number format'
+          }
+        });
+      }
+
+      const lightweightVehicleService = require('../services/lightweightVehicleService');
+      
+      // Parse mileage if provided
+      const parsedMileage = mileage ? parseInt(mileage, 10) : 50000;
+      
+      // Get basic vehicle data for CarFinder (cheap API call - no expensive history/MOT)
+      const result = await lightweightVehicleService.getBasicVehicleDataForCarFinder(cleanedReg, parsedMileage);
+
+      if (!result.success) {
+        console.error(`[Vehicle Controller] Basic lookup failed for ${registration}:`, result.error);
+        return res.status(404).json({
+          success: false,
+          error: {
+            code: 'VEHICLE_NOT_FOUND',
+            message: result.error || 'Vehicle not found'
+          }
+        });
+      }
+
+      console.log(`[Vehicle Controller] Basic lookup successful for ${registration}`);
+      console.log(`[Vehicle Controller] From cache: ${result.fromCache}, API calls: ${result.apiCalls}, Cost: £${result.cost}`);
+
+      // Return basic vehicle data (already unwrapped)
+      return res.json({
+        success: true,
+        data: result.data,
+        fromCache: result.fromCache,
+        apiCalls: result.apiCalls,
+        cost: result.cost
+      });
+
+    } catch (error) {
+      console.error('[Vehicle Controller] Error in basicVehicleLookup:', error);
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: 'INTERNAL_ERROR',
+          message: 'An unexpected error occurred during vehicle lookup',
+          details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        }
+      });
+    }
+  }
+
+  /**
    * GET /api/vehicles/enhanced-lookup/:registration
    * Enhanced vehicle lookup using both DVLA and CheckCarDetails APIs
    * Returns merged data with source tracking from both APIs
@@ -1159,7 +1257,7 @@ class VehicleController {
       // Parse mileage if provided
       const parsedMileage = mileage ? parseInt(mileage, 10) : null;
       
-      // Get enhanced vehicle data with fallback handling
+      // Get enhanced vehicle data with fallback handling (includes proper valuation)
       const result = await enhancedVehicleService.getVehicleDataWithFallback(cleanedReg, parsedMileage);
 
       if (!result.success) {
@@ -1174,12 +1272,15 @@ class VehicleController {
       }
 
       console.log(`[Vehicle Controller] Enhanced lookup successful for ${registration}`);
-      console.log(`[Vehicle Controller] Data sources - DVLA: ${result.data.dataSources.dvla}, CheckCarDetails: ${result.data.dataSources.checkCarDetails}`);
+      console.log(`[Vehicle Controller] Data sources - DVLA: ${result.data.dataSources?.dvla}, CheckCarDetails: ${result.data.dataSources?.checkCarDetails}`);
 
-      // Return merged data with source tracking
+      // Unwrap the data for frontend compatibility
+      const unwrappedData = this.unwrapVehicleData(result.data);
+
+      // Return unwrapped data for frontend
       return res.json({
         success: true,
-        data: result.data,
+        data: unwrappedData,
         warnings: result.warnings || [],
         dataSources: result.data.dataSources
       });
@@ -1195,6 +1296,69 @@ class VehicleController {
         }
       });
     }
+  }
+
+  /**
+   * Unwrap vehicle data from {value, source} format to plain values for frontend
+   * @param {Object} wrappedData - Data with wrapped values
+   * @returns {Object} Data with unwrapped values
+   */
+  unwrapVehicleData(wrappedData) {
+    const unwrapped = {};
+    
+    // Helper function to extract value from wrapped format
+    const getValue = (field) => {
+      if (field === null || field === undefined) return null;
+      if (typeof field === 'object' && field !== null && field.hasOwnProperty('value')) {
+        return field.value;
+      }
+      return field;
+    };
+    
+    // Recursively unwrap nested objects
+    const unwrapObject = (obj) => {
+      if (obj === null || obj === undefined) return null;
+      if (Array.isArray(obj)) return obj; // Keep arrays as-is
+      if (typeof obj !== 'object') return obj; // Keep primitives as-is
+      
+      // If it's a wrapped object with {value, source}, extract the value
+      if (obj.hasOwnProperty('value')) {
+        return obj.value;
+      }
+      
+      // Otherwise, recursively unwrap nested objects
+      const unwrappedObj = {};
+      Object.entries(obj).forEach(([key, value]) => {
+        unwrappedObj[key] = unwrapObject(value);
+      });
+      return unwrappedObj;
+    };
+    
+    // Unwrap all fields
+    Object.entries(wrappedData).forEach(([key, value]) => {
+      if (key === 'dataSources' || key === 'fieldSources') {
+        // Keep metadata objects as-is
+        unwrapped[key] = value;
+      } else if (key === 'valuation' && typeof value === 'object' && value !== null && !value.hasOwnProperty('value')) {
+        // Keep valuation object as-is if it's already unwrapped
+        unwrapped[key] = value;
+        console.log(`[Vehicle Controller] Keeping valuation object as-is:`, value);
+      } else if (Array.isArray(value)) {
+        // Keep arrays as-is (motHistory, mileageHistory)
+        unwrapped[key] = value;
+      } else {
+        // Recursively unwrap all other fields
+        unwrapped[key] = unwrapObject(value);
+      }
+    });
+    
+    console.log(`[Vehicle Controller] Unwrapped ${Object.keys(wrappedData).length} fields for frontend`);
+    console.log(`[Vehicle Controller] Sample unwrapped fields:`, {
+      make: unwrapped.make,
+      model: unwrapped.model,
+      bodyType: unwrapped.bodyType
+    });
+    return unwrapped;
   }
 
   /**

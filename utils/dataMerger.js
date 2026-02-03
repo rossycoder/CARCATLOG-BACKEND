@@ -110,6 +110,31 @@ class DataMerger {
       motStatus: this.selectValue('motStatus', checkCarData?.motStatus),
       motExpiry: this.selectValue('motExpiry', checkCarData?.motExpiry || checkCarData?.motDueDate),
 
+      // CRITICAL: Vehicle History and Safety Data from CheckCarDetails
+      // These fields must be preserved to show write-off category and accident history
+      numberOfPreviousKeepers: checkCarData?.numberOfPreviousKeepers || checkCarData?.previousOwners || 0,
+      v5cCertificateCount: checkCarData?.v5cCertificateCount || 0,
+      plateChanges: checkCarData?.plateChanges || 0,
+      colourChanges: checkCarData?.colourChanges || 0,
+      vicCount: checkCarData?.vicCount || 0,
+      
+      // Safety and history flags
+      hasAccidentHistory: checkCarData?.hasAccidentHistory || false,
+      isStolen: checkCarData?.isStolen || false,
+      isWrittenOff: checkCarData?.isWrittenOff || false,
+      isScrapped: checkCarData?.isScrapped || false,
+      isImported: checkCarData?.isImported || false,
+      isExported: checkCarData?.isExported || false,
+      hasOutstandingFinance: checkCarData?.hasOutstandingFinance || false,
+      
+      // Write-off category and details (CRITICAL for frontend display)
+      writeOffCategory: checkCarData?.writeOffCategory || 'none',
+      writeOffDetails: checkCarData?.writeOffDetails || {
+        category: checkCarData?.writeOffCategory || 'none',
+        date: null,
+        description: null
+      },
+
       // Valuation data from Valuation API
       valuation: this.mergeValuationData(valuationData),
 
