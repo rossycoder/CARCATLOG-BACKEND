@@ -267,30 +267,25 @@ const updateAdvert = async (req, res) => {
             }
           }
           if (advertData.hasOwnProperty('description')) {
-            // Handle description explicitly, including empty strings
+            // CRITICAL FIX: Handle description based on dataSource
             let description = advertData.description || '';
             
-            // Check if description is required based on car's dataSource
+            // Check if description is required (non-DVLA cars require description)
             const isDescriptionRequired = car.dataSource !== 'DVLA';
-            console.log('📝 [updateAdvert] Description validation - dataSource:', car.dataSource, 'required:', isDescriptionRequired);
             
             if (!description.trim() && isDescriptionRequired) {
+              // For non-DVLA cars, description is required - use default
               description = 'No description provided.';
-              console.log('📝 [updateAdvert] Empty description provided for non-DVLA car, using default');
+              console.log('📝 [updateAdvert] Empty description for non-DVLA car, using default');
             } else if (!description.trim() && !isDescriptionRequired) {
-              // For DVLA cars, description is not required, so we can leave it empty
-              description = '';
-              console.log('📝 [updateAdvert] Empty description for DVLA car, leaving empty');
+              // For DVLA cars, description is optional - but Mongoose validation might fail with empty string
+              // So we use a minimal description instead
+              description = 'Contact seller for more details.';
+              console.log('📝 [updateAdvert] Empty description for DVLA car, using minimal default');
             }
             
             updateObj.description = description;
-            console.log('📝 [updateAdvert] Updating description:', `"${description}"`);
-          } else {
-            // CRITICAL FIX: If description is not in advertData but car requires it, ensure it has a value
-            if (car.dataSource !== 'DVLA' && (!car.description || car.description.trim() === '')) {
-              updateObj.description = 'No description provided.';
-              console.log('📝 [updateAdvert] Adding default description for non-DVLA car without description');
-            }
+            console.log('📝 [updateAdvert] Updating description:', `"${description.substring(0, 50)}..."`);
           }
           if (advertData.photos) updateObj.images = advertData.photos.map(p => p.url || p);
           if (advertData.features) {
