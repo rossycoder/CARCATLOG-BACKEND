@@ -213,48 +213,59 @@ class ComprehensiveVehicleService {
         car.historyCheckStatus = 'verified';
         car.historyCheckDate = new Date();
         
-        // CRITICAL: Extract and save running costs from vehicle history
-        if (data.vehicleHistory.runningCosts) {
+        // CRITICAL FIX: Extract running costs directly from VehicleHistory fields
+        const vh = data.vehicleHistory;
+        
+        // Check if any running costs data exists
+        const hasRunningCosts = vh.urbanMpg || vh.extraUrbanMpg || vh.combinedMpg || 
+                                vh.co2Emissions || vh.insuranceGroup || vh.annualTax;
+        
+        if (hasRunningCosts) {
           console.log('💰 Saving running costs to database...');
-          
-          const rc = data.vehicleHistory.runningCosts;
           
           // Save to runningCosts object
           car.runningCosts = {
             fuelEconomy: {
-              urban: rc.fuelEconomy?.urban || null,
-              extraUrban: rc.fuelEconomy?.extraUrban || null,
-              combined: rc.fuelEconomy?.combined || null
+              urban: vh.urbanMpg || null,
+              extraUrban: vh.extraUrbanMpg || null,
+              combined: vh.combinedMpg || null
             },
-            co2Emissions: rc.co2Emissions || null,
-            insuranceGroup: rc.insuranceGroup || null,
-            annualTax: rc.annualTax || null
+            co2Emissions: vh.co2Emissions || null,
+            insuranceGroup: vh.insuranceGroup || null,
+            annualTax: vh.annualTax || null
           };
           
           // Also save to individual fields for backward compatibility
-          if (rc.fuelEconomy) {
-            car.fuelEconomyUrban = rc.fuelEconomy.urban || null;
-            car.fuelEconomyExtraUrban = rc.fuelEconomy.extraUrban || null;
-            car.fuelEconomyCombined = rc.fuelEconomy.combined || null;
-          }
-          
-          if (rc.co2Emissions) {
-            car.co2Emissions = rc.co2Emissions;
-          }
-          
-          if (rc.insuranceGroup) {
-            car.insuranceGroup = rc.insuranceGroup;
-          }
-          
-          if (rc.annualTax !== undefined && rc.annualTax !== null) {
-            car.annualTax = rc.annualTax;
-          }
+          car.fuelEconomyUrban = vh.urbanMpg || null;
+          car.fuelEconomyExtraUrban = vh.extraUrbanMpg || null;
+          car.fuelEconomyCombined = vh.combinedMpg || null;
+          car.co2Emissions = vh.co2Emissions || null;
+          car.insuranceGroup = vh.insuranceGroup || null;
+          car.annualTax = vh.annualTax || null;
           
           console.log('✅ Running costs saved:');
+          console.log(`   MPG Urban: ${car.fuelEconomyUrban || 'N/A'}`);
+          console.log(`   MPG Extra Urban: ${car.fuelEconomyExtraUrban || 'N/A'}`);
           console.log(`   MPG Combined: ${car.fuelEconomyCombined || 'N/A'}`);
           console.log(`   CO2: ${car.co2Emissions || 'N/A'} g/km`);
           console.log(`   Insurance Group: ${car.insuranceGroup || 'N/A'}`);
           console.log(`   Annual Tax: £${car.annualTax || 'N/A'}`);
+        } else {
+          console.log('⚠️  No running costs data found in VehicleHistory');
+        }
+        
+        // Also update make, model, variant if they exist in VehicleHistory
+        if (vh.make && (!car.make || car.make === 'Unknown')) {
+          car.make = vh.make;
+          console.log(`   Updated make: ${vh.make}`);
+        }
+        if (vh.model && (!car.model || car.model === 'Unknown')) {
+          car.model = vh.model;
+          console.log(`   Updated model: ${vh.model}`);
+        }
+        if (vh.variant && (!car.variant || car.variant === 'Unknown')) {
+          car.variant = vh.variant;
+          console.log(`   Updated variant: ${vh.variant}`);
         }
       }
 
