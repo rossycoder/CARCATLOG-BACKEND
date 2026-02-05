@@ -89,6 +89,55 @@ class ComprehensiveVehicleService {
         results.errors.push({ service: 'vehicleHistory', error: error.message });
       }
 
+      // Step 1.5: Vehicle Specs (£0.05) - Get make, model, variant, running costs
+      console.log('\n1.5️⃣ Fetching Vehicle Specs...');
+      try {
+        const CheckCarDetailsClient = require('../clients/CheckCarDetailsClient');
+        const specsData = await CheckCarDetailsClient.getVehicleSpecs(vrm);
+        
+        if (specsData) {
+          // Parse the specs response
+          const parsedSpecs = CheckCarDetailsClient.parseResponse(specsData);
+          
+          // Update VehicleHistory with specs data
+          const VehicleHistory = require('../models/VehicleHistory');
+          const history = await VehicleHistory.findOne({ vrm: vrm.toUpperCase().replace(/\s/g, '') });
+          
+          if (history) {
+            // Update make, model, variant
+            if (parsedSpecs.make) history.make = parsedSpecs.make;
+            if (parsedSpecs.model) history.model = parsedSpecs.model;
+            if (parsedSpecs.variant || parsedSpecs.modelVariant) {
+              history.variant = parsedSpecs.variant || parsedSpecs.modelVariant;
+            }
+            if (parsedSpecs.year) history.yearOfManufacture = parsedSpecs.year;
+            
+            // Update running costs
+            if (parsedSpecs.urbanMpg) history.urbanMpg = parsedSpecs.urbanMpg;
+            if (parsedSpecs.extraUrbanMpg) history.extraUrbanMpg = parsedSpecs.extraUrbanMpg;
+            if (parsedSpecs.combinedMpg) history.combinedMpg = parsedSpecs.combinedMpg;
+            if (parsedSpecs.co2Emissions) history.co2Emissions = parsedSpecs.co2Emissions;
+            if (parsedSpecs.insuranceGroup) history.insuranceGroup = parsedSpecs.insuranceGroup;
+            if (parsedSpecs.annualTax || parsedSpecs.roadTax) {
+              history.annualTax = parsedSpecs.annualTax || parsedSpecs.roadTax;
+            }
+            
+            await history.save();
+            console.log(`✅ Vehicle Specs: ${parsedSpecs.make} ${parsedSpecs.model} ${parsedSpecs.variant || ''}`);
+            console.log(`   Running Costs: MPG ${parsedSpecs.combinedMpg || 'N/A'}, CO2 ${parsedSpecs.co2Emissions || 'N/A'}g/km`);
+            
+            // Add to results
+            results.data.vehicleSpecs = parsedSpecs;
+          }
+        }
+        
+        results.apiCalls++;
+        results.totalCost += 0.05;
+      } catch (error) {
+        console.error(`❌ Vehicle Specs failed: ${error.message}`);
+        results.errors.push({ service: 'vehicleSpecs', error: error.message });
+      }
+
       // Step 2: MOT History (£0.02)
       console.log('\n2️⃣ Fetching MOT History...');
       try {

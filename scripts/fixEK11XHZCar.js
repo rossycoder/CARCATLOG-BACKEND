@@ -1,118 +1,150 @@
+/**
+ * Fix Honda Civic (EK11XHZ) - Fetch complete data and update
+ */
+
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const mongoose = require('mongoose');
-require('dotenv').config();
-
 const Car = require('../models/Car');
+const VehicleHistory = require('../models/VehicleHistory');
+const ComprehensiveVehicleService = require('../services/comprehensiveVehicleService');
 
-async function fixCar() {
+async function fixHondaCivic() {
   try {
     await mongoose.connect(process.env.MONGODB_URI);
-    console.log('✅ Connected to MongoDB\n');
+    console.log('✅ Connected to MongoDB');
 
     const registration = 'EK11XHZ';
+    const carId = '698507008c15d0c32719e246';
     
     // Find the car
-    const car = await Car.findOne({ registrationNumber: registration });
+    const car = await Car.findById(carId);
     
     if (!car) {
-      console.log('❌ Car not found with registration:', registration);
-      return;
+      console.log('❌ Car not found');
+      process.exit(1);
     }
 
-    console.log('🚗 Found car:', car.make, car.model);
-    console.log('Current status:', car.advertStatus);
-    console.log('Current images:', car.images?.length || 0);
-    console.log('Current userId:', car.userId || 'NOT SET');
-    console.log('Current postcode:', car.postcode || 'NOT SET');
+    console.log('\n📋 Current Car Data:');
+    console.log(`   Registration: ${car.registrationNumber}`);
+    console.log(`   Make: ${car.make}`);
+    console.log(`   Model: ${car.model}`);
+    console.log(`   Variant: ${car.variant}`);
+    console.log(`   Year: ${car.year}`);
+    console.log(`   Running Costs: ${car.runningCosts?.fuelEconomy?.combined || 'null'}`);
+
+    // Fetch complete vehicle data
+    console.log('\n🔍 Fetching complete vehicle data from APIs...');
+    const comprehensiveService = new ComprehensiveVehicleService();
     
-    let updated = false;
-    
-    // Fix 1: Ensure userId is set (use the one from sellerContact if available)
-    if (!car.userId) {
-      console.log('\n⚠️  No userId found!');
-      console.log('Please provide a userId to assign this car to a user.');
-      console.log('You can find user IDs by running: node backend/scripts/findRecentUsers.js');
-      // Don't auto-fix this - needs manual intervention
+    const result = await comprehensiveService.fetchCompleteVehicleData(
+      registration,
+      car.mileage,
+      true // Force refresh
+    );
+
+    console.log('\n📊 API Results:');
+    console.log(`   API Calls: ${result.apiCalls}`);
+    console.log(`   Total Cost: £${result.totalCost.toFixed(2)}`);
+    console.log(`   Errors: ${result.errors.length}`);
+
+    if (result.errors.length > 0) {
+      console.log('\n⚠️  Errors encountered:');
+      result.errors.forEach(err => {
+        console.log(`   - ${err.service}: ${err.error}`);
+      });
     }
-    
-    // Fix 2: Add postcode if missing
-    if (!car.postcode && car.sellerContact?.postcode) {
-      car.postcode = car.sellerContact.postcode;
-      updated = true;
-      console.log('✅ Added postcode from sellerContact');
-    } else if (!car.postcode) {
-      console.log('\n⚠️  No postcode found!');
-      console.log('Car needs a postcode to show in location-based searches.');
-    }
-    
-    // Fix 3: Add coordinates if missing but postcode exists
-    if (car.postcode && (!car.latitude || !car.longitude)) {
-      console.log('\n⚠️  Postcode exists but no coordinates!');
-      console.log('Run: node backend/scripts/addCoordinatesToCar.js to fix this');
-    }
-    
-    // Fix 4: Check images
-    if (!car.images || car.images.length === 0) {
-      console.log('\n❌ CRITICAL: No images!');
-      console.log('Cars without images may not show prominently in search results.');
-      console.log('Please upload photos for this car.');
-    }
-    
-    // Fix 5: Add description if empty
-    if (!car.description || car.description.trim() === '') {
-      car.description = `${car.year} ${car.make} ${car.model} ${car.variant || ''} in ${car.color || 'good'} condition. ${car.mileage?.toLocaleString()} miles. ${car.transmission} transmission, ${car.fuelType} fuel type.`.trim();
-      updated = true;
-      console.log('✅ Added auto-generated description');
-    }
-    
-    // Fix 6: Ensure publishedAt is set if status is active
-    if (car.advertStatus === 'active' && !car.publishedAt) {
-      car.publishedAt = new Date();
-      updated = true;
-      console.log('✅ Added publishedAt date');
-    }
-    
-    // Fix 7: Ensure sellerContact.type is set
-    if (!car.sellerContact?.type) {
-      if (!car.sellerContact) car.sellerContact = {};
-      car.sellerContact.type = 'private';
-      updated = true;
-      console.log('✅ Set sellerContact.type to private');
-    }
-    
-    if (updated) {
+
+    // Get vehicle history
+    const history = await VehicleHistory.findOne({ 
+      vrm: registration.toUpperCase().replace(/\s/g, '') 
+    });
+
+    if (history) {
+      console.log('\n✅ Vehicle History Found:');
+      console.log(`   Make: ${history.make}`);
+      console.log(`   Model: ${history.model}`);
+      console.log(`   Variant: ${history.variant}`);
+      console.log(`   Year: ${history.yearOfManufacture}`);
+      console.log(`   Combined MPG: ${history.combinedMpg || 'N/A'}`);
+      console.log(`   CO2: ${history.co2Emissions || 'N/A'}g/km`);
+      console.log(`   Insurance: Group ${history.insuranceGroup || 'N/A'}`);
+      console.log(`   Tax: £${history.annualTax || 'N/A'}/year`);
+
+      // Update car with correct data
+      console.log('\n🔧 Updating car with correct data...');
+      
+      if (history.model && history.model !== 'Unknown') {
+        car.model = history.model;
+        console.log(`   ✅ Model: ${car.model}`);
+      }
+      
+      if (history.variant) {
+        car.variant = history.variant;
+        console.log(`   ✅ Variant: ${car.variant}`);
+      }
+
+      // Update running costs
+      car.runningCosts = {
+        fuelEconomy: {
+          urban: history.urbanMpg || null,
+          extraUrban: history.extraUrbanMpg || null,
+          combined: history.combinedMpg || null
+        },
+        co2Emissions: history.co2Emissions || null,
+        insuranceGroup: history.insuranceGroup || null,
+        annualTax: history.annualTax || null
+      };
+
+      // Update individual fields
+      car.co2Emissions = history.co2Emissions || car.co2Emissions;
+      car.insuranceGroup = history.insuranceGroup || car.insuranceGroup;
+      car.annualTax = history.annualTax || car.annualTax;
+      car.fuelEconomyUrban = history.urbanMpg || car.fuelEconomyUrban;
+      car.fuelEconomyExtraUrban = history.extraUrbanMpg || car.fuelEconomyExtraUrban;
+      car.fuelEconomyCombined = history.combinedMpg || car.fuelEconomyCombined;
+
+      console.log('\n📊 Running Costs Updated:');
+      console.log(`   Urban MPG: ${car.runningCosts.fuelEconomy.urban || 'N/A'}`);
+      console.log(`   Extra Urban MPG: ${car.runningCosts.fuelEconomy.extraUrban || 'N/A'}`);
+      console.log(`   Combined MPG: ${car.runningCosts.fuelEconomy.combined || 'N/A'}`);
+      console.log(`   CO2: ${car.runningCosts.co2Emissions || 'N/A'}g/km`);
+      console.log(`   Insurance: Group ${car.runningCosts.insuranceGroup || 'N/A'}`);
+      console.log(`   Tax: £${car.runningCosts.annualTax || 'N/A'}/year`);
+
+      // Update display title
+      if (car.variant && car.variant !== '1.3L Petrol') {
+        car.displayTitle = `${car.variant}`;
+      } else if (car.model !== 'Unknown') {
+        car.displayTitle = `${car.model} ${car.engineSize}L`;
+      }
+
+      // Save the car
       await car.save();
       console.log('\n✅ Car updated successfully!');
+
     } else {
-      console.log('\n⚠️  No automatic fixes applied.');
+      console.log('\n⚠️  No vehicle history found');
+      console.log('   Car may be too old or uncommon');
     }
-    
-    console.log('\n=====================================');
-    console.log('SUMMARY:');
-    console.log('=====================================');
-    console.log(`Status: ${car.advertStatus}`);
-    console.log(`Published: ${car.publishedAt ? '✅' : '❌'}`);
-    console.log(`User ID: ${car.userId ? '✅' : '❌ MISSING'}`);
-    console.log(`Postcode: ${car.postcode ? '✅' : '❌ MISSING'}`);
-    console.log(`Coordinates: ${car.latitude && car.longitude ? '✅' : '❌ MISSING'}`);
-    console.log(`Images: ${car.images?.length || 0} ${car.images?.length > 0 ? '✅' : '❌ MISSING'}`);
-    console.log(`Description: ${car.description ? '✅' : '❌ MISSING'}`);
-    
-    console.log('\n🔍 TO MAKE THIS CAR VISIBLE:');
-    if (!car.userId) console.log('1. ❌ Assign a userId');
-    if (!car.postcode) console.log('2. ❌ Add a postcode');
-    if (!car.latitude || !car.longitude) console.log('3. ❌ Add coordinates');
-    if (!car.images || car.images.length === 0) console.log('4. ❌ Upload at least 1 photo');
-    
-    if (car.userId && car.postcode && car.latitude && car.longitude && car.images?.length > 0) {
-      console.log('✅ All requirements met! Car should be visible.');
-    }
+
+    // Verify the update
+    const updatedCar = await Car.findById(carId);
+    console.log('\n📊 Verified Updated Data:');
+    console.log(`   Model: ${updatedCar.model}`);
+    console.log(`   Variant: ${updatedCar.variant}`);
+    console.log(`   Display Title: ${updatedCar.displayTitle}`);
+    console.log(`   Combined MPG: ${updatedCar.runningCosts?.fuelEconomy?.combined || 'null'}`);
+    console.log(`   CO2 Emissions: ${updatedCar.co2Emissions || 'null'}g/km`);
+    console.log(`   Insurance Group: ${updatedCar.insuranceGroup || 'null'}`);
+    console.log(`   Annual Tax: £${updatedCar.annualTax || 'null'}`);
 
   } catch (error) {
     console.error('❌ Error:', error.message);
+    console.error(error.stack);
   } finally {
     await mongoose.connection.close();
     console.log('\n✅ Database connection closed');
   }
 }
 
-fixCar();
+fixHondaCivic();
