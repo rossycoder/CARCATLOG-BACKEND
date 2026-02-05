@@ -42,7 +42,20 @@ class CarDataValidator {
     cleaned.estimatedValue = this.cleanNumber(carData.estimatedValue, 0, 10000000) || 0;
 
     // Description and features - NO NULLS
-    cleaned.description = this.cleanString(carData.description) || '';
+    // CRITICAL FIX: Add default description if empty (required for non-DVLA cars)
+    let description = this.cleanString(carData.description) || '';
+    if (!description.trim() && carData.dataSource !== 'DVLA') {
+      // Generate default description for non-DVLA cars
+      description = `${cleaned.year} ${cleaned.make} ${cleaned.model} ${cleaned.variant || ''} in ${cleaned.color} color. ` +
+        `This ${cleaned.bodyType || 'vehicle'} has ${cleaned.mileage.toLocaleString()} miles. ` +
+        `Features ${cleaned.transmission} transmission and ${cleaned.fuelType} engine. ` +
+        `Contact seller for more details.`;
+    } else if (!description.trim() && carData.dataSource === 'DVLA') {
+      // For DVLA cars, use minimal description
+      description = 'Contact seller for more details.';
+    }
+    cleaned.description = description;
+    
     cleaned.features = Array.isArray(carData.features) ? 
       carData.features.filter(f => f && typeof f === 'string') : [];
     
