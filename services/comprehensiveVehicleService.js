@@ -286,16 +286,42 @@ class ComprehensiveVehicleService {
 
       // MOT history is already saved by MOTHistoryService
       // But update MOT status fields from latest test
+      console.log('🔍 Checking MOT history data structure:', {
+        hasMotHistory: !!data.motHistory,
+        hasMotHistoryData: !!(data.motHistory && data.motHistory.data),
+        motHistoryKeys: data.motHistory ? Object.keys(data.motHistory) : [],
+        dataLength: data.motHistory && data.motHistory.data ? data.motHistory.data.length : 0
+      });
+      
+      // Try to get MOT data from multiple sources
+      let latestTest = null;
+      
+      // Source 1: From data.motHistory.data (fresh API call)
       if (data.motHistory && data.motHistory.data && data.motHistory.data.length > 0) {
-        const latestTest = data.motHistory.data[0]; // Most recent test
-        if (latestTest && latestTest.expiryDate) {
-          car.motStatus = latestTest.testResult === 'PASSED' ? 'Valid' : 'Invalid';
-          car.motExpiry = latestTest.expiryDate;
-          car.motDue = latestTest.expiryDate;
-          console.log(`✅ MOT data saved: ${car.motStatus}, Due: ${new Date(car.motDue).toLocaleDateString('en-GB')}`);
-        }
+        latestTest = data.motHistory.data[0];
+        console.log('📋 Latest MOT test from API:', {
+          testDate: latestTest.testDate,
+          expiryDate: latestTest.expiryDate,
+          testResult: latestTest.testResult
+        });
+      }
+      // Source 2: From car.motHistory array (already in database)
+      else if (car.motHistory && car.motHistory.length > 0) {
+        latestTest = car.motHistory[0];
+        console.log('📋 Latest MOT test from database:', {
+          testDate: latestTest.testDate,
+          expiryDate: latestTest.expiryDate,
+          testResult: latestTest.testResult
+        });
+      }
+      
+      if (latestTest && latestTest.expiryDate) {
+        car.motStatus = latestTest.testResult === 'PASSED' ? 'Valid' : 'Invalid';
+        car.motExpiry = latestTest.expiryDate;
+        car.motDue = latestTest.expiryDate;
+        console.log(`✅ MOT data saved: ${car.motStatus}, Due: ${new Date(car.motDue).toLocaleDateString('en-GB')}`);
       } else {
-        console.log('⚠️  No MOT history data found');
+        console.log('⚠️  No MOT test with expiry date found');
       }
 
       await car.save();

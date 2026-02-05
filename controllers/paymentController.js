@@ -118,23 +118,26 @@ async function createAdvertCheckoutSession(req, res) {
       'valuation type': typeof valuation
     });
     
-    // Only validate if we have a valid numeric valuation and a price range
+    // DISABLED: Price range validation was causing too many false positives
+    // Only log for debugging purposes, don't block payments
     if (valuation && typeof valuation === 'number' && !isNaN(valuation) && valuation > 0 && vehicleValue) {
       const expectedPriceRange = calculatePriceRangeForValidation(valuation, sellerType === 'trade');
       if (expectedPriceRange && expectedPriceRange !== vehicleValue) {
-        console.error('❌ Price range mismatch:', {
+        console.warn('⚠️  Price range mismatch (NOT BLOCKING):', {
           valuation,
           actualVehicleValue,
           expectedPriceRange,
           providedPriceRange: vehicleValue,
           sellerType
         });
-        return res.status(400).json({
-          success: false,
-          error: `Price range mismatch. Vehicle valued at £${valuation.toLocaleString()} should use ${expectedPriceRange} price range, but ${vehicleValue} was provided.`,
-        });
+        // DISABLED: Don't block payment, just log the mismatch
+        // return res.status(400).json({
+        //   success: false,
+        //   error: `Price range mismatch. Vehicle valued at £${valuation.toLocaleString()} should use ${expectedPriceRange} price range, but ${vehicleValue} was provided.`,
+        // });
+      } else {
+        console.log('✅ Price range validation passed:', { valuation, actualVehicleValue, priceRange: vehicleValue });
       }
-      console.log('✅ Price range validation passed:', { valuation, actualVehicleValue, priceRange: vehicleValue });
     } else if (vehicleValue) {
       // If no valid valuation found but price range is provided, just log and continue
       console.log('⚠️  No valid numeric valuation found, skipping price range validation:', {
