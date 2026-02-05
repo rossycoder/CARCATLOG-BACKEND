@@ -163,6 +163,50 @@ class ComprehensiveVehicleService {
         car.historyCheckId = data.vehicleHistory._id;
         car.historyCheckStatus = 'verified';
         car.historyCheckDate = new Date();
+        
+        // CRITICAL: Extract and save running costs from vehicle history
+        if (data.vehicleHistory.runningCosts) {
+          console.log('💰 Saving running costs to database...');
+          
+          const rc = data.vehicleHistory.runningCosts;
+          
+          // Save to runningCosts object
+          car.runningCosts = {
+            fuelEconomy: {
+              urban: rc.fuelEconomy?.urban || null,
+              extraUrban: rc.fuelEconomy?.extraUrban || null,
+              combined: rc.fuelEconomy?.combined || null
+            },
+            co2Emissions: rc.co2Emissions || null,
+            insuranceGroup: rc.insuranceGroup || null,
+            annualTax: rc.annualTax || null
+          };
+          
+          // Also save to individual fields for backward compatibility
+          if (rc.fuelEconomy) {
+            car.fuelEconomyUrban = rc.fuelEconomy.urban || null;
+            car.fuelEconomyExtraUrban = rc.fuelEconomy.extraUrban || null;
+            car.fuelEconomyCombined = rc.fuelEconomy.combined || null;
+          }
+          
+          if (rc.co2Emissions) {
+            car.co2Emissions = rc.co2Emissions;
+          }
+          
+          if (rc.insuranceGroup) {
+            car.insuranceGroup = rc.insuranceGroup;
+          }
+          
+          if (rc.annualTax !== undefined && rc.annualTax !== null) {
+            car.annualTax = rc.annualTax;
+          }
+          
+          console.log('✅ Running costs saved:');
+          console.log(`   MPG Combined: ${car.fuelEconomyCombined || 'N/A'}`);
+          console.log(`   CO2: ${car.co2Emissions || 'N/A'} g/km`);
+          console.log(`   Insurance Group: ${car.insuranceGroup || 'N/A'}`);
+          console.log(`   Annual Tax: £${car.annualTax || 'N/A'}`);
+        }
       }
 
       // Update valuation data

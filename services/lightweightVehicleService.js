@@ -1,11 +1,12 @@
 /**
  * Lightweight Vehicle Service
  * Only fetches basic vehicle data for CarFinder form - NO expensive API calls
- * Uses cheap Vehiclespecs API (£0.05) instead of expensive CheckCarDetails (£1.82)
+ * Uses FREE DVLA API first, then falls back to cheap Vehiclespecs API (£0.05) if needed
  */
 
 const CheckCarDetailsClient = require('../clients/CheckCarDetailsClient');
 const VehicleHistory = require('../models/VehicleHistory');
+const dvlaService = require('./dvlaService');
 
 class LightweightVehicleService {
   constructor() {
@@ -34,18 +35,71 @@ class LightweightVehicleService {
       };
     }
     
-    console.log(`❌ CACHE MISS for ${registration} - Making basic API call (Vehiclespecs only)`);
+    console.log(`❌ CACHE MISS for ${registration} - Trying FREE DVLA API first`);
     
     try {
-      // Use ONLY Vehiclespecs API (£0.05) - NO expensive vehicle history/MOT APIs
-      const vehicleData = await CheckCarDetailsClient.getVehicleSpecs(registration);
+      // STEP 1: Try FREE DVLA API first (£0.00)
+      let vehicleData = null;
+      let apiCost = 0;
+      let apiCalls = 0;
+      let apiProvider = 'dvla';
+      let shouldFallbackToCheckCar = false;
+      
+      try {
+        console.log(`🆓 Trying FREE DVLA API for ${registration}`);
+        vehicleData = await dvlaService.lookupVehicle(registration);
+        console.log(`✅ DVLA API success for ${registration} - FREE data obtained`);
+        
+        // CRITICAL FIX: Check if DVLA returned incomplete data for electric vehicles
+        if (vehicleData && vehicleData.fuelType && vehicleData.fuelType.toLowerCase().includes('electric')) {
+          console.log(`🔋 Electric vehicle detected - DVLA model: "${vehicleData.model}"`);
+          
+          // If DVLA returns generic "ELECTRICITY" model, we need proper data from CheckCarDetails
+          if (!vehicleData.model || vehicleData.model.toUpperCase() === 'ELECTRICITY') {
+            console.log(`⚠️ DVLA returned generic model "${vehicleData.model}" for electric vehicle - falling back to CheckCarDetails for proper model/variant`);
+            shouldFallbackToCheckCar = true;
+          }
+        }
+        
+        if (!shouldFallbackToCheckCar) {
+          apiCost = 0;
+          apiCalls = 1;
+          apiProvider = 'dvla-free';
+        }
+      } catch (dvlaError) {
+        console.log(`❌ DVLA API failed for ${registration}: ${dvlaError.message}`);
+        shouldFallbackToCheckCar = true;
+      }
+      
+      // STEP 2: Fallback to CheckCarDetails if DVLA failed or returned incomplete data
+      if (shouldFallbackToCheckCar) {
+        console.log(`🔄 Falling back to CheckCarDetails Vehiclespecs API (£0.05) for complete vehicle data`);
+        
+        try {
+          vehicleData = await CheckCarDetailsClient.getVehicleSpecs(registration);
+          apiCost = 0.05;
+          apiCalls = 1;
+          apiProvider = 'vehiclespecs-fallback';
+          console.log(`✅ CheckCarDetails Vehiclespecs API success for ${registration}`);
+        } catch (checkCarError) {
+          console.error(`❌ Both DVLA and CheckCarDetails APIs failed for ${registration}`);
+          throw new Error(`Vehicle lookup failed: DVLA (${dvlaError?.message || 'incomplete data'}), CheckCarDetails (${checkCarError.message})`);
+        }
+      }
       
       if (!vehicleData) {
-        throw new Error('No vehicle data found');
+        throw new Error('No vehicle data found from any API');
       }
       
       // Parse the response to get basic vehicle data
-      const parsedData = CheckCarDetailsClient.parseResponse(vehicleData);
+      let parsedData;
+      if (apiProvider === 'dvla-free') {
+        // Parse DVLA response
+        parsedData = this.parseDVLAResponse(vehicleData, registration);
+      } else {
+        // Parse CheckCarDetails response
+        parsedData = CheckCarDetailsClient.parseResponse(vehicleData);
+      }
       
       // Format basic vehicle data for CarFinder (no history/MOT data)
       const basicData = {
@@ -66,7 +120,7 @@ class LightweightVehicleService {
         emissionClass: parsedData.emissionClass || parsedData.euroStatus ? `Euro ${parsedData.euroStatus}` : null,
         co2Emissions: parsedData.co2Emissions || null,
         
-        // Add running costs if available from API
+        // Add running costs if available from API (usually only from CheckCarDetails)
         urbanMpg: parsedData.urbanMpg || parsedData.fuelEconomyUrban || null,
         extraUrbanMpg: parsedData.extraUrbanMpg || parsedData.fuelEconomyExtraUrban || null,
         combinedMpg: parsedData.combinedMpg || parsedData.fuelEconomyCombined || null,
@@ -80,7 +134,7 @@ class LightweightVehicleService {
         // These will be fetched later when car is actually saved
         
         // Metadata
-        apiProvider: 'vehiclespecs-only',
+        apiProvider: apiProvider,
         checkDate: new Date(),
         fromCache: false
       };
@@ -89,14 +143,14 @@ class LightweightVehicleService {
       await this.cacheBasicDataOnly(registration, basicData);
       
       console.log(`✅ CarFinder lookup successful for ${registration}`);
-      console.log(`   API Cost: £0.05 (Vehiclespecs only), Data: ${basicData.make} ${basicData.model}`);
+      console.log(`   API Provider: ${apiProvider}, Cost: £${apiCost}, Data: ${basicData.make} ${basicData.model}`);
       
       return {
         success: true,
         data: basicData,
         fromCache: false,
-        apiCalls: 1,
-        cost: 0.05
+        apiCalls: apiCalls,
+        cost: apiCost
       };
       
     } catch (error) {
@@ -104,11 +158,11 @@ class LightweightVehicleService {
       
       return {
         success: false,
-        error: error.message,
+        error: `Vehicle lookup failed: ${error.message}. Please check the registration number and try again.`,
         data: null,
         fromCache: false,
         apiCalls: 1,
-        cost: 0.05
+        cost: 0 // No cost if both APIs failed
       };
     }
   }
@@ -270,7 +324,7 @@ class LightweightVehicleService {
           motHistory: [], // Empty - will be filled when car is saved
           
           checkDate: new Date(),
-          checkStatus: 'basic-only',
+          checkStatus: 'partial', // Changed from 'basic-only' to valid enum value
           apiProvider: 'vehiclespecs-only',
           testMode: process.env.API_ENVIRONMENT !== 'production'
         };
@@ -375,6 +429,60 @@ class LightweightVehicleService {
     } catch (error) {
       console.error('Error calculating estimated price:', error.message);
       return 10000; // Default £10,000
+    }
+  }
+
+  /**
+   * Parse DVLA API response to extract vehicle data
+   * @param {Object} dvlaResponse - Raw DVLA API response
+   * @param {string} registration - Vehicle registration number
+   * @returns {Object} Parsed vehicle data
+   */
+  parseDVLAResponse(dvlaResponse, registration) {
+    try {
+      console.log(`🔍 Parsing DVLA response for ${registration}`);
+      
+      // DVLA API response structure
+      const parsed = {
+        registration: registration,
+        make: dvlaResponse.make || null,
+        model: dvlaResponse.model || null,
+        variant: null, // DVLA doesn't provide variant
+        year: dvlaResponse.yearOfManufacture || null,
+        color: dvlaResponse.colour || null,
+        fuelType: dvlaResponse.fuelType || null,
+        transmission: null, // DVLA doesn't provide transmission
+        engineSize: dvlaResponse.engineCapacity ? (dvlaResponse.engineCapacity / 1000).toFixed(1) : null,
+        bodyType: dvlaResponse.typeApproval || null,
+        doors: null, // DVLA doesn't provide doors
+        seats: null, // DVLA doesn't provide seats
+        gearbox: null, // DVLA doesn't provide gearbox
+        emissionClass: dvlaResponse.euroStatus ? `Euro ${dvlaResponse.euroStatus}` : null,
+        co2Emissions: dvlaResponse.co2Emissions || null,
+        
+        // DVLA doesn't provide running costs data
+        urbanMpg: null,
+        extraUrbanMpg: null,
+        combinedMpg: null,
+        annualTax: dvlaResponse.taxStatus === 'Taxed' ? null : null, // DVLA doesn't provide tax amount
+        insuranceGroup: null,
+        
+        // Additional DVLA fields
+        taxStatus: dvlaResponse.taxStatus || null,
+        taxDueDate: dvlaResponse.taxDueDate || null,
+        motStatus: dvlaResponse.motStatus || null,
+        motExpiryDate: dvlaResponse.motExpiryDate || null,
+        
+        // Metadata
+        apiProvider: 'dvla-free'
+      };
+      
+      console.log(`✅ DVLA data parsed: ${parsed.make} ${parsed.model} (${parsed.year})`);
+      return parsed;
+      
+    } catch (error) {
+      console.error(`❌ Error parsing DVLA response for ${registration}:`, error.message);
+      throw new Error(`Failed to parse DVLA response: ${error.message}`);
     }
   }
 }

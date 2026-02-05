@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const Car = require('../models/Car');
+const CarDataNormalizer = require('../utils/carDataNormalizer'); // Add this import
 
 /**
  * Create a new advert - SIMPLIFIED VERSION
@@ -47,31 +48,34 @@ const createAdvert = async (req, res) => {
       }
     }
     
+    // Normalize vehicle data before creating car
+    const normalizedVehicleData = CarDataNormalizer.normalizeCarData(vehicleData);
+    
     // Create car with enhanced variant handling
     const car = new Car({
       advertId,
-      make: vehicleData.make || 'Unknown',
-      model: vehicleData.model || 'Unknown',
-      variant: vehicleData.variant || null, // Will be auto-fetched in pre-save hook if missing
-      year: parseInt(vehicleData.year) || new Date().getFullYear(),
-      mileage: parseInt(vehicleData.mileage) || 0,
-      color: vehicleData.color || 'Not specified',
-      fuelType: vehicleData.fuelType || 'Petrol',
+      make: normalizedVehicleData.make || 'Unknown',
+      model: normalizedVehicleData.model || 'Unknown',
+      variant: normalizedVehicleData.variant || null, // Will be auto-fetched in pre-save hook if missing
+      year: parseInt(normalizedVehicleData.year) || new Date().getFullYear(),
+      mileage: parseInt(normalizedVehicleData.mileage) || 0,
+      color: normalizedVehicleData.color || null, // Leave null so API can populate it, frontend will handle display
+      fuelType: normalizedVehicleData.fuelType || 'Petrol',
       transmission: normalizedTransmission,
       price: estimatedPrice,
       estimatedValue: estimatedPrice,
       description: '',
       images: [],
-      registrationNumber: vehicleData.registration || vehicleData.registrationNumber || null,
-      engineSize: parseFloat(vehicleData.engineSize) || undefined,
-      bodyType: vehicleData.bodyType || undefined,
-      doors: parseInt(vehicleData.doors) || undefined,
-      seats: parseInt(vehicleData.seats) || undefined,
-      dataSource: vehicleData.registration ? 'DVLA' : 'manual',
+      registrationNumber: normalizedVehicleData.registration || normalizedVehicleData.registrationNumber || null,
+      engineSize: parseFloat(normalizedVehicleData.engineSize) || undefined,
+      bodyType: normalizedVehicleData.bodyType || undefined,
+      doors: parseInt(normalizedVehicleData.doors) || undefined,
+      seats: parseInt(normalizedVehicleData.seats) || undefined,
+      dataSource: normalizedVehicleData.registration ? 'DVLA' : 'manual',
       advertStatus: 'active',
       publishedAt: new Date(),
       condition: 'used',
-      postcode: vehicleData.postcode || undefined
+      postcode: normalizedVehicleData.postcode || undefined
     });
     
     console.log(`🚗 Creating car with registration: ${car.registrationNumber}`);
@@ -224,23 +228,69 @@ const updateAdvert = async (req, res) => {
         if (vehicleData) {
           console.log('📝 [updateAdvert] Updating vehicle data');
           const { __v, _id, createdAt, updatedAt, ...cleanVehicleData } = vehicleData;
+          
+          // CRITICAL FIX: Handle estimatedValue conversion from object to number
+          if (cleanVehicleData.estimatedValue && typeof cleanVehicleData.estimatedValue === 'object') {
+            // If estimatedValue is an object, extract the private price
+            if (cleanVehicleData.estimatedValue.private) {
+              cleanVehicleData.estimatedValue = cleanVehicleData.estimatedValue.private;
+              console.log('🔧 [updateAdvert] Converted estimatedValue object to number:', cleanVehicleData.estimatedValue);
+            } else if (cleanVehicleData.estimatedValue.retail) {
+              cleanVehicleData.estimatedValue = cleanVehicleData.estimatedValue.retail;
+              console.log('🔧 [updateAdvert] Converted estimatedValue object to number (retail):', cleanVehicleData.estimatedValue);
+            } else {
+              // If object is empty or has no valid prices, remove it
+              delete cleanVehicleData.estimatedValue;
+              console.log('🔧 [updateAdvert] Removed empty estimatedValue object');
+            }
+          }
+          
+          // CRITICAL FIX: Handle allValuations - this should not be saved to Car model
+          if (cleanVehicleData.allValuations) {
+            delete cleanVehicleData.allValuations;
+            console.log('🔧 [updateAdvert] Removed allValuations (not part of Car schema)');
+          }
+          
           Object.assign(updateObj, cleanVehicleData);
         }
         
         // Update advert data
         if (advertData) {
           console.log('📝 [updateAdvert] Updating advert data');
-          if (advertData.price) updateObj.price = parseFloat(advertData.price);
+          if (advertData.price) {
+            const priceValue = parseFloat(advertData.price);
+            if (!isNaN(priceValue) && priceValue > 0) {
+              updateObj.price = priceValue;
+              console.log('📝 [updateAdvert] Updating price:', priceValue);
+            } else {
+              console.log('⚠️ [updateAdvert] Invalid price value, skipping:', advertData.price);
+            }
+          }
           if (advertData.hasOwnProperty('description')) {
             // Handle description explicitly, including empty strings
-            // If description is empty and car requires description, provide a default
             let description = advertData.description || '';
-            if (!description && car.dataSource !== 'DVLA') {
+            
+            // Check if description is required based on car's dataSource
+            const isDescriptionRequired = car.dataSource !== 'DVLA';
+            console.log('📝 [updateAdvert] Description validation - dataSource:', car.dataSource, 'required:', isDescriptionRequired);
+            
+            if (!description.trim() && isDescriptionRequired) {
               description = 'No description provided.';
               console.log('📝 [updateAdvert] Empty description provided for non-DVLA car, using default');
+            } else if (!description.trim() && !isDescriptionRequired) {
+              // For DVLA cars, description is not required, so we can leave it empty
+              description = '';
+              console.log('📝 [updateAdvert] Empty description for DVLA car, leaving empty');
             }
+            
             updateObj.description = description;
             console.log('📝 [updateAdvert] Updating description:', `"${description}"`);
+          } else {
+            // CRITICAL FIX: If description is not in advertData but car requires it, ensure it has a value
+            if (car.dataSource !== 'DVLA' && (!car.description || car.description.trim() === '')) {
+              updateObj.description = 'No description provided.';
+              console.log('📝 [updateAdvert] Adding default description for non-DVLA car without description');
+            }
           }
           if (advertData.photos) updateObj.images = advertData.photos.map(p => p.url || p);
           if (advertData.features) {

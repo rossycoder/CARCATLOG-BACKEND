@@ -8,8 +8,8 @@ const carSchema = new mongoose.Schema({
       // Make is required unless it's from CheckCarDetails API (will be fetched)
       return this.dataSource !== 'DVLA' || this.dataSources?.checkCarDetails === true;
     },
-    trim: true,
-    index: true
+    trim: true
+    // Removed index: true - using compound index below
   },
   model: {
     type: String,
@@ -17,8 +17,8 @@ const carSchema = new mongoose.Schema({
       // Model is required unless it's from CheckCarDetails API (will be fetched)
       return this.dataSource !== 'DVLA' || this.dataSources?.checkCarDetails === true;
     },
-    trim: true,
-    index: true
+    trim: true
+    // Removed index: true - using compound index below
   },
   submodel: {
     type: String,
@@ -67,6 +67,11 @@ const carSchema = new mongoose.Schema({
       return this.dataSource === 'manual' && !this.dataSources?.checkCarDetails;
     },
     enum: ['automatic', 'manual', 'semi-automatic']
+  },
+  driveType: {
+    type: String,
+    trim: true,
+    enum: ['FWD', 'RWD', 'AWD', '4WD', null]
   },
   fuelType: {
     type: String,
@@ -168,8 +173,8 @@ const carSchema = new mongoose.Schema({
     type: String,
     trim: true,
     uppercase: true,
-    sparse: true,
-    index: true
+    sparse: true
+    // Removed index: true - using single index below
   },
   displayTitle: {
     type: String,
@@ -400,7 +405,21 @@ const carSchema = new mongoose.Schema({
     },
     co2Emissions: { type: Number, default: null },
     insuranceGroup: { type: String, default: null },
-    annualTax: { type: Number, default: null }
+    annualTax: { type: Number, default: null },
+    // Electric vehicle specific fields
+    electricRange: { type: Number, default: null }, // Range in miles for electric vehicles
+    chargingTime: { type: Number, default: null }, // Charging time in hours (0-100%)
+    batteryCapacity: { type: Number, default: null }, // Battery capacity in kWh
+    // Charging speeds and capabilities
+    homeChargingSpeed: { type: Number, default: null }, // Home charging speed in kW
+    publicChargingSpeed: { type: Number, default: null }, // Public charging speed in kW
+    rapidChargingSpeed: { type: Number, default: null }, // Rapid charging speed in kW
+    chargingTime10to80: { type: Number, default: null }, // Charging time 10-80% in minutes
+    // Additional electric vehicle fields
+    electricMotorPower: { type: Number, default: null }, // Electric motor power in kW
+    electricMotorTorque: { type: Number, default: null }, // Electric motor torque in Nm
+    chargingPortType: { type: String, default: null }, // Type of charging port
+    fastChargingCapability: { type: String, default: null } // Fast charging capability
   },
   
   // Individual running cost fields (for backward compatibility)
@@ -410,6 +429,21 @@ const carSchema = new mongoose.Schema({
   co2Emissions: { type: Number, default: null },
   insuranceGroup: { type: String, default: null },
   annualTax: { type: Number, default: null },
+  
+  // Electric vehicle specific fields (individual)
+  electricRange: { type: Number, default: null }, // Range in miles for electric vehicles
+  chargingTime: { type: Number, default: null }, // Charging time in hours (0-100%)
+  batteryCapacity: { type: Number, default: null }, // Battery capacity in kWh
+  // Charging speeds and capabilities
+  homeChargingSpeed: { type: Number, default: null }, // Home charging speed in kW (e.g., 7.4kW)
+  publicChargingSpeed: { type: Number, default: null }, // Public charging speed in kW (e.g., 50kW)
+  rapidChargingSpeed: { type: Number, default: null }, // Rapid charging speed in kW (e.g., 150kW)
+  chargingTime10to80: { type: Number, default: null }, // Charging time from 10% to 80% in minutes
+  // Additional electric vehicle fields
+  electricMotorPower: { type: Number, default: null }, // Electric motor power in kW
+  electricMotorTorque: { type: Number, default: null }, // Electric motor torque in Nm
+  chargingPortType: { type: String, default: null }, // Type of charging port (e.g., "Type 2", "CCS")
+  fastChargingCapability: { type: String, default: null }, // Fast charging capability description
   
   // Performance data (from CheckCarDetails API)
   performance: {
@@ -1222,5 +1256,51 @@ carSchema.methods.generateSampleAdvisories = function() {
   
   return selectedAdvisories;
 };
+
+// Pre-save hook to automatically enhance electric vehicles
+carSchema.pre('save', async function(next) {
+  try {
+    // Only enhance if this is an electric vehicle and it's a new document or fuelType changed
+    if (this.fuelType === 'Electric' && (this.isNew || this.isModified('fuelType'))) {
+      console.log(`🔋 Auto-enhancing electric vehicle: ${this.make} ${this.model} ${this.variant}`);
+      
+      // Import services (dynamic import to avoid circular dependencies)
+      const ElectricVehicleEnhancementService = require('../services/electricVehicleEnhancementService');
+      const AutoDataPopulationService = require('../services/autoDataPopulationService');
+      
+      // Convert document to plain object for enhancement
+      const vehicleData = this.toObject();
+      
+      // Enhance with comprehensive electric vehicle data
+      const enhancedData = ElectricVehicleEnhancementService.enhanceWithEVData(vehicleData);
+      const fullyEnhancedData = AutoDataPopulationService.populateMissingData(enhancedData);
+      
+      // Apply enhanced data back to the document
+      Object.keys(fullyEnhancedData).forEach(key => {
+        if (key !== '_id' && key !== '__v') {
+          this[key] = fullyEnhancedData[key];
+        }
+      });
+      
+      console.log(`✅ Auto-enhanced EV: ${this.electricRange || this.runningCosts?.electricRange}mi range, ${this.batteryCapacity || this.runningCosts?.batteryCapacity}kWh battery`);
+    }
+    
+    next();
+  } catch (error) {
+    console.error('❌ Error in electric vehicle pre-save hook:', error);
+    // Don't fail the save operation, just log the error
+    next();
+  }
+});
+
+// Post-save hook to log successful electric vehicle saves
+carSchema.post('save', function(doc) {
+  if (doc.fuelType === 'Electric') {
+    console.log(`🎉 Electric vehicle saved successfully: ${doc.make} ${doc.model} (${doc.registrationNumber})`);
+    console.log(`   - Range: ${doc.electricRange || doc.runningCosts?.electricRange || 'N/A'} miles`);
+    console.log(`   - Battery: ${doc.batteryCapacity || doc.runningCosts?.batteryCapacity || 'N/A'} kWh`);
+    console.log(`   - Features: ${doc.features?.length || 0} features added`);
+  }
+});
 
 module.exports = mongoose.model('Car', carSchema);

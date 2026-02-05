@@ -3,6 +3,7 @@ const router = express.Router();
 const vehicleController = require('../controllers/vehicleController');
 const { validateAndNormalizeVehicle, checkDuplicateRegistration } = require('../middleware/vehicleValidation');
 const { protect } = require('../middleware/authMiddleware');
+const { enhanceElectricVehicleData, addElectricVehicleInfo } = require('../middleware/electricVehicleEnhancement');
 
 // GET /api/vehicles/count - Get total count of available cars (must be before /:id)
 router.get(
@@ -13,6 +14,7 @@ router.get(
 // GET /api/vehicles/search - Search cars with comprehensive filters (must be before /:id)
 router.get(
   '/search',
+  addElectricVehicleInfo, // Add EV charging estimates to responses
   vehicleController.searchCars.bind(vehicleController)
 );
 
@@ -44,6 +46,7 @@ router.get(
 // GET /api/vehicles - Get all cars with filters (must be before /:id)
 router.get(
   '/',
+  addElectricVehicleInfo, // Add EV charging estimates to responses
   vehicleController.getAllCars.bind(vehicleController)
 );
 
@@ -53,6 +56,7 @@ router.post(
   vehicleController.constructor.lookupValidationRules(),
   checkDuplicateRegistration,
   validateAndNormalizeVehicle,
+  enhanceElectricVehicleData, // Automatically enhance electric vehicles
   vehicleController.lookupAndCreateVehicle.bind(vehicleController)
 );
 

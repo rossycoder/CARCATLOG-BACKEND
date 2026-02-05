@@ -145,9 +145,13 @@ const tradeAnalyticsRoutes = require('./routes/tradeAnalyticsRoutes');
 const bikeRoutes = require('./routes/bikeRoutes');
 const vanRoutes = require('./routes/vanRoutes');
 const seoRoutes = require('./routes/seoRoutes');
+const electricVehicleRoutes = require('./routes/electricVehicles');
+const demoRoutes = require('./routes/demo');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/vehicles', vehicleRoutes);
+app.use('/api/electric-vehicles', electricVehicleRoutes);
+app.use('/api/demo', demoRoutes);
 app.use('/api/postcode', postcodeRoutes);
 app.use('/api/vehicle-history', historyRoutes);
 app.use('/api/vehicle-valuation', valuationRoutes);

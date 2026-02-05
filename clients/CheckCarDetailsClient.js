@@ -211,6 +211,45 @@ class CheckCarDetailsClient {
       data.TaxRate
     );
 
+    // Extract electric vehicle specific data
+    const electricVehicleData = {
+      electricRange: this.extractNumber(
+        powerSource.ElectricDetails?.RangeMiles ||
+        powerSource.ElectricDetails?.Range ||
+        data.ElectricRange ||
+        data.electricRange ||
+        data.RangeMiles ||
+        data.Range
+      ),
+      batteryCapacity: this.extractNumber(
+        powerSource.ElectricDetails?.BatteryCapacityKwh ||
+        powerSource.ElectricDetails?.BatteryCapacity ||
+        data.BatteryCapacityKwh ||
+        data.batteryCapacity ||
+        data.BatteryCapacity
+      ),
+      chargingTime: this.extractNumber(
+        powerSource.ElectricDetails?.ChargingTimeHours ||
+        powerSource.ElectricDetails?.ChargingTime ||
+        data.ChargingTimeHours ||
+        data.chargingTime ||
+        data.ChargingTime
+      ),
+      // Additional electric vehicle fields
+      electricMotorPower: this.extractNumber(
+        powerSource.ElectricDetails?.MotorPowerKw ||
+        data.ElectricMotorPower ||
+        data.MotorPowerKw
+      ),
+      electricMotorTorque: this.extractNumber(
+        powerSource.ElectricDetails?.MotorTorqueNm ||
+        data.ElectricMotorTorque ||
+        data.MotorTorqueNm
+      ),
+      chargingPortType: powerSource.ElectricDetails?.ChargingPortType || data.ChargingPortType || null,
+      fastChargingCapability: powerSource.ElectricDetails?.FastChargingCapability || data.FastChargingCapability || null
+    };
+
     // Extract performance data
     const performanceData = {
       power: this.extractNumber(
@@ -402,6 +441,14 @@ class CheckCarDetailsClient {
       insuranceGroup,
       annualTax,
       performance: performanceData,
+      // Electric vehicle specific fields
+      electricRange: electricVehicleData.electricRange,
+      batteryCapacity: electricVehicleData.batteryCapacity,
+      chargingTime: electricVehicleData.chargingTime,
+      electricMotorPower: electricVehicleData.electricMotorPower,
+      electricMotorTorque: electricVehicleData.electricMotorTorque,
+      chargingPortType: electricVehicleData.chargingPortType,
+      fastChargingCapability: electricVehicleData.fastChargingCapability,
       ...basicData
     };
   }

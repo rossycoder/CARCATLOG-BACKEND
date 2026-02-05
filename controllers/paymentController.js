@@ -53,7 +53,7 @@ async function createAdvertCheckoutSession(req, res) {
     const { 
       packageId, packageName, price, duration, sellerType, vehicleValue, 
       registration, mileage, advertId, advertData, vehicleData, contactDetails,
-      vehicleType, priceExVat, vatAmount
+      vehicleType, priceExVat, vatAmount, actualVehicleValue
     } = req.body;
     
     console.log('📦 createAdvertCheckoutSession called with:', {
@@ -78,22 +78,71 @@ async function createAdvertCheckoutSession(req, res) {
     }
 
     // Validate price range matches vehicle valuation if valuation is provided
-    const valuation = advertData?.price || vehicleData?.estimatedValue || vehicleData?.price;
-    if (valuation && vehicleValue) {
+    // Extract numeric valuation from various possible sources - prioritize private values
+    let valuation = null;
+    
+    // Try private values first (most relevant for private sellers)
+    if (vehicleData?.valuation?.estimatedValue?.private && typeof vehicleData.valuation.estimatedValue.private === 'number') {
+      valuation = vehicleData.valuation.estimatedValue.private;
+    }
+    else if (vehicleData?.allValuations?.private && typeof vehicleData.allValuations.private === 'number') {
+      valuation = vehicleData.allValuations.private;
+    }
+    // Try actualVehicleValue (should be numeric)
+    else if (actualVehicleValue && typeof actualVehicleValue === 'number' && !isNaN(actualVehicleValue)) {
+      valuation = actualVehicleValue;
+    }
+    // Try advertData.price
+    else if (advertData?.price && typeof advertData.price === 'number' && !isNaN(advertData.price)) {
+      valuation = advertData.price;
+    }
+    // Try retail values as fallback
+    else if (vehicleData?.valuation?.estimatedValue?.retail && typeof vehicleData.valuation.estimatedValue.retail === 'number') {
+      valuation = vehicleData.valuation.estimatedValue.retail;
+    }
+    // Try vehicleData.price
+    else if (vehicleData?.price && typeof vehicleData.price === 'number' && !isNaN(vehicleData.price)) {
+      valuation = vehicleData.price;
+    }
+    
+    console.log('💰 Valuation extraction debug:', {
+      actualVehicleValue,
+      'advertData.price': advertData?.price,
+      'vehicleData.valuation.estimatedValue.private': vehicleData?.valuation?.estimatedValue?.private,
+      'vehicleData.valuation.estimatedValue.retail': vehicleData?.valuation?.estimatedValue?.retail,
+      'vehicleData.allValuations.private': vehicleData?.allValuations?.private,
+      'vehicleData.estimatedValue': vehicleData?.estimatedValue,
+      'vehicleData.estimatedValue type': typeof vehicleData?.estimatedValue,
+      'vehicleData.price': vehicleData?.price,
+      'extracted valuation': valuation,
+      'valuation type': typeof valuation
+    });
+    
+    // Only validate if we have a valid numeric valuation and a price range
+    if (valuation && typeof valuation === 'number' && !isNaN(valuation) && valuation > 0 && vehicleValue) {
       const expectedPriceRange = calculatePriceRangeForValidation(valuation, sellerType === 'trade');
-      if (expectedPriceRange !== vehicleValue) {
+      if (expectedPriceRange && expectedPriceRange !== vehicleValue) {
         console.error('❌ Price range mismatch:', {
           valuation,
+          actualVehicleValue,
           expectedPriceRange,
           providedPriceRange: vehicleValue,
           sellerType
         });
         return res.status(400).json({
           success: false,
-          error: `Price range mismatch. Vehicle valued at £${valuation} should use ${expectedPriceRange} price range, but ${vehicleValue} was provided.`,
+          error: `Price range mismatch. Vehicle valued at £${valuation.toLocaleString()} should use ${expectedPriceRange} price range, but ${vehicleValue} was provided.`,
         });
       }
-      console.log('✅ Price range validation passed:', { valuation, priceRange: vehicleValue });
+      console.log('✅ Price range validation passed:', { valuation, actualVehicleValue, priceRange: vehicleValue });
+    } else if (vehicleValue) {
+      // If no valid valuation found but price range is provided, just log and continue
+      console.log('⚠️  No valid numeric valuation found, skipping price range validation:', {
+        valuation,
+        actualVehicleValue,
+        'vehicleData.estimatedValue': vehicleData?.estimatedValue,
+        providedPriceRange: vehicleValue
+      });
     }
 
     const stripeService = new StripeService();
@@ -453,6 +502,7 @@ async function handlePaymentSuccess(paymentIntent) {
             const advertData = JSON.parse(purchase.metadata.get('advertData') || '{}');
             const vehicleData = JSON.parse(purchase.metadata.get('vehicleData') || '{}');
             const contactDetails = JSON.parse(purchase.metadata.get('contactDetails') || '{}');
+            const userId = purchase.metadata.get('userId');
             
             // Handle BIKE payments
             if (vehicleType === 'bike') {
@@ -535,6 +585,7 @@ async function handlePaymentSuccess(paymentIntent) {
                 
                 bike = new Bike({
                   advertId: advertId,
+                  userId: userId, // Add userId field
                   make: vehicleData.make || 'Unknown',
                   model: vehicleData.model || 'Unknown',
                   year: vehicleData.year || new Date().getFullYear(),
@@ -543,7 +594,7 @@ async function handlePaymentSuccess(paymentIntent) {
                   fuelType: vehicleData.fuelType || 'Petrol',
                   transmission: 'manual',
                   registrationNumber: vehicleData.registrationNumber || null,
-                  engineCC: vehicleData.engineCC || 0,
+                  engineCC: parseInt(vehicleData.engineCC || vehicleData.engineSize || '0') || 0,
                   bikeType: vehicleData.bikeType || 'Other',
                   condition: 'used',
                   price: advertData.price || 0,
@@ -952,19 +1003,21 @@ async function handlePaymentSuccess(paymentIntent) {
               console.log(`   Engine size: "${vehicleData.engineSize}" → ${normalizedEngineSize}`);
               console.log(`   Transmission: "${vehicleData.transmission}" → "${normalizedTransmission}"`);
               
-              car = new Car({
+              // Import validator
+              const CarDataValidator = require('../utils/carDataValidator');
+              
+              // Prepare raw car data
+              const rawCarData = {
               advertId: advertId,
-              // User association
               userId: userId || null,
-              // Vehicle data
               make: vehicleData.make,
               model: vehicleData.model,
               variant: vehicleData.variant,
               displayTitle: vehicleData.displayTitle,
               year: vehicleData.year,
-              mileage: vehicleData.mileage || 0,
-              color: vehicleData.color || 'Not specified',
-              fuelType: vehicleData.fuelType || 'Petrol',
+              mileage: vehicleData.mileage,
+              color: vehicleData.color,
+              fuelType: vehicleData.fuelType,
               transmission: normalizedTransmission,
               registrationNumber: vehicleData.registrationNumber,
               engineSize: normalizedEngineSize,
@@ -978,31 +1031,22 @@ async function handlePaymentSuccess(paymentIntent) {
               motExpiry: vehicleData.motExpiry,
               dataSource: vehicleData.registrationNumber ? 'DVLA' : 'manual',
               condition: 'used',
-              // Advert data
-              // Use private sale price from valuation if available
-              price: advertData.price || vehicleData.estimatedValue?.private || vehicleData.allValuations?.private || vehicleData.estimatedValue || 0,
-              description: advertData.description || '',
+              price: advertData.price || vehicleData.estimatedValue?.private || vehicleData.allValuations?.private || vehicleData.estimatedValue,
+              description: advertData.description,
               images: advertData.photos ? advertData.photos.map(p => p.url) : [],
-              features: advertData.features || [],
-              videoUrl: advertData.videoUrl || '',
-              // Location data
-              postcode: contactDetails.postcode || '',
+              features: advertData.features,
+              videoUrl: advertData.videoUrl,
+              postcode: contactDetails.postcode,
               locationName: locationName,
               latitude: latitude,
               longitude: longitude,
-              location: latitude && longitude ? {
-                type: 'Point',
-                coordinates: [longitude, latitude]
-              } : undefined,
-              // Seller contact
               sellerContact: {
-                type: purchase.sellerType || 'private', // Set seller type from purchase (trade or private)
+                type: purchase.sellerType || 'private',
                 phoneNumber: contactDetails.phoneNumber,
                 email: contactDetails.email,
-                allowEmailContact: contactDetails.allowEmailContact || false,
+                allowEmailContact: contactDetails.allowEmailContact,
                 postcode: contactDetails.postcode
               },
-              // Package details
               advertisingPackage: {
                 packageId: purchase.packageId,
                 packageName: purchase.packageName,
@@ -1013,12 +1057,24 @@ async function handlePaymentSuccess(paymentIntent) {
                 stripeSessionId: paymentData.sessionId,
                 stripePaymentIntentId: paymentIntent.id
               },
-              // History check - set to pending so pre-save hook will fetch it
               historyCheckStatus: vehicleData.registrationNumber ? 'pending' : 'not_required',
-              // Status
               advertStatus: 'active',
               publishedAt: new Date()
-            });
+            };
+            
+              // Validate and clean data - removes all null values
+              const cleanedCarData = CarDataValidator.validateAndClean(rawCarData);
+              
+              // Validate required fields
+              const validation = CarDataValidator.validateRequired(cleanedCarData);
+              if (!validation.isValid) {
+                console.error('❌ Car data validation failed:', validation.errors);
+                throw new Error(`Invalid car data: ${validation.errors.join(', ')}`);
+              }
+              
+              console.log('✅ Car data validated and cleaned - no null values');
+              
+              car = new Car(cleanedCarData);
             
               await car.save();
               console.log(`✅ Car advert CREATED and published in database!`);
@@ -1351,7 +1407,8 @@ async function createBikeCheckoutSession(req, res) {
         vehicleType: 'bike',
         advertData: JSON.stringify(safeAdvertData),
         vehicleData: JSON.stringify(safeVehicleData),
-        contactDetails: JSON.stringify(safeContactDetails)
+        contactDetails: JSON.stringify(safeContactDetails),
+        userId: req.user ? (req.user._id || req.user.id).toString() : null
       }
     });
 
@@ -1433,6 +1490,7 @@ async function createBikeCheckoutSession(req, res) {
           console.log(`📝 Creating NEW bike document`);
           bike = new Bike({
             advertId: advertId,
+            userId: req.user ? (req.user._id || req.user.id) : null, // Add userId field
             make: vehicleData.make || 'Unknown',
             model: vehicleData.model || 'Unknown',
             year: vehicleData.year || new Date().getFullYear(),
@@ -1441,7 +1499,7 @@ async function createBikeCheckoutSession(req, res) {
             fuelType: vehicleData.fuelType || 'Petrol',
             transmission: 'manual',
             registrationNumber: vehicleData.registrationNumber || null,
-            engineCC: vehicleData.engineCC || 0,
+            engineCC: parseInt(vehicleData.engineCC || vehicleData.engineSize || '0') || 0,
             bikeType: vehicleData.bikeType || 'Other',
             condition: 'used',
             price: advertData?.price || 0,

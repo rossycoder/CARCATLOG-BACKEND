@@ -4,6 +4,8 @@ const dvlaService = require('../services/dvlaService');
 const HistoryService = require('../services/historyService');
 const Car = require('../models/Car');
 const { createErrorFromCode, logError } = require('../utils/dvlaErrorHandler');
+const ElectricVehicleEnhancementService = require('../services/electricVehicleEnhancementService');
+const AutoDataPopulationService = require('../services/autoDataPopulationService');
 
 // Initialize HistoryService
 const historyService = new HistoryService();
@@ -226,12 +228,31 @@ class VehicleController {
         console.log('[Vehicle Controller] Setting userId:', userId);
       }
 
-      // Step 4: Create Car record
+      // Step 4: Enhance electric vehicle data if applicable
+      if (carData.fuelType === 'Electric') {
+        console.log(`[Vehicle Controller] Electric vehicle detected - enhancing with EV data`);
+        
+        // Enhance with comprehensive electric vehicle data
+        const enhancedCarData = ElectricVehicleEnhancementService.enhanceWithEVData(carData);
+        
+        // Also use auto data population for additional defaults
+        const fullyEnhancedData = AutoDataPopulationService.populateMissingData(enhancedCarData);
+        
+        // Update carData with enhanced data
+        Object.assign(carData, fullyEnhancedData);
+        
+        console.log(`✅ Enhanced electric vehicle data:`);
+        console.log(`   - Range: ${carData.electricRange} miles`);
+        console.log(`   - Battery: ${carData.batteryCapacity} kWh`);
+        console.log(`   - Rapid charging: ${carData.rapidChargingSpeed}kW`);
+      }
+
+      // Step 5: Create Car record
       const car = new Car(carData);
 
       await car.save();
 
-      // Step 5: Fetch ALL vehicle data comprehensively (Vehicle History + MOT + Valuation)
+      // Step 6: Fetch ALL vehicle data comprehensively (Vehicle History + MOT + Valuation)
       // This ensures complete data is available when the car is viewed
       try {
         console.log(`[Vehicle Controller] Fetching comprehensive vehicle data for: ${registrationNumber}`);
@@ -1340,9 +1361,38 @@ class VehicleController {
         // Keep metadata objects as-is
         unwrapped[key] = value;
       } else if (key === 'valuation' && typeof value === 'object' && value !== null && !value.hasOwnProperty('value')) {
-        // Keep valuation object as-is if it's already unwrapped
-        unwrapped[key] = value;
-        console.log(`[Vehicle Controller] Keeping valuation object as-is:`, value);
+        // Keep valuation object as-is if it's already unwrapped, but fix empty estimatedValue
+        const fixedValuation = { ...value };
+        
+        // CRITICAL FIX: Handle empty estimatedValue in valuation object
+        if (fixedValuation.estimatedValue && 
+            typeof fixedValuation.estimatedValue === 'object' && 
+            Object.keys(fixedValuation.estimatedValue).length === 0) {
+          
+          console.log(`[Vehicle Controller] Fixing empty estimatedValue for valuation`);
+          
+          // Try to reconstruct from other sources in the wrapped data
+          if (wrappedData.allValuations && Object.keys(wrappedData.allValuations).length > 0) {
+            fixedValuation.estimatedValue = wrappedData.allValuations;
+            console.log(`[Vehicle Controller] Reconstructed estimatedValue from allValuations:`, fixedValuation.estimatedValue);
+          } else {
+            // Try to find price data elsewhere in the wrapped data
+            const privatePrice = wrappedData.privatePrice || wrappedData.price;
+            if (privatePrice && privatePrice > 0) {
+              fixedValuation.estimatedValue = {
+                private: privatePrice,
+                retail: Math.round(privatePrice * 1.15), // Estimate retail as 15% higher
+                trade: Math.round(privatePrice * 0.85)   // Estimate trade as 15% lower
+              };
+              console.log(`[Vehicle Controller] Reconstructed estimatedValue from price:`, fixedValuation.estimatedValue);
+            } else {
+              console.log(`[Vehicle Controller] Could not reconstruct estimatedValue - no price data available`);
+            }
+          }
+        }
+        
+        unwrapped[key] = fixedValuation;
+        console.log(`[Vehicle Controller] Keeping valuation object as-is:`, fixedValuation);
       } else if (Array.isArray(value)) {
         // Keep arrays as-is (motHistory, mileageHistory)
         unwrapped[key] = value;
@@ -1358,6 +1408,49 @@ class VehicleController {
       model: unwrapped.model,
       bodyType: unwrapped.bodyType
     });
+    
+    // CRITICAL FIX: Final check for price data - ensure we have some price available
+    if (!unwrapped.valuation || !unwrapped.valuation.estimatedValue || 
+        Object.keys(unwrapped.valuation.estimatedValue).length === 0) {
+      
+      // Try to find any price data in the unwrapped data
+      const availablePrice = unwrapped.price || unwrapped.estimatedValue || unwrapped.privatePrice;
+      
+      if (availablePrice && availablePrice > 0) {
+        console.log(`[Vehicle Controller] Creating valuation from available price: £${availablePrice}`);
+        
+        if (!unwrapped.valuation) {
+          unwrapped.valuation = {};
+        }
+        
+        unwrapped.valuation.estimatedValue = {
+          private: availablePrice,
+          retail: Math.round(availablePrice * 1.15),
+          trade: Math.round(availablePrice * 0.85)
+        };
+        
+        unwrapped.valuation.confidence = 'medium';
+        unwrapped.valuation.source = 'reconstructed';
+        
+        console.log(`[Vehicle Controller] Created valuation object:`, unwrapped.valuation);
+      } else {
+        console.log(`[Vehicle Controller] No price data available to create valuation`);
+      }
+    }
+    
+    // CRITICAL FIX: Extract private sale value as the main price field for frontend
+    if (unwrapped.valuation && unwrapped.valuation.estimatedValue) {
+      const privateSaleValue = unwrapped.valuation.estimatedValue.private;
+      if (privateSaleValue && typeof privateSaleValue === 'number' && privateSaleValue > 0) {
+        unwrapped.price = privateSaleValue;
+        console.log(`[Vehicle Controller] Set price field to private sale value: £${privateSaleValue}`);
+      } else {
+        console.log(`[Vehicle Controller] No valid private sale value found:`, unwrapped.valuation.estimatedValue);
+      }
+    } else {
+      console.log(`[Vehicle Controller] No valuation data available for price extraction`);
+    }
+    
     return unwrapped;
   }
 
@@ -1380,15 +1473,32 @@ class VehicleController {
       console.log('[Vehicle Controller] Fetching listings for user:', userId);
       console.log('[Vehicle Controller] User object:', req.user);
 
-      // Find all vehicles created by this user
-      const listings = await Car.find({ 
-        userId: userId 
-      }).sort({ createdAt: -1 });
+      // Import Bike model
+      const Bike = require('../models/Bike');
 
-      console.log('[Vehicle Controller] Found', listings.length, 'listings for user:', userId);
+      // Find all vehicles created by this user (cars and bikes)
+      const [cars, bikes] = await Promise.all([
+        Car.find({ userId: userId }).sort({ createdAt: -1 }),
+        Bike.find({ userId: userId }).sort({ createdAt: -1 })
+      ]);
+
+      console.log('[Vehicle Controller] Found', cars.length, 'cars and', bikes.length, 'bikes for user:', userId);
+
+      // Combine and mark vehicle types
+      const allListings = [
+        ...cars.map(car => ({ ...car.toObject(), vehicleType: 'car' })),
+        ...bikes.map(bike => ({ 
+          ...bike.toObject(), 
+          vehicleType: 'bike',
+          advertStatus: bike.status // Map bike.status to advertStatus for frontend consistency
+        }))
+      ];
+
+      // Sort by creation date (newest first)
+      allListings.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
       // If no listings found, return empty array (not an error)
-      if (listings.length === 0) {
+      if (allListings.length === 0) {
         return res.json({
           success: true,
           listings: [],
@@ -1398,9 +1508,8 @@ class VehicleController {
       }
 
       // Clean up "null" strings in all listings
-      const cleanedListings = listings.map(listing => {
-        const listingData = listing.toObject();
-        return this.cleanNullStrings(listingData);
+      const cleanedListings = allListings.map(listing => {
+        return this.cleanNullStrings(listing);
       });
 
       return res.json({
@@ -1437,8 +1546,17 @@ class VehicleController {
 
       const userId = req.user._id || req.user.id;
 
-      // Find the vehicle
-      const vehicle = await Car.findById(id);
+      // Import Bike model
+      const Bike = require('../models/Bike');
+
+      // Try to find the vehicle in both Car and Bike collections
+      let vehicle = await Car.findById(id);
+      let vehicleType = 'car';
+      
+      if (!vehicle) {
+        vehicle = await Bike.findById(id);
+        vehicleType = 'bike';
+      }
 
       if (!vehicle) {
         return res.status(404).json({
@@ -1455,14 +1573,19 @@ class VehicleController {
         });
       }
 
-      // Update status
-      vehicle.advertStatus = advertStatus;
+      // Update status (bikes use 'status', cars use 'advertStatus')
+      if (vehicleType === 'bike') {
+        vehicle.status = advertStatus;
+      } else {
+        vehicle.advertStatus = advertStatus;
+      }
+      
       if (advertStatus === 'sold') {
         vehicle.soldAt = new Date();
       }
       await vehicle.save();
 
-      console.log('[Vehicle Controller] Updated vehicle status:', id, advertStatus);
+      console.log('[Vehicle Controller] Updated', vehicleType, 'status:', id, advertStatus);
 
       return res.json({
         success: true,
@@ -1497,8 +1620,17 @@ class VehicleController {
 
       const userId = req.user._id || req.user.id;
 
-      // Find the vehicle
-      const vehicle = await Car.findById(id);
+      // Import Bike model
+      const Bike = require('../models/Bike');
+
+      // Try to find the vehicle in both Car and Bike collections
+      let vehicle = await Car.findById(id);
+      let vehicleType = 'car';
+      
+      if (!vehicle) {
+        vehicle = await Bike.findById(id);
+        vehicleType = 'bike';
+      }
 
       if (!vehicle) {
         return res.status(404).json({
@@ -1515,8 +1647,14 @@ class VehicleController {
         });
       }
 
-      // Delete the vehicle
-      await Car.findByIdAndDelete(id);
+      // Delete the vehicle from the appropriate collection
+      if (vehicleType === 'bike') {
+        await Bike.findByIdAndDelete(id);
+      } else {
+        await Car.findByIdAndDelete(id);
+      }
+
+      console.log('[Vehicle Controller] Deleted', vehicleType, ':', id);
 
       console.log('[Vehicle Controller] Deleted vehicle:', id);
 

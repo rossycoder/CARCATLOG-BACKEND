@@ -6,7 +6,12 @@
 const CheckCarDetailsClient = require('../clients/CheckCarDetailsClient');
 const ValuationAPIClientClass = require('../clients/ValuationAPIClient');
 const dataMerger = require('../utils/dataMerger');
+const ApiResponseUnwrapper = require('../utils/apiResponseUnwrapper');
 const VehicleHistory = require('../models/VehicleHistory');
+
+// In-memory cache to prevent duplicate API calls within short time window
+const recentCallsCache = new Map();
+const RECENT_CALLS_TTL = 30000; // 30 seconds
 
 // Initialize ValuationAPIClient with credentials
 const ValuationAPIClient = new ValuationAPIClientClass(
@@ -28,6 +33,14 @@ class EnhancedVehicleService {
    * @returns {Promise<Object>} Merged vehicle data with source tracking
    */
   async getEnhancedVehicleData(registration, useCache = true, mileage = null) {
+    // Check recent calls cache to prevent duplicates within 30 seconds
+    const recentCallKey = `${registration}-${mileage}`;
+    const recentCall = recentCallsCache.get(recentCallKey);
+    if (recentCall && (Date.now() - recentCall.timestamp) < RECENT_CALLS_TTL) {
+      console.log(`🔄 RECENT CALL FOUND for ${registration} - Returning cached result to prevent duplicate`);
+      return recentCall.data;
+    }
+    
     console.log(`Enhanced vehicle lookup for: ${registration}, useCache: ${useCache}`);
     
     // Check cache first to prevent duplicate API calls
@@ -158,15 +171,79 @@ class EnhancedVehicleService {
     // Always ensure runningCosts has unwrapped values for frontend
     mergedData.runningCosts = {
       fuelEconomy: {
-        urban: mergedData.runningCosts?.fuelEconomy?.urban?.value || mergedData.fuelEconomy?.urban?.value || mergedData.fuelEconomy?.urban || mergedData.urbanMpg || null,
-        extraUrban: mergedData.runningCosts?.fuelEconomy?.extraUrban?.value || mergedData.fuelEconomy?.extraUrban?.value || mergedData.fuelEconomy?.extraUrban || mergedData.extraUrbanMpg || null,
-        combined: mergedData.runningCosts?.fuelEconomy?.combined?.value || mergedData.fuelEconomy?.combined?.value || mergedData.fuelEconomy?.combined || mergedData.combinedMpg || null
+        urban: ApiResponseUnwrapper.extractNumber(
+          mergedData.runningCosts?.fuelEconomy?.urban || 
+          mergedData.fuelEconomy?.urban || 
+          mergedData.urbanMpg
+        ),
+        extraUrban: ApiResponseUnwrapper.extractNumber(
+          mergedData.runningCosts?.fuelEconomy?.extraUrban || 
+          mergedData.fuelEconomy?.extraUrban || 
+          mergedData.extraUrbanMpg
+        ),
+        combined: ApiResponseUnwrapper.extractNumber(
+          mergedData.runningCosts?.fuelEconomy?.combined || 
+          mergedData.fuelEconomy?.combined || 
+          mergedData.combinedMpg
+        )
       },
-      annualTax: mergedData.runningCosts?.annualTax?.value || mergedData.annualTax?.value || mergedData.annualTax || null,
-      insuranceGroup: mergedData.runningCosts?.insuranceGroup?.value || mergedData.insuranceGroup?.value || mergedData.insuranceGroup || null,
-      co2Emissions: mergedData.runningCosts?.co2Emissions?.value || mergedData.co2Emissions?.value || mergedData.co2Emissions || null
+      annualTax: ApiResponseUnwrapper.extractNumber(
+        mergedData.runningCosts?.annualTax || 
+        mergedData.annualTax
+      ),
+      insuranceGroup: ApiResponseUnwrapper.extractString(
+        mergedData.runningCosts?.insuranceGroup || 
+        mergedData.insuranceGroup
+      ),
+      co2Emissions: ApiResponseUnwrapper.extractNumber(
+        mergedData.runningCosts?.co2Emissions || 
+        mergedData.co2Emissions
+      ),
+      // Electric vehicle specific fields - CRITICAL: Don't set to null if data exists
+      electricRange: ApiResponseUnwrapper.extractNumber(
+        mergedData.runningCosts?.electricRange || 
+        mergedData.electricRange
+      ),
+      chargingTime: ApiResponseUnwrapper.extractNumber(
+        mergedData.runningCosts?.chargingTime || 
+        mergedData.chargingTime
+      ),
+      batteryCapacity: ApiResponseUnwrapper.extractNumber(
+        mergedData.runningCosts?.batteryCapacity || 
+        mergedData.batteryCapacity
+      ),
+      // Additional electric vehicle fields
+      electricMotorPower: ApiResponseUnwrapper.extractNumber(
+        mergedData.runningCosts?.electricMotorPower || 
+        mergedData.electricMotorPower
+      ),
+      electricMotorTorque: ApiResponseUnwrapper.extractNumber(
+        mergedData.runningCosts?.electricMotorTorque || 
+        mergedData.electricMotorTorque
+      ),
+      chargingPortType: ApiResponseUnwrapper.extractString(
+        mergedData.runningCosts?.chargingPortType || 
+        mergedData.chargingPortType
+      ),
+      fastChargingCapability: ApiResponseUnwrapper.extractString(
+        mergedData.runningCosts?.fastChargingCapability || 
+        mergedData.fastChargingCapability
+      )
     };
     console.log(`✅ Unwrapped runningCosts object:`, JSON.stringify(mergedData.runningCosts, null, 2));
+
+    // Store in recent calls cache to prevent duplicates
+    recentCallsCache.set(recentCallKey, {
+      data: mergedData,
+      timestamp: Date.now()
+    });
+    
+    // Clean up old entries from recent calls cache
+    for (const [key, value] of recentCallsCache.entries()) {
+      if (Date.now() - value.timestamp > RECENT_CALLS_TTL) {
+        recentCallsCache.delete(key);
+      }
+    }
 
     return mergedData;
   }
@@ -373,11 +450,23 @@ class EnhancedVehicleService {
       }
 
       // Check if cache has all important fields - if missing, force refresh
-      const importantFields = ['bodyType', 'doors', 'seats', 'variant', 'gearbox', 'emissionClass', 'urbanMpg', 'extraUrbanMpg', 'combinedMpg', 'annualTax'];
+      // CRITICAL FIX: For electric vehicles, MPG fields are naturally null, so don't treat as missing
+      const isElectricVehicle = cached.fuelType && cached.fuelType.toLowerCase().includes('electric');
+      
+      let importantFields = ['bodyType', 'doors', 'seats', 'variant', 'gearbox', 'emissionClass', 'annualTax'];
+      
+      // Only require MPG fields for non-electric vehicles
+      if (!isElectricVehicle) {
+        importantFields.push('urbanMpg', 'extraUrbanMpg', 'combinedMpg');
+      }
+      
       const missingFields = importantFields.filter(field => !cached[field]);
       
       if (missingFields.length > 0) {
         console.log(`Cache incomplete for ${registration} - missing fields: ${missingFields.join(', ')}`);
+        if (isElectricVehicle) {
+          console.log(`   Note: Electric vehicle - MPG fields not required`);
+        }
         console.log(`Forcing fresh API call to get complete data including running costs`);
         return null;
       }
@@ -432,18 +521,56 @@ class EnhancedVehicleService {
           },
           co2Emissions: { value: cached.co2Emissions, source: 'cached' },
           annualTax: { value: cached.annualTax, source: 'cached' },
-          insuranceGroup: { value: cached.insuranceGroup, source: 'cached' }
+          insuranceGroup: { value: cached.insuranceGroup, source: 'cached' },
+          // Electric vehicle specific fields
+          electricRange: { value: cached.electricRange, source: 'cached' },
+          chargingTime: { value: cached.chargingTime, source: 'cached' },
+          batteryCapacity: { value: cached.batteryCapacity, source: 'cached' },
+          // Additional electric vehicle fields
+          electricMotorPower: { value: cached.electricMotorPower, source: 'cached' },
+          electricMotorTorque: { value: cached.electricMotorTorque, source: 'cached' },
+          chargingPortType: { value: cached.chargingPortType, source: 'cached' },
+          fastChargingCapability: { value: cached.fastChargingCapability, source: 'cached' }
         },
         
         // CRITICAL FIX: Include valuation data if available in cache
         valuation: cached.valuation ? {
           vrm: cached.vrm,
           mileage: cached.mileage || 50000,
-          estimatedValue: cached.valuation.estimatedValue || {
-            private: cached.valuation.privatePrice,
-            retail: cached.valuation.dealerPrice,
-            trade: cached.valuation.partExchangePrice
-          },
+          estimatedValue: (() => {
+            // First try: use existing estimatedValue if it has data
+            if (cached.valuation.estimatedValue && 
+                Object.keys(cached.valuation.estimatedValue).length > 0) {
+              console.log(`✅ Using cached estimatedValue:`, cached.valuation.estimatedValue);
+              return cached.valuation.estimatedValue;
+            }
+            
+            // Second try: reconstruct from individual price fields in valuation object
+            if (cached.valuation.privatePrice || cached.valuation.dealerPrice || cached.valuation.partExchangePrice) {
+              const reconstructed = {
+                private: cached.valuation.privatePrice,
+                retail: cached.valuation.dealerPrice,
+                trade: cached.valuation.partExchangePrice
+              };
+              console.log(`✅ Reconstructed estimatedValue from valuation fields:`, reconstructed);
+              return reconstructed;
+            }
+            
+            // Third try: check if cached data has valuation prices stored at root level
+            if (cached.privatePrice || cached.dealerPrice || cached.partExchangePrice) {
+              const reconstructed = {
+                private: cached.privatePrice,
+                retail: cached.dealerPrice,
+                trade: cached.partExchangePrice
+              };
+              console.log(`✅ Reconstructed estimatedValue from root fields:`, reconstructed);
+              return reconstructed;
+            }
+            
+            // Last resort: return empty object (will be handled by frontend)
+            console.log(`⚠️ No valuation data found in cache for ${cached.vrm}`);
+            return {};
+          })(),
           confidence: cached.valuation.confidence || 'medium',
           source: 'cached'
         } : null,
@@ -532,13 +659,34 @@ class EnhancedVehicleService {
         annualTax: mergedData.runningCosts?.annualTax?.value || mergedData.annualTax || null,
         insuranceGroup: mergedData.runningCosts?.insuranceGroup?.value || mergedData.insuranceGroup || null,
         
+        // Electric vehicle specific fields
+        electricRange: ApiResponseUnwrapper.extractNumber(mergedData.runningCosts?.electricRange || mergedData.electricRange),
+        chargingTime: ApiResponseUnwrapper.extractNumber(mergedData.runningCosts?.chargingTime || mergedData.chargingTime),
+        batteryCapacity: ApiResponseUnwrapper.extractNumber(mergedData.runningCosts?.batteryCapacity || mergedData.batteryCapacity),
+        // Additional electric vehicle fields
+        electricMotorPower: ApiResponseUnwrapper.extractNumber(mergedData.runningCosts?.electricMotorPower || mergedData.electricMotorPower),
+        electricMotorTorque: ApiResponseUnwrapper.extractNumber(mergedData.runningCosts?.electricMotorTorque || mergedData.electricMotorTorque),
+        chargingPortType: ApiResponseUnwrapper.extractString(mergedData.runningCosts?.chargingPortType || mergedData.chargingPortType),
+        fastChargingCapability: ApiResponseUnwrapper.extractString(mergedData.runningCosts?.fastChargingCapability || mergedData.fastChargingCapability),
+        
         // CRITICAL FIX: Store valuation data properly
         valuation: mergedData.valuation ? {
           privatePrice: mergedData.valuation.estimatedValue?.private,
           dealerPrice: mergedData.valuation.estimatedValue?.retail,
           partExchangePrice: mergedData.valuation.estimatedValue?.trade,
           confidence: mergedData.valuation.confidence,
-          estimatedValue: mergedData.valuation.estimatedValue
+          // IMPORTANT: Only store estimatedValue if it has actual data
+          estimatedValue: (mergedData.valuation.estimatedValue && 
+                         Object.keys(mergedData.valuation.estimatedValue).length > 0) ? 
+                         mergedData.valuation.estimatedValue : 
+                         // Reconstruct from individual prices if available
+                         (mergedData.valuation.estimatedValue?.private || 
+                          mergedData.valuation.estimatedValue?.retail || 
+                          mergedData.valuation.estimatedValue?.trade) ? {
+                           private: mergedData.valuation.estimatedValue.private,
+                           retail: mergedData.valuation.estimatedValue.retail,
+                           trade: mergedData.valuation.estimatedValue.trade
+                         } : {}
         } : null,
         mileage: mergedData.valuation?.mileage || mergedData.mileage || null,
         

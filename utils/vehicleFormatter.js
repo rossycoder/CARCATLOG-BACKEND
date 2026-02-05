@@ -8,6 +8,7 @@ class VehicleFormatter {
    * Format variant in AutoTrader style
    * Example: "2.2 i-CTDi Type S GT" for Honda Civic
    * Example: "320d M Sport" for BMW 3 Series
+   * Example: "M50" for BMW i4 M50 (electric)
    * 
    * Format: Complete variant including engine designation and trim
    * 
@@ -20,7 +21,17 @@ class VehicleFormatter {
       return vehicleData.modelVariant;
     }
     
-    // 2. If modelVariant exists but needs cleaning, clean it
+    // 2. For electric vehicles, prefer the actual modelVariant over fuel type
+    if (vehicleData.fuelType && vehicleData.fuelType.toLowerCase().includes('electric')) {
+      if (vehicleData.modelVariant && 
+          vehicleData.modelVariant !== 'Electric' && 
+          vehicleData.modelVariant !== vehicleData.fuelType &&
+          vehicleData.modelVariant.trim() !== '') {
+        return vehicleData.modelVariant; // Use actual trim like "M50", "i3 120Ah", etc.
+      }
+    }
+    
+    // 3. If modelVariant exists but needs cleaning, clean it
     if (vehicleData.modelVariant) {
       const cleaned = this.cleanVariant(vehicleData.modelVariant);
       if (cleaned && this.isGoodVariant(cleaned)) {
@@ -28,10 +39,10 @@ class VehicleFormatter {
       }
     }
     
-    // 3. Build variant from components if modelVariant is not good
+    // 4. Build variant from components if modelVariant is not good
     const parts = [];
     
-    // Add fuel type abbreviation if available
+    // Add fuel type abbreviation if available (but not for electric vehicles)
     const fuelAbbrev = this.getFuelTypeAbbreviation(
       vehicleData.fuelType,
       vehicleData.engineDescription,
@@ -55,12 +66,14 @@ class VehicleFormatter {
       return parts.join(' ');
     }
     
-    // 4. Fallback: return modelVariant as-is if available
-    if (vehicleData.modelVariant) {
+    // 5. Fallback: return modelVariant as-is if available (even if not "good")
+    if (vehicleData.modelVariant && 
+        vehicleData.modelVariant !== vehicleData.fuelType &&
+        vehicleData.modelVariant.trim() !== '') {
       return vehicleData.modelVariant;
     }
     
-    // 5. Last resort: return null (displayTitle will handle full formatting)
+    // 6. Last resort: return null (displayTitle will handle full formatting)
     return null;
   }
   
@@ -124,7 +137,11 @@ class VehicleFormatter {
       /\d+d/,      // BMW style (320d, 520d)
       /\d+i/,      // BMW style (320i, 520i)
       /TDI|TSI|SDI|GTI|GTD/i,  // VW Group abbreviations
-      /M Sport|SE|Sport|GT|AMG|RS|S line/i  // Common trim levels
+      /M Sport|SE|Sport|GT|AMG|RS|S line/i,  // Common trim levels
+      /^[A-Z]\d+$/,  // BMW electric style (M50, i3, etc.)
+      /^i\d+/,       // BMW i-series (i3, i4, i8, etc.)
+      /\d+Ah$/,      // Battery capacity variants (120Ah, etc.)
+      /^M\d+$/       // BMW M variants (M50, M40, etc.)
     ];
     
     return goodPatterns.some(pattern => pattern.test(variant));
@@ -166,14 +183,21 @@ class VehicleFormatter {
       if (variant.includes('GTD')) return 'GTD';
     }
     
-    // Fallback to fuel type
+    // CRITICAL FIX: Don't return fuel type abbreviation for electric vehicles
+    // Electric vehicles should show their actual variant (e.g., "M50", "i3 120Ah")
+    // not just "Electric"
     if (!fuelType) return null;
     
     const fuel = fuelType.toLowerCase();
+    
+    // For electric vehicles, don't return a fuel abbreviation
+    // Let the variant show the actual trim level
+    if (fuel.includes('electric') || fuel.includes('hybrid')) {
+      return null; // Don't add fuel type abbreviation for electric/hybrid
+    }
+    
     if (fuel.includes('diesel')) return 'TDI';  // Default diesel abbreviation
     if (fuel.includes('petrol')) return 'TSI';  // Default petrol abbreviation
-    if (fuel.includes('electric')) return 'Electric';
-    if (fuel.includes('hybrid')) return 'Hybrid';
     
     return null;
   }

@@ -68,6 +68,16 @@ const vehicleHistorySchema = new mongoose.Schema({
   insuranceGroup: {
     type: String,
   },
+  // Electric vehicle specific fields
+  electricRange: {
+    type: Number, // Range in miles for electric vehicles
+  },
+  chargingTime: {
+    type: Number, // Charging time in hours (0-100%)
+  },
+  batteryCapacity: {
+    type: Number, // Battery capacity in kWh
+  },
   // Additional vehicle specs
   doors: {
     type: Number,

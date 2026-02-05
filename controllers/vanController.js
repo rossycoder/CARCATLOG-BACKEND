@@ -1,4 +1,5 @@
 const Van = require('../models/Van');
+const lightweightVanService = require('../services/lightweightVanService');
 
 // Get all vans with filtering and pagination
 exports.getVans = async (req, res) => {
@@ -696,6 +697,62 @@ exports.searchVans = async (req, res) => {
       success: false,
       error: error.message || 'Failed to search vans',
       details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};
+
+// Basic van lookup using optimized DVLA-first approach (FREE API first)
+exports.basicVanLookup = async (req, res) => {
+  try {
+    console.log('[Van Controller] ========== BASIC VAN LOOKUP ==========');
+    
+    const { registration } = req.params;
+    const { mileage } = req.query;
+    
+    if (!registration) {
+      return res.status(400).json({
+        success: false,
+        error: 'Registration number is required'
+      });
+    }
+    
+    console.log(`[Van Controller] Looking up van: ${registration} with ${mileage || 'unknown'} miles`);
+    
+    // Clean registration number
+    const cleanedReg = registration.toUpperCase().replace(/\s/g, '');
+    const parsedMileage = mileage ? parseInt(mileage, 10) : 50000;
+    
+    // Get basic van data using optimized service (FREE DVLA API first)
+    const result = await lightweightVanService.getBasicVanData(cleanedReg, parsedMileage);
+    
+    if (!result.success) {
+      console.log(`[Van Controller] Lookup failed: ${result.error}`);
+      return res.status(404).json({
+        success: false,
+        error: result.error,
+        data: null
+      });
+    }
+    
+    console.log(`[Van Controller] Lookup successful - Cost: £${result.cost}, API: ${result.data.apiProvider}`);
+    
+    return res.json({
+      success: true,
+      data: result.data,
+      metadata: {
+        fromCache: result.fromCache,
+        apiCalls: result.apiCalls,
+        cost: result.cost,
+        apiProvider: result.data.apiProvider
+      }
+    });
+    
+  } catch (error) {
+    console.error('[Van Controller] Basic lookup error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error during van lookup',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };

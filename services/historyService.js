@@ -64,7 +64,9 @@ class HistoryService {
         fuelType: result.fuelType,
         yearOfManufacture: result.yearOfManufacture,
         firstRegistered: result.firstRegistered,
-        engineCapacity: result.engineCapacity,
+        engineCapacity: typeof result.engineCapacity === 'object' ? 
+                        (result.engineCapacity?.value || null) : 
+                        (typeof result.engineCapacity === 'number' ? result.engineCapacity : null),
         bodyType: result.bodyType,
         transmission: result.transmission,
         vin: result.vin,

@@ -1,46 +1,50 @@
-require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
+/**
+ * Check all cars in database regardless of status
+ */
+
+require('dotenv').config();
 const mongoose = require('mongoose');
 const Car = require('../models/Car');
 
 async function checkAllCars() {
   try {
     await mongoose.connect(process.env.MONGODB_URI);
-    console.log('✅ Connected to MongoDB\n');
-
-    const allCars = await Car.find({}).sort({ createdAt: -1 });
+    console.log('✅ Connected to MongoDB');
     
-    console.log(`📊 Total cars in database: ${allCars.length}\n`);
-
-    allCars.forEach((car, index) => {
-      console.log(`Car #${index + 1}:`);
-      console.log(`   MongoDB ID: ${car._id}`);
-      console.log(`   Advert ID: ${car.advertId}`);
-      console.log(`   Status: ${car.advertStatus}`);
-      console.log(`   Make/Model: ${car.make} ${car.model} ${car.variant || ''}`);
-      console.log(`   Registration: ${car.registrationNumber || 'N/A'}`);
-      console.log(`   Price: £${car.price}`);
-      console.log(`   Images: ${car.images.length}`);
-      console.log(`   Postcode: ${car.postcode || 'N/A'}`);
-      console.log(`   Coordinates: ${car.latitude ? `${car.latitude}, ${car.longitude}` : 'NOT SET'}`);
-      console.log(`   User ID: ${car.userId || 'NOT SET'}`);
-      console.log(`   Created: ${car.createdAt.toISOString().split('T')[0]}`);
-      console.log('');
-    });
-
-    // Count by status
-    const activeCount = await Car.countDocuments({ advertStatus: 'active' });
-    const draftCount = await Car.countDocuments({ advertStatus: 'draft' });
-    const incompleteCount = await Car.countDocuments({ advertStatus: 'incomplete' });
-
-    console.log('📈 Summary:');
-    console.log(`   Active: ${activeCount}`);
-    console.log(`   Draft: ${draftCount}`);
-    console.log(`   Incomplete: ${incompleteCount}`);
-    console.log(`   Total: ${allCars.length}`);
-
+    // Get all cars regardless of status
+    const allCars = await Car.find({}).sort({ createdAt: -1 }).limit(10);
+    
+    console.log(`\n📊 Total cars in database: ${allCars.length}`);
+    
+    if (allCars.length === 0) {
+      console.log('❌ No cars found in database at all');
+      
+      // Check if the collection exists
+      const collections = await mongoose.connection.db.listCollections().toArray();
+      const carCollection = collections.find(c => c.name === 'cars');
+      
+      if (carCollection) {
+        console.log('✅ Cars collection exists but is empty');
+      } else {
+        console.log('❌ Cars collection does not exist');
+      }
+      
+    } else {
+      console.log('\n🚗 Recent cars:');
+      allCars.forEach((car, index) => {
+        console.log(`${index + 1}. ${car.make} ${car.model} (${car.registrationNumber})`);
+        console.log(`   ID: ${car._id}`);
+        console.log(`   Advert ID: ${car.advertId}`);
+        console.log(`   Status: ${car.advertStatus}`);
+        console.log(`   Created: ${car.createdAt}`);
+        console.log(`   Price: £${car.price}`);
+        console.log('');
+      });
+    }
+    
     process.exit(0);
   } catch (error) {
-    console.error('❌ Error:', error);
+    console.error('❌ Error:', error.message);
     process.exit(1);
   }
 }

@@ -72,7 +72,22 @@ async function lookupPostcode(postcode) {
       } = response.data.result;
       
       // Use parish if available, otherwise admin_ward, otherwise admin_district
-      const locationName = parish || admin_ward || admin_district || 'Unknown';
+      let locationName = parish || admin_ward || admin_district || 'Unknown';
+      
+      // Clean up location name - extract only town/city name
+      // Remove "unparished area" and similar descriptors
+      locationName = locationName
+        .replace(/,?\s*unparished area/gi, '')
+        .replace(/,?\s*\(unparished area\)/gi, '')
+        .trim();
+      
+      // If location contains comma, take the first part (usually the town name)
+      if (locationName.includes(',')) {
+        locationName = locationName.split(',')[0].trim();
+      }
+      
+      // Remove any postcode patterns from the location name
+      locationName = locationName.replace(/\b[A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2}\b/gi, '').trim();
       
       return {
         postcode: returnedPostcode,

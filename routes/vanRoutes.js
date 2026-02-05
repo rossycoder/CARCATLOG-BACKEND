@@ -15,6 +15,9 @@ router.get('/filter-options', vanController.getFilterOptions);
 // GET /api/vans/search-filtered - Search vans with comprehensive filters
 router.get('/search-filtered', vanController.searchVans);
 
+// GET /api/vans/basic-lookup/:registration - Basic van lookup (FREE DVLA API first)
+router.get('/basic-lookup/:registration', vanController.basicVanLookup);
+
 // GET /api/vans/search - Search vans by postcode
 router.get('/search', vanController.searchByPostcode);
 

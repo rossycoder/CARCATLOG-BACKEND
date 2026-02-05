@@ -15,6 +15,9 @@ router.get('/filter-options', bikeController.getFilterOptions);
 // GET /api/bikes/search-filtered - Search bikes with comprehensive filters
 router.get('/search-filtered', bikeController.searchBikes);
 
+// GET /api/bikes/basic-lookup/:registration - Basic bike lookup (FREE DVLA API first)
+router.get('/basic-lookup/:registration', bikeController.basicBikeLookup);
+
 // GET /api/bikes/search - Search bikes by postcode
 router.get('/search', bikeController.searchByPostcode);
 
