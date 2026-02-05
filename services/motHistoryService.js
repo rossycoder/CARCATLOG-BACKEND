@@ -169,19 +169,50 @@ class MOTHistoryService {
    */
   async saveMOTHistoryToCar(vrm, motHistory) {
     try {
+      // Get latest MOT test for status and expiry
+      const latestTest = motHistory && motHistory.length > 0 ? motHistory[0] : null;
+      
+      const updateData = { 
+        motHistory: motHistory,
+        motHistoryLastUpdated: new Date()
+      };
+      
+      // Set MOT status and expiry from latest test
+      if (latestTest) {
+        if (latestTest.expiryDate) {
+          updateData.motExpiry = latestTest.expiryDate;
+          updateData.motDue = latestTest.expiryDate; // Same as expiry
+        }
+        
+        // Determine MOT status
+        if (latestTest.expiryDate) {
+          const expiryDate = new Date(latestTest.expiryDate);
+          const today = new Date();
+          
+          if (expiryDate > today) {
+            updateData.motStatus = 'Valid';
+          } else {
+            updateData.motStatus = 'Expired';
+          }
+        } else {
+          updateData.motStatus = latestTest.testResult === 'PASSED' ? 'Valid' : 'Failed';
+        }
+      }
+      
       const result = await Car.findOneAndUpdate(
         { registrationNumber: vrm.toUpperCase() },
-        { 
-          $set: { 
-            motHistory: motHistory,
-            motHistoryLastUpdated: new Date()
-          }
-        },
+        { $set: updateData },
         { new: true }
       );
 
       if (result) {
         console.log(`[MOTHistoryService] Updated Car document for ${vrm}`);
+        if (updateData.motExpiry) {
+          console.log(`   MOT Expiry: ${new Date(updateData.motExpiry).toLocaleDateString()}`);
+        }
+        if (updateData.motStatus) {
+          console.log(`   MOT Status: ${updateData.motStatus}`);
+        }
       } else {
         console.warn(`[MOTHistoryService] Car not found for ${vrm}`);
       }
