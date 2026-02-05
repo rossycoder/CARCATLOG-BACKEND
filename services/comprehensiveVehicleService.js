@@ -288,11 +288,14 @@ class ComprehensiveVehicleService {
       // But update MOT status fields from latest test
       if (data.motHistory && data.motHistory.data && data.motHistory.data.length > 0) {
         const latestTest = data.motHistory.data[0]; // Most recent test
-        if (latestTest) {
+        if (latestTest && latestTest.expiryDate) {
           car.motStatus = latestTest.testResult === 'PASSED' ? 'Valid' : 'Invalid';
           car.motExpiry = latestTest.expiryDate;
           car.motDue = latestTest.expiryDate;
+          console.log(`✅ MOT data saved: ${car.motStatus}, Due: ${new Date(car.motDue).toLocaleDateString('en-GB')}`);
         }
+      } else {
+        console.log('⚠️  No MOT history data found');
       }
 
       await car.save();
