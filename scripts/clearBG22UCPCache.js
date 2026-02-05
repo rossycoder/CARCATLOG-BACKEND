@@ -3,7 +3,7 @@
  * This will delete the VehicleHistory record so next lookup gets fresh data
  */
 
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const mongoose = require('mongoose');
 const VehicleHistory = require('../models/VehicleHistory');
 

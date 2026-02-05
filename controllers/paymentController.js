@@ -871,7 +871,21 @@ async function handlePaymentSuccess(paymentIntent) {
               
               // Use private sale price from valuation if available
               const privatePrice = vehicleData.estimatedValue?.private || vehicleData.allValuations?.private;
-              car.price = advertData.price || privatePrice || vehicleData.estimatedValue || car.price;
+              
+              // Ensure price is always a number, not an object
+              let finalPrice = car.price; // Default to existing price
+              
+              if (advertData.price && typeof advertData.price === 'number') {
+                finalPrice = advertData.price;
+              } else if (privatePrice && typeof privatePrice === 'number') {
+                finalPrice = privatePrice;
+              } else if (vehicleData.estimatedValue && typeof vehicleData.estimatedValue === 'number') {
+                finalPrice = vehicleData.estimatedValue;
+              } else if (vehicleData.price && typeof vehicleData.price === 'number') {
+                finalPrice = vehicleData.price;
+              }
+              
+              car.price = finalPrice;
               car.description = advertData.description || car.description;
               car.images = advertData.photos ? advertData.photos.map(p => p.url) : car.images;
               car.postcode = contactDetails.postcode || car.postcode;
