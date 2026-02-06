@@ -252,8 +252,8 @@ class VehicleController {
 
       await car.save();
 
-      // Step 6: Fetch ALL vehicle data comprehensively (Vehicle History + MOT + Valuation)
-      // This ensures complete data is available when the car is viewed
+      // Step 6: Fetch ALL vehicle data comprehensively AND MERGE WITH CAR RECORD
+      // This ensures complete data is saved to database immediately
       try {
         console.log(`[Vehicle Controller] Fetching comprehensive vehicle data for: ${registrationNumber}`);
         const ComprehensiveVehicleService = require('../services/comprehensiveVehicleService');
@@ -273,6 +273,140 @@ class VehicleController {
         if (comprehensiveResult.errors.length > 0) {
           console.log(`   Failed Services: ${comprehensiveResult.errors.map(e => e.service).join(', ')}`);
         }
+        
+        // CRITICAL FIX: Merge comprehensive data with car record
+        if (comprehensiveResult.vehicleData) {
+          console.log(`[Vehicle Controller] Merging comprehensive data with car record`);
+          
+          // Update car with comprehensive vehicle data
+          const vehicleData = comprehensiveResult.vehicleData;
+          
+          // Update running costs if available
+          if (vehicleData.fuelEconomy) {
+            car.fuelEconomyUrban = vehicleData.fuelEconomy.urban;
+            car.fuelEconomyExtraUrban = vehicleData.fuelEconomy.extraUrban;
+            car.fuelEconomyCombined = vehicleData.fuelEconomy.combined;
+            
+            // Also update runningCosts object
+            if (!car.runningCosts) car.runningCosts = {};
+            if (!car.runningCosts.fuelEconomy) car.runningCosts.fuelEconomy = {};
+            car.runningCosts.fuelEconomy.urban = vehicleData.fuelEconomy.urban;
+            car.runningCosts.fuelEconomy.extraUrban = vehicleData.fuelEconomy.extraUrban;
+            car.runningCosts.fuelEconomy.combined = vehicleData.fuelEconomy.combined;
+          }
+          
+          // Update emissions and tax data
+          if (vehicleData.co2Emissions) car.co2Emissions = vehicleData.co2Emissions;
+          if (vehicleData.annualTax) {
+            car.annualTax = vehicleData.annualTax;
+            if (!car.runningCosts) car.runningCosts = {};
+            car.runningCosts.annualTax = vehicleData.annualTax;
+          }
+          if (vehicleData.insuranceGroup) {
+            car.insuranceGroup = vehicleData.insuranceGroup;
+            if (!car.runningCosts) car.runningCosts = {};
+            car.runningCosts.insuranceGroup = vehicleData.insuranceGroup;
+          }
+          
+          // Update variant if better one available
+          if (vehicleData.variant && (!car.variant || car.variant === 'Unknown')) {
+            car.variant = vehicleData.variant;
+          }
+          
+          // Update color if available
+          if (vehicleData.color && (!car.color || car.color === 'Unknown')) {
+            car.color = vehicleData.color;
+          }
+          
+          // Update previous owners if available
+          if (vehicleData.previousOwners) {
+            car.previousOwners = vehicleData.previousOwners;
+          }
+          
+          console.log(`[Vehicle Controller] Updated car with comprehensive vehicle data`);
+        }
+        
+        // CRITICAL FIX: Update car with history data if available
+        if (comprehensiveResult.historyData) {
+          console.log(`[Vehicle Controller] Merging history data with car record`);
+          
+          const historyData = comprehensiveResult.historyData;
+          
+          // Update car with history check status
+          car.historyCheckStatus = 'verified';
+          car.historyCheckDate = new Date();
+          
+          // Link to history record if created
+          if (historyData._id) {
+            car.historyCheckId = historyData._id;
+          }
+          
+          console.log(`[Vehicle Controller] Updated car with history data`);
+        }
+        
+        // CRITICAL FIX: Update car with valuation data if available
+        if (comprehensiveResult.historyData && comprehensiveResult.historyData.valuation) {
+          console.log(`[Vehicle Controller] Updating car with valuation data`);
+          
+          const valuation = comprehensiveResult.historyData.valuation;
+          
+          // Update car price with private sale value
+          if (valuation.privatePrice && valuation.privatePrice > 0) {
+            car.price = valuation.privatePrice;
+            car.estimatedValue = valuation.privatePrice;
+            console.log(`[Vehicle Controller] Updated car price to £${valuation.privatePrice} (Private Sale)`);
+          }
+          
+          // Store all valuations for frontend
+          car.allValuations = {
+            private: valuation.privatePrice,
+            retail: valuation.dealerPrice,
+            trade: valuation.partExchangePrice
+          };
+          
+          console.log(`[Vehicle Controller] Stored all valuations:`, car.allValuations);
+        }
+        
+        // CRITICAL FIX: Update car with MOT data if available
+        if (comprehensiveResult.motData && comprehensiveResult.motData.length > 0) {
+          console.log(`[Vehicle Controller] Updating car with MOT data`);
+          
+          const latestMOT = comprehensiveResult.motData[0]; // Most recent MOT
+          
+          // Update MOT status and dates
+          car.motStatus = latestMOT.testResult === 'PASSED' ? 'Valid' : 'Invalid';
+          if (latestMOT.expiryDate) {
+            car.motExpiry = new Date(latestMOT.expiryDate);
+            car.motDue = new Date(latestMOT.expiryDate);
+          }
+          
+          // Update mileage with latest MOT reading if higher
+          if (latestMOT.odometerValue && latestMOT.odometerValue > car.mileage) {
+            console.log(`[Vehicle Controller] Updating mileage: ${car.mileage} → ${latestMOT.odometerValue} (from MOT)`);
+            car.mileage = latestMOT.odometerValue;
+          }
+          
+          // Store MOT history
+          car.motHistory = comprehensiveResult.motData.map(mot => ({
+            testDate: new Date(mot.completedDate),
+            expiryDate: mot.expiryDate ? new Date(mot.expiryDate) : null,
+            testResult: mot.testResult,
+            odometerValue: mot.odometerValue,
+            odometerUnit: mot.odometerUnit || 'mi',
+            testNumber: mot.motTestNumber,
+            defects: mot.defects || [],
+            advisoryText: mot.defects?.map(d => d.text) || [],
+            testClass: "4",
+            testType: "Normal Test",
+            completedDate: new Date(mot.completedDate)
+          }));
+          
+          console.log(`[Vehicle Controller] Updated car with ${car.motHistory.length} MOT records`);
+        }
+        
+        // CRITICAL FIX: Save the updated car record
+        await car.save();
+        console.log(`[Vehicle Controller] ✅ Saved car with comprehensive data merged`);
         
       } catch (comprehensiveError) {
         // Don't fail the car creation if comprehensive data fetch fails

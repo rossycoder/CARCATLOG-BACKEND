@@ -152,6 +152,12 @@ class ComprehensiveVehicleService {
       }
 
       // Step 3: Valuation (£0.12)
+      // DISABLED: Valuation API gives wrong data - use existing valuation from Vehicle History
+      console.log('\n3️⃣ Skipping Valuation API (using existing data)...');
+      console.log('   Reason: Valuation API returns incorrect values');
+      console.log('   Using: Vehicle History valuation (more accurate)');
+      
+      /* COMMENTED OUT - Valuation API gives wrong data
       console.log('\n3️⃣ Fetching Valuation...');
       try {
         const valuationResult = await this.valuationService.getValuation(vrm, mileage);
@@ -163,6 +169,7 @@ class ComprehensiveVehicleService {
         console.error(`❌ Valuation failed: ${error.message}`);
         results.errors.push({ service: 'valuation', error: error.message });
       }
+      */
 
       // Step 4: Update Car document with all data
       console.log('\n4️⃣ Updating Car document...');
@@ -269,7 +276,9 @@ class ComprehensiveVehicleService {
         }
       }
 
-      // Update valuation data
+      // Update valuation data - DISABLED to prevent overwriting correct valuation
+      // Vehicle History valuation (£23,924) is more accurate than Valuation API (£7,615)
+      /* COMMENTED OUT - Don't overwrite existing valuation
       if (data.valuation && data.valuation.estimatedValue) {
         car.valuation = {
           privatePrice: data.valuation.estimatedValue.private,
@@ -283,6 +292,9 @@ class ComprehensiveVehicleService {
         car.price = data.valuation.estimatedValue.private;
         car.estimatedValue = data.valuation.estimatedValue.private;
       }
+      */
+      
+      console.log('💰 Keeping existing valuation (not overwriting with Valuation API data)');
 
       // MOT history is already saved by MOTHistoryService
       // But update MOT status fields from latest test
