@@ -189,6 +189,10 @@ const carSchema = new mongoose.Schema({
     type: Number,
     min: 0
   },
+  emissionClass: {
+    type: String,
+    trim: true
+  },
   taxStatus: {
     type: String,
     trim: true

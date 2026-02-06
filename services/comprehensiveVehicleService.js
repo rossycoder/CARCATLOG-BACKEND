@@ -261,18 +261,121 @@ class ComprehensiveVehicleService {
           console.log('⚠️  No running costs data found in VehicleHistory');
         }
         
-        // Also update make, model, variant if they exist in VehicleHistory
+        // CRITICAL FIX: Update ALL missing fields from VehicleHistory
+        // This ensures data from API is properly saved to car record
+        
+        // Update make
         if (vh.make && (!car.make || car.make === 'Unknown')) {
           car.make = vh.make;
           console.log(`   Updated make: ${vh.make}`);
         }
+        
+        // Update model
         if (vh.model && (!car.model || car.model === 'Unknown')) {
           car.model = vh.model;
           console.log(`   Updated model: ${vh.model}`);
         }
-        if (vh.variant && (!car.variant || car.variant === 'Unknown')) {
+        
+        // Update variant - CRITICAL: Also update if current variant is generic like "2L Diesel"
+        if (vh.variant && (!car.variant || car.variant === 'Unknown' || car.variant === null || 
+            car.variant.match(/^\d+(\.\d+)?L?\s*(Diesel|Petrol|Electric)$/i))) {
           car.variant = vh.variant;
           console.log(`   Updated variant: ${vh.variant}`);
+        }
+        
+        // Update doors from VehicleHistory
+        if (vh.doors && (!car.doors || car.doors === null || car.doors === undefined)) {
+          car.doors = vh.doors;
+          console.log(`   Updated doors from history: ${vh.doors}`);
+        }
+        
+        // Update seats from VehicleHistory
+        if (vh.seats && (!car.seats || car.seats === null || car.seats === undefined)) {
+          car.seats = vh.seats;
+          console.log(`   Updated seats from history: ${vh.seats}`);
+        }
+        
+        // Update body type from VehicleHistory
+        if (vh.bodyType && (!car.bodyType || car.bodyType === 'Unknown' || car.bodyType === null || car.bodyType === undefined)) {
+          car.bodyType = vh.bodyType;
+          console.log(`   Updated body type from history: ${vh.bodyType}`);
+        }
+        
+        // Update transmission from VehicleHistory
+        if (vh.transmission && (!car.transmission || car.transmission === 'Unknown' || car.transmission === null)) {
+          car.transmission = vh.transmission.toLowerCase();
+          console.log(`   Updated transmission from history: ${vh.transmission}`);
+        }
+        
+        // Update color from VehicleHistory
+        if (vh.colour && (!car.color || car.color === 'Unknown' || car.color === null || car.color === 'Not specified')) {
+          car.color = vh.colour;
+          console.log(`   Updated color from history: ${vh.colour}`);
+        }
+        
+        // Update engine size from VehicleHistory
+        if (vh.engineCapacity && (!car.engineSize || car.engineSize === null)) {
+          car.engineSize = vh.engineCapacity;
+          console.log(`   Updated engine size from history: ${vh.engineCapacity}L`);
+        }
+        
+        // Update emission class from VehicleHistory
+        if (vh.emissionClass && (!car.emissionClass || car.emissionClass === null || car.emissionClass === undefined)) {
+          car.emissionClass = vh.emissionClass;
+          console.log(`   Updated emission class from history: ${vh.emissionClass}`);
+        }
+      }
+
+      // CRITICAL FIX: Update missing vehicle specs from vehicleSpecs data
+      if (data.vehicleSpecs) {
+        const specs = data.vehicleSpecs;
+        
+        // Update doors if missing
+        if (specs.doors && (!car.doors || car.doors === null)) {
+          car.doors = specs.doors;
+          console.log(`   Updated doors: ${specs.doors}`);
+        }
+        
+        // Update seats if missing
+        if (specs.seats && (!car.seats || car.seats === null)) {
+          car.seats = specs.seats;
+          console.log(`   Updated seats: ${specs.seats}`);
+        }
+        
+        // Update body type if missing
+        if (specs.bodyType && (!car.bodyType || car.bodyType === 'Unknown' || car.bodyType === null)) {
+          car.bodyType = specs.bodyType;
+          console.log(`   Updated body type: ${specs.bodyType}`);
+        }
+        
+        // Update engine size if missing
+        if (specs.engineSize && (!car.engineSize || car.engineSize === null)) {
+          car.engineSize = specs.engineSize;
+          console.log(`   Updated engine size: ${specs.engineSize}L`);
+        }
+        
+        // Update transmission if missing
+        if (specs.transmission && (!car.transmission || car.transmission === 'Unknown' || car.transmission === null)) {
+          car.transmission = specs.transmission.toLowerCase();
+          console.log(`   Updated transmission: ${specs.transmission}`);
+        }
+        
+        // Update color if missing
+        if (specs.color && (!car.color || car.color === 'Unknown' || car.color === null)) {
+          car.color = specs.color;
+          console.log(`   Updated color: ${specs.color}`);
+        }
+        
+        // Update variant if better one available from specs
+        if (specs.variant && (!car.variant || car.variant === 'Unknown' || car.variant === 'Diesel' || car.variant === null)) {
+          car.variant = specs.variant;
+          console.log(`   Updated variant from specs: ${specs.variant}`);
+          
+          // Update display title with new variant
+          if (car.engineSize && specs.variant) {
+            car.displayTitle = `${car.engineSize} ${specs.variant}`;
+            console.log(`   Updated display title: ${car.displayTitle}`);
+          }
         }
       }
 
@@ -332,6 +435,17 @@ class ComprehensiveVehicleService {
         car.motExpiry = latestTest.expiryDate;
         car.motDue = latestTest.expiryDate;
         console.log(`✅ MOT data saved: ${car.motStatus}, Due: ${new Date(car.motDue).toLocaleDateString('en-GB')}`);
+        
+        // Update mileage from latest MOT record
+        if (latestTest.odometerValue && latestTest.odometerValue > 0) {
+          // Only update if MOT mileage is higher than current mileage
+          if (!car.mileage || latestTest.odometerValue > car.mileage) {
+            console.log(`📏 Updating mileage from MOT: ${car.mileage || 0} → ${latestTest.odometerValue} miles`);
+            car.mileage = latestTest.odometerValue;
+          } else {
+            console.log(`📏 Current mileage (${car.mileage}) is already higher than MOT (${latestTest.odometerValue})`);
+          }
+        }
       } else {
         console.log('⚠️  No MOT test with expiry date found');
       }
