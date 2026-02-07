@@ -3,7 +3,7 @@
  * Business logic for vehicle history checks
  */
 
-const HistoryAPIClient = require('../clients/HistoryAPIClient');
+const CheckCarDetailsClient = require('../clients/CheckCarDetailsClient');
 const VehicleHistory = require('../models/VehicleHistory');
 const { loadAPICredentials, getActiveAPIKey, getActiveBaseUrl } = require('../config/apiCredentials');
 
@@ -14,11 +14,11 @@ class HistoryService {
     const environment = credentials.environment;
     const isTestMode = environment === 'test';
 
-    // Initialize API client
+    // Initialize API client - USE CheckCarDetailsClient with fixed parser
     const apiKey = getActiveAPIKey(credentials.historyAPI, environment);
     const baseUrl = getActiveBaseUrl(credentials.historyAPI, environment);
     
-    this.client = new HistoryAPIClient(apiKey, baseUrl, isTestMode);
+    this.client = new CheckCarDetailsClient(apiKey, baseUrl, isTestMode);
     this.isTestMode = isTestMode;
   }
 
@@ -72,6 +72,22 @@ class HistoryService {
         vin: result.vin,
         engineNumber: result.engineNumber,
         co2Emissions: result.co2Emissions,
+        
+        // CRITICAL: Add missing fields from CheckCarDetailsClient parser
+        doors: result.doors,
+        seats: result.seats,
+        variant: result.variant,
+        emissionClass: result.emissionClass,
+        urbanMpg: result.urbanMpg,
+        extraUrbanMpg: result.extraUrbanMpg,
+        combinedMpg: result.combinedMpg,
+        annualTax: result.annualTax,
+        insuranceGroup: result.insuranceGroup,
+        
+        // Electric vehicle fields
+        electricRange: result.electricRange,
+        chargingTime: result.chargingTime,
+        batteryCapacity: result.batteryCapacity,
         
         // Owner information - map from API response
         // Try multiple possible field names from different API sources
@@ -153,6 +169,18 @@ class HistoryService {
         checkStatus: result.checkStatus || 'success',
         apiProvider: result.apiProvider || 'checkcardetails',
         testMode: result.testMode || this.isTestMode,
+        
+        // CRITICAL: Add valuation data from CheckCarDetailsClient
+        valuation: result.valuation ? {
+          privatePrice: result.valuation.privatePrice,
+          dealerPrice: result.valuation.dealerPrice,
+          partExchangePrice: result.valuation.partExchangePrice,
+          confidence: result.valuation.confidence,
+          estimatedValue: result.valuation.estimatedValue,
+        } : undefined,
+        
+        // Add mileage if available
+        mileage: result.mileage,
       };
 
       // IMPORTANT: Delete any existing records for this VRM first to prevent duplicates

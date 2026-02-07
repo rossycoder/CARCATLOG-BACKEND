@@ -150,6 +150,17 @@ class CheckCarDetailsClient {
   }
 
   /**
+   * Check vehicle history (alias for getVehicleHistory with parsing)
+   * Used by HistoryService for compatibility
+   * @param {string} registration - Vehicle registration number
+   * @returns {Promise<Object>} Parsed vehicle history
+   */
+  async checkHistory(registration) {
+    const rawData = await this.getVehicleHistory(registration);
+    return this.parseResponse(rawData);
+  }
+
+  /**
    * Parse API response and extract ALL available vehicle data automatically
    * Updated to handle actual CheckCarDetails API response structure
    * @param {Object} data - Raw API response
@@ -161,7 +172,7 @@ class CheckCarDetailsClient {
     const performance = data.Performance || {};
     const emissions = data.Emissions || {};
     const modelData = data.ModelData || {};
-    const vehicleExcise = data.VehicleExciseDutyDetails || {};
+    const vehicleExcise = data.VehicleExciseDutyDetails || data.vedRate || {};
     const vehicleId = data.VehicleIdentification || {};
     const bodyDetails = data.BodyDetails || {};
     const dimensions = data.Dimensions || {};
@@ -169,22 +180,29 @@ class CheckCarDetailsClient {
     const powerSource = data.PowerSource || {};
     const transmission = data.Transmission || {};
     const dvlaTech = data.DvlaTechnicalDetails || {};
+    const vehicleReg = data.VehicleRegistration || {};
+    const consumption = data.Consumption || {};
+    const engine = data.Engine || {};
+    const general = data.General || {};
 
     // Extract fuel economy data
     const fuelEconomy = {
       urban: this.extractNumber(
+        consumption.UrbanCold?.Mpg ||
         performance.FuelEconomy?.UrbanColdMpg || 
         smmtDetails.UrbanColdMpg || 
         data.FuelConsumptionUrban || 
         data.fuelEconomy?.urban
       ),
       extraUrban: this.extractNumber(
+        consumption.ExtraUrban?.Mpg ||
         performance.FuelEconomy?.ExtraUrbanMpg || 
         smmtDetails.ExtraUrbanMpg || 
         data.FuelConsumptionExtraUrban || 
         data.fuelEconomy?.extraUrban
       ),
       combined: this.extractNumber(
+        consumption.Combined?.Mpg ||
         performance.FuelEconomy?.CombinedMpg || 
         smmtDetails.CombinedMpg || 
         data.FuelConsumptionCombined || 
@@ -194,9 +212,12 @@ class CheckCarDetailsClient {
 
     // Extract emissions and tax data
     const co2Emissions = this.extractNumber(
+      performance.Co2 ||
+      vehicleReg.Co2Emissions ||
       emissions.ManufacturerCo2 || 
       smmtDetails.Co2 || 
       vehicleExcise.DvlaCo2 || 
+      vehicleExcise.VedCo2Emissions ||
       data.Co2Emissions || 
       data.co2Emissions
     );
@@ -205,6 +226,7 @@ class CheckCarDetailsClient {
 
     // Extract annual tax from VED rates
     const annualTax = this.extractNumber(
+      vehicleExcise.Standard?.TwelveMonth ||
       vehicleExcise.VedRate?.Standard?.TwelveMonths ||
       data.AnnualTax || 
       data.annualTax || 
@@ -324,7 +346,7 @@ class CheckCarDetailsClient {
         data.YearOfManufacture
       ),
       fuelType: this.normalizeFuelType(vehicleId.DvlaFuelType || modelData.FuelType || smmtDetails.FuelType || data.FuelType || data.fuelType),
-      transmission: transmission.TransmissionType || smmtDetails.Transmission || data.Transmission || data.transmission || null,
+      transmission: this.normalizeTransmission(transmission.TransmissionType || smmtDetails.Transmission || data.Transmission || data.transmission) || null,
       numberOfGears: this.extractNumber(
         transmission.NumberOfGears || 
         smmtDetails.NumberOfGears || 
@@ -377,12 +399,15 @@ class CheckCarDetailsClient {
       bodyType: bodyDetails.BodyStyle || vehicleId.DvlaBodyType || smmtDetails.BodyStyle || data.BodyType || null,
       bodyShape: bodyDetails.BodyShape || smmtDetails.BodyShape || data.BodyShape || null,
       doors: this.extractNumber(
+        dimensions.NumberOfDoors ||
         bodyDetails.NumberOfDoors || 
         smmtDetails.NumberOfDoors || 
         data.NumberOfDoors || 
         data.doors
       ),
       seats: this.extractNumber(
+        dimensions.NumberOfSeats ||
+        vehicleReg.SeatingCapacity ||
         bodyDetails.NumberOfSeats ||
         dvlaTech.SeatCountIncludingDriver ||
         smmtDetails.NumberOfSeats ||
@@ -416,7 +441,7 @@ class CheckCarDetailsClient {
       // Additional details
       fuelTankCapacityLitres: this.extractNumber(bodyDetails.FuelTankCapacityLitres || data.FuelTankCapacityLitres),
       countryOfOrigin: modelData.CountryOfOrigin || smmtDetails.CountryOfOrigin || data.CountryOfOrigin || null,
-      euroStatus: modelData.EuroStatus || smmtDetails.EuroStatus || data.EuroStatus || null,
+      euroStatus: general.EuroStatus || modelData.EuroStatus || smmtDetails.EuroStatus || data.EuroStatus || null,
       typeApprovalCategory: modelData.TypeApprovalCategory || smmtDetails.TypeApprovalCategory || data.TypeApprovalCategory || null,
       vehicleClass: modelData.VehicleClass || data.VehicleClass || null,
       marketSectorCode: modelData.MarketSectorCode || smmtDetails.SmmtMarketSectorCode || data.MarketSectorCode || null,
@@ -436,7 +461,12 @@ class CheckCarDetailsClient {
     }
 
     return {
-      fuelEconomy,
+      // Flatten fuel economy data with correct field names for database
+      urbanMpg: fuelEconomy.urban,
+      extraUrbanMpg: fuelEconomy.extraUrban,
+      combinedMpg: fuelEconomy.combined,
+      // Map euroStatus to emissionClass for database compatibility
+      emissionClass: basicData.euroStatus,
       co2Emissions,
       insuranceGroup,
       annualTax,
@@ -479,6 +509,34 @@ class CheckCarDetailsClient {
     };
 
     return fuelTypeMap[normalized] || fuelType;
+  }
+
+  /**
+   * Normalize transmission type to match Car model enum
+   * @param {string} transmission - Raw transmission from API
+   * @returns {string|null} Normalized transmission ('automatic', 'manual', 'semi-automatic')
+   */
+  normalizeTransmission(transmission) {
+    if (!transmission) return null;
+
+    const normalized = transmission.toLowerCase().trim();
+
+    // Map various transmission formats to enum values
+    const transmissionMap = {
+      'automatic': 'automatic',
+      'auto': 'automatic',
+      'manual': 'manual',
+      'semi-automatic': 'semi-automatic',
+      'semi automatic': 'semi-automatic',
+      'semiautomatic': 'semi-automatic',
+      'automated manual': 'semi-automatic',
+      'amt': 'semi-automatic',
+      'dsg': 'semi-automatic',
+      'cvt': 'automatic',
+      'tiptronic': 'semi-automatic'
+    };
+
+    return transmissionMap[normalized] || transmission.toLowerCase();
   }
 
   /**
@@ -703,4 +761,4 @@ class CheckCarDetailsClient {
   }
 }
 
-module.exports = new CheckCarDetailsClient();
+module.exports = CheckCarDetailsClient;

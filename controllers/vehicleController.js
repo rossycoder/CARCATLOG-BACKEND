@@ -181,13 +181,47 @@ class VehicleController {
         });
       }
 
-      // Step 2: Map DVLA data to Car schema
+      // Step 2: Map DVLA data to Car schema (as fallback/basic data)
       const carData = dvlaService.mapDVLADataToCarSchema(dvlaData, mileage, {
         price,
         postcode,
         description,
         transmission
       });
+      
+      // CRITICAL: Immediately fetch CheckCarDetails data to override DVLA data
+      // CheckCarDetails is more accurate and complete than DVLA
+      console.log(`[Vehicle Controller] Fetching CheckCarDetails data to override DVLA...`);
+      try {
+        const checkCarDetailsClient = require('../clients/CheckCarDetailsClient');
+        const rawCheckCarData = await checkCarDetailsClient.getVehicleHistory(registrationNumber);
+        const checkCarData = checkCarDetailsClient.parseResponse(rawCheckCarData);
+        
+        // Override DVLA data with CheckCarDetails data (CheckCarDetails is primary)
+        if (checkCarData.make) carData.make = checkCarData.make;
+        if (checkCarData.model) carData.model = checkCarData.model;
+        if (checkCarData.variant) carData.variant = checkCarData.variant;
+        if (checkCarData.bodyType) carData.bodyType = checkCarData.bodyType;
+        if (checkCarData.doors) carData.doors = checkCarData.doors;
+        if (checkCarData.seats) carData.seats = checkCarData.seats;
+        if (checkCarData.transmission) carData.transmission = checkCarData.transmission.toLowerCase();
+        if (checkCarData.engineSize) carData.engineSize = checkCarData.engineSize;
+        if (checkCarData.euroStatus) carData.emissionClass = checkCarData.euroStatus;
+        if (checkCarData.fuelEconomy?.urban) carData.fuelEconomyUrban = checkCarData.fuelEconomy.urban;
+        if (checkCarData.fuelEconomy?.extraUrban) carData.fuelEconomyExtraUrban = checkCarData.fuelEconomy.extraUrban;
+        if (checkCarData.fuelEconomy?.combined) carData.fuelEconomyCombined = checkCarData.fuelEconomy.combined;
+        if (checkCarData.co2Emissions) carData.co2Emissions = checkCarData.co2Emissions;
+        if (checkCarData.annualTax) carData.annualTax = checkCarData.annualTax;
+        if (checkCarData.insuranceGroup) carData.insuranceGroup = checkCarData.insuranceGroup;
+        
+        console.log(`✅ CheckCarDetails data applied (primary source)`);
+        console.log(`   Transmission: ${carData.transmission}`);
+        console.log(`   Emission Class: ${carData.emissionClass}`);
+        console.log(`   Doors: ${carData.doors}, Seats: ${carData.seats}`);
+      } catch (checkCarError) {
+        console.warn(`⚠️  CheckCarDetails lookup failed, using DVLA data as fallback: ${checkCarError.message}`);
+        // Continue with DVLA data if CheckCarDetails fails
+      }
 
       // Step 3: Automatically fetch coordinates and location name from postcode
       if (postcode) {

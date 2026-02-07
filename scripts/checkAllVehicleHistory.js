@@ -1,291 +1,169 @@
 /**
- * Check All Vehicle History Data
- * Verifies vehicle history for all registrations in the database
- * Checks both frontend display and backend data consistency
+ * Check All Vehicle History Records
+ * Verifies that vehicle history data is correctly saved in the database
  */
 
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const mongoose = require('mongoose');
-const Car = require('../models/Car');
 const VehicleHistory = require('../models/VehicleHistory');
-const HistoryService = require('../services/historyService');
-
-// Color codes for console output
-const colors = {
-  reset: '\x1b[0m',
-  red: '\x1b[31m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  blue: '\x1b[34m',
-  magenta: '\x1b[35m',
-  cyan: '\x1b[36m',
-};
+const Car = require('../models/Car');
 
 async function checkAllVehicleHistory() {
   try {
-    console.log(`${colors.cyan}=== Vehicle History Check Started ===${colors.reset}\n`);
-
-    // Connect to MongoDB
+    console.log('🔍 Checking all vehicle history records...\n');
+    
+    // Connect to database
     await mongoose.connect(process.env.MONGODB_URI);
-    console.log(`${colors.green}✓ Connected to MongoDB${colors.reset}\n`);
-
-    // Get all cars with registration numbers
-    const cars = await Car.find({ 
-      registrationNumber: { $exists: true, $ne: null, $ne: '' } 
-    }).select('registrationNumber make model year price status userId').lean();
-
-    console.log(`${colors.blue}Found ${cars.length} vehicles with registration numbers${colors.reset}\n`);
-
-    if (cars.length === 0) {
-      console.log(`${colors.yellow}No vehicles found with registration numbers${colors.reset}`);
+    console.log('✅ Connected to database\n');
+    
+    // Get all vehicle history records
+    const histories = await VehicleHistory.find({}).sort({ checkDate: -1 });
+    console.log(`📊 Total Vehicle History Records: ${histories.length}\n`);
+    
+    if (histories.length === 0) {
+      console.log('❌ No vehicle history records found in database');
       return;
     }
-
-    const results = {
-      total: cars.length,
-      withHistory: 0,
-      withoutHistory: 0,
-      historyErrors: 0,
-      dataIssues: [],
-      missingHistory: [],
-      erroredHistory: [],
-    };
-
-    // Check each vehicle
-    for (let i = 0; i < cars.length; i++) {
-      const car = cars[i];
-      const vrm = car.registrationNumber.toUpperCase();
+    
+    // Check each history record
+    for (const history of histories) {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`📋 VRM: ${history.vrm}`);
+      console.log(`🆔 History ID: ${history._id}`);
+      console.log(`📅 Check Date: ${history.checkDate.toLocaleDateString('en-GB')}`);
+      console.log(`✅ Check Status: ${history.checkStatus}`);
+      console.log(`🔧 API Provider: ${history.apiProvider}`);
       
-      console.log(`${colors.cyan}[${i + 1}/${cars.length}] Checking ${vrm} - ${car.make} ${car.model} (${car.year})${colors.reset}`);
-
-      try {
-        // Check if history exists in database
-        const cachedHistory = await VehicleHistory.getMostRecent(vrm);
-        
-        if (cachedHistory) {
-          results.withHistory++;
-          
-          // Check data quality
-          const issues = checkDataQuality(cachedHistory, car);
-          
-          if (issues.length > 0) {
-            results.dataIssues.push({
-              vrm,
-              carId: car._id,
-              make: car.make,
-              model: car.model,
-              issues,
-            });
-            
-            console.log(`  ${colors.yellow}⚠ Data issues found:${colors.reset}`);
-            issues.forEach(issue => {
-              console.log(`    - ${issue}`);
-            });
-          } else {
-            console.log(`  ${colors.green}✓ History data looks good${colors.reset}`);
-          }
-          
-          // Display key history data
-          displayHistoryData(cachedHistory);
-          
-        } else {
-          results.withoutHistory++;
-          results.missingHistory.push({
-            vrm,
-            carId: car._id,
-            make: car.make,
-            model: car.model,
-            year: car.year,
-          });
-          
-          console.log(`  ${colors.red}✗ No history data found${colors.reset}`);
+      // Check basic vehicle data
+      console.log('\n🚗 Basic Vehicle Data:');
+      console.log(`   Make: ${history.make || 'Missing'}`);
+      console.log(`   Model: ${history.model || 'Missing'}`);
+      console.log(`   Variant: ${history.variant || 'Missing'}`);
+      console.log(`   Color: ${history.colour || 'Missing'}`);
+      console.log(`   Year: ${history.yearOfManufacture || 'Missing'}`);
+      console.log(`   Fuel Type: ${history.fuelType || 'Missing'}`);
+      console.log(`   Body Type: ${history.bodyType || 'Missing'}`);
+      console.log(`   Transmission: ${history.transmission || 'Missing'}`);
+      console.log(`   Engine Capacity: ${history.engineCapacity || 'Missing'}cc`);
+      console.log(`   Emission Class: ${history.emissionClass || 'Missing'}`);
+      
+      // Check vehicle specs
+      console.log('\n📐 Vehicle Specifications:');
+      console.log(`   Doors: ${history.doors || 'Missing'}`);
+      console.log(`   Seats: ${history.seats || 'Missing'}`);
+      console.log(`   Gearbox: ${history.gearbox || 'Missing'}`);
+      
+      // Check running costs
+      console.log('\n💰 Running Costs:');
+      console.log(`   Urban MPG: ${history.urbanMpg || 'Missing'}`);
+      console.log(`   Extra Urban MPG: ${history.extraUrbanMpg || 'Missing'}`);
+      console.log(`   Combined MPG: ${history.combinedMpg || 'Missing'}`);
+      console.log(`   CO2 Emissions: ${history.co2Emissions || 'Missing'} g/km`);
+      console.log(`   Insurance Group: ${history.insuranceGroup || 'Missing'}`);
+      console.log(`   Annual Tax: £${history.annualTax || 'Missing'}`);
+      
+      // Check history data
+      console.log('\n📜 Vehicle History:');
+      console.log(`   Previous Owners: ${history.numberOfPreviousKeepers || history.previousOwners || 0}`);
+      console.log(`   Plate Changes: ${history.plateChanges || 0}`);
+      console.log(`   Color Changes: ${history.colourChanges || 0}`);
+      console.log(`   V5C Certificates: ${history.v5cCertificateCount || 0}`);
+      console.log(`   VIC Count: ${history.vicCount || 0}`);
+      
+      // Check flags
+      console.log('\n🚨 History Flags:');
+      console.log(`   Written Off: ${history.isWrittenOff ? '⚠️  YES' : '✅ No'}`);
+      if (history.isWrittenOff) {
+        console.log(`   Write-Off Category: ${history.writeOffCategory || 'Unknown'}`);
+        if (history.writeOffDetails && history.writeOffDetails.date) {
+          console.log(`   Write-Off Date: ${new Date(history.writeOffDetails.date).toLocaleDateString('en-GB')}`);
         }
-        
-      } catch (error) {
-        results.historyErrors++;
-        results.erroredHistory.push({
-          vrm,
-          carId: car._id,
-          make: car.make,
-          model: car.model,
-          error: error.message,
-        });
-        
-        console.log(`  ${colors.red}✗ Error checking history: ${error.message}${colors.reset}`);
+      }
+      console.log(`   Stolen: ${history.isStolen ? '⚠️  YES' : '✅ No'}`);
+      console.log(`   Scrapped: ${history.isScrapped ? '⚠️  YES' : '✅ No'}`);
+      console.log(`   Imported: ${history.isImported ? '⚠️  YES' : '✅ No'}`);
+      console.log(`   Exported: ${history.isExported ? '⚠️  YES' : '✅ No'}`);
+      console.log(`   Outstanding Finance: ${history.hasOutstandingFinance ? '⚠️  YES' : '✅ No'}`);
+      console.log(`   Accident History: ${history.hasAccidentHistory ? '⚠️  YES' : '✅ No'}`);
+      
+      // Check MOT history
+      console.log('\n🔧 MOT History:');
+      if (history.motHistory && history.motHistory.length > 0) {
+        console.log(`   Total MOT Tests: ${history.motHistory.length}`);
+        const latestMOT = history.motHistory[0];
+        console.log(`   Latest Test Date: ${latestMOT.testDate ? new Date(latestMOT.testDate).toLocaleDateString('en-GB') : 'Missing'}`);
+        console.log(`   Latest Test Result: ${latestMOT.testResult || 'Missing'}`);
+        console.log(`   Latest Expiry Date: ${latestMOT.expiryDate ? new Date(latestMOT.expiryDate).toLocaleDateString('en-GB') : 'Missing'}`);
+        console.log(`   Latest Mileage: ${latestMOT.odometerValue || 'Missing'} miles`);
+      } else {
+        console.log(`   ❌ No MOT history found`);
       }
       
-      console.log(''); // Empty line for readability
+      // Check valuation
+      console.log('\n💷 Valuation:');
+      if (history.valuation && history.valuation.privatePrice) {
+        console.log(`   Private Price: £${history.valuation.privatePrice.toLocaleString()}`);
+        console.log(`   Dealer Price: £${history.valuation.dealerPrice?.toLocaleString() || 'N/A'}`);
+        console.log(`   Part Exchange: £${history.valuation.partExchangePrice?.toLocaleString() || 'N/A'}`);
+        console.log(`   Confidence: ${history.valuation.confidence || 'N/A'}`);
+      } else {
+        console.log(`   ❌ No valuation data found`);
+      }
+      
+      // Check if linked to a car
+      console.log('\n🔗 Car Linkage:');
+      const linkedCar = await Car.findOne({ historyCheckId: history._id });
+      if (linkedCar) {
+        console.log(`   ✅ Linked to car: ${linkedCar._id}`);
+        console.log(`   Car Registration: ${linkedCar.registrationNumber}`);
+        console.log(`   Car Make/Model: ${linkedCar.make} ${linkedCar.model}`);
+      } else {
+        console.log(`   ⚠️  Not linked to any car (orphaned record)`);
+      }
+      
+      // Data completeness score
+      const fields = [
+        history.make, history.model, history.variant, history.colour,
+        history.yearOfManufacture, history.fuelType, history.bodyType,
+        history.transmission, history.engineCapacity, history.emissionClass,
+        history.doors, history.seats, history.urbanMpg, history.combinedMpg,
+        history.co2Emissions, history.insuranceGroup, history.annualTax
+      ];
+      const filledFields = fields.filter(f => f !== null && f !== undefined && f !== 'Unknown').length;
+      const completeness = Math.round((filledFields / fields.length) * 100);
+      
+      console.log(`\n📊 Data Completeness: ${completeness}% (${filledFields}/${fields.length} fields)`);
+      console.log('');
     }
-
-    // Print summary
-    printSummary(results);
-
-    // Close connection
-    await mongoose.connection.close();
-    console.log(`\n${colors.green}✓ MongoDB connection closed${colors.reset}`);
-
+    
+    // Summary
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('📊 SUMMARY');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`Total Records: ${histories.length}`);
+    
+    const withMOT = histories.filter(h => h.motHistory && h.motHistory.length > 0).length;
+    const withValuation = histories.filter(h => h.valuation && h.valuation.privatePrice).length;
+    const withRunningCosts = histories.filter(h => h.combinedMpg || h.co2Emissions).length;
+    const writeOffs = histories.filter(h => h.isWrittenOff).length;
+    const stolen = histories.filter(h => h.isStolen).length;
+    const finance = histories.filter(h => h.hasOutstandingFinance).length;
+    
+    console.log(`\nData Coverage:`);
+    console.log(`   With MOT History: ${withMOT} (${Math.round(withMOT/histories.length*100)}%)`);
+    console.log(`   With Valuation: ${withValuation} (${Math.round(withValuation/histories.length*100)}%)`);
+    console.log(`   With Running Costs: ${withRunningCosts} (${Math.round(withRunningCosts/histories.length*100)}%)`);
+    
+    console.log(`\nHistory Flags:`);
+    console.log(`   Written Off: ${writeOffs}`);
+    console.log(`   Stolen: ${stolen}`);
+    console.log(`   Outstanding Finance: ${finance}`);
+    
   } catch (error) {
-    console.error(`${colors.red}Error:${colors.reset}`, error);
-    process.exit(1);
-  }
-}
-
-/**
- * Check data quality of vehicle history
- */
-function checkDataQuality(history, car) {
-  const issues = [];
-
-  // Check for missing critical fields
-  if (!history.make || history.make === 'Unknown') {
-    issues.push('Make is missing or unknown');
-  }
-  
-  if (!history.model || history.model === 'Unknown') {
-    issues.push('Model is missing or unknown');
-  }
-
-  // Check for contradictions in write-off status
-  if (history.isWrittenOff === true && history.hasAccidentHistory === false) {
-    issues.push('Contradiction: isWrittenOff=true but hasAccidentHistory=false');
-  }
-
-  if (history.hasAccidentHistory === true && !history.accidentDetails) {
-    issues.push('hasAccidentHistory=true but accidentDetails is missing');
-  }
-
-  if (history.hasAccidentHistory === true && 
-      history.accidentDetails && 
-      history.accidentDetails.severity === 'unknown') {
-    issues.push('Accident history exists but severity is unknown');
-  }
-
-  // Check for default/placeholder values that should be real data
-  if (history.numberOfPreviousKeepers === 0 && history.previousOwners === 0 && history.numberOfOwners === 0) {
-    issues.push('All owner count fields are 0 - may be missing data');
-  }
-
-  if (history.numberOfKeys === 1 && history.keys === 1) {
-    issues.push('Keys count is default value (1) - may not be actual data');
-  }
-
-  if (history.serviceHistory === 'Contact seller' || history.serviceHistory === 'Unknown') {
-    issues.push('Service history is placeholder value');
-  }
-
-  // Check for stolen/scrapped/exported flags
-  if (history.isStolen === true) {
-    issues.push('⚠️ ALERT: Vehicle is marked as STOLEN');
-  }
-
-  if (history.isScrapped === true) {
-    issues.push('⚠️ ALERT: Vehicle is marked as SCRAPPED');
-  }
-
-  if (history.isExported === true) {
-    issues.push('Vehicle is marked as EXPORTED');
-  }
-
-  // Check data freshness
-  const daysSinceCheck = (Date.now() - history.checkDate.getTime()) / (1000 * 60 * 60 * 24);
-  if (daysSinceCheck > 30) {
-    issues.push(`History data is ${Math.floor(daysSinceCheck)} days old (>30 days)`);
-  }
-
-  return issues;
-}
-
-/**
- * Display key history data
- */
-function displayHistoryData(history) {
-  console.log(`  ${colors.magenta}History Data:${colors.reset}`);
-  console.log(`    Make/Model: ${history.make} ${history.model}`);
-  console.log(`    Previous Keepers: ${history.numberOfPreviousKeepers || history.previousOwners || history.numberOfOwners || 0}`);
-  console.log(`    Keys: ${history.numberOfKeys || history.keys || 'Unknown'}`);
-  console.log(`    Service History: ${history.serviceHistory || 'Unknown'}`);
-  console.log(`    Written Off: ${history.isWrittenOff ? 'YES' : 'NO'}`);
-  
-  if (history.isWrittenOff || history.hasAccidentHistory) {
-    const severity = history.accidentDetails?.severity || 'unknown';
-    console.log(`    ${colors.red}Write-off Category: ${severity.toUpperCase()}${colors.reset}`);
-  }
-  
-  console.log(`    Stolen: ${history.isStolen ? colors.red + 'YES' + colors.reset : 'NO'}`);
-  console.log(`    Scrapped: ${history.isScrapped ? 'YES' : 'NO'}`);
-  console.log(`    Imported: ${history.isImported ? 'YES' : 'NO'}`);
-  console.log(`    Exported: ${history.isExported ? 'YES' : 'NO'}`);
-  console.log(`    MOT Status: ${history.motStatus || 'Unknown'}`);
-  
-  if (history.motExpiryDate) {
-    console.log(`    MOT Expiry: ${new Date(history.motExpiryDate).toLocaleDateString('en-GB')}`);
-  }
-  
-  console.log(`    Check Date: ${new Date(history.checkDate).toLocaleDateString('en-GB')}`);
-  console.log(`    API Provider: ${history.apiProvider || 'Unknown'}`);
-  console.log(`    Test Mode: ${history.testMode ? 'YES' : 'NO'}`);
-}
-
-/**
- * Print summary report
- */
-function printSummary(results) {
-  console.log(`\n${colors.cyan}=== Summary Report ===${colors.reset}\n`);
-  
-  console.log(`Total Vehicles: ${results.total}`);
-  console.log(`${colors.green}With History: ${results.withHistory}${colors.reset}`);
-  console.log(`${colors.red}Without History: ${results.withoutHistory}${colors.reset}`);
-  console.log(`${colors.yellow}Data Issues: ${results.dataIssues.length}${colors.reset}`);
-  console.log(`${colors.red}Errors: ${results.historyErrors}${colors.reset}`);
-
-  // Missing history details
-  if (results.missingHistory.length > 0) {
-    console.log(`\n${colors.yellow}=== Vehicles Missing History ===${colors.reset}`);
-    results.missingHistory.forEach(item => {
-      console.log(`  ${item.vrm} - ${item.make} ${item.model} (${item.year})`);
-    });
-  }
-
-  // Data issues details
-  if (results.dataIssues.length > 0) {
-    console.log(`\n${colors.yellow}=== Vehicles with Data Issues ===${colors.reset}`);
-    results.dataIssues.forEach(item => {
-      console.log(`\n  ${colors.cyan}${item.vrm} - ${item.make} ${item.model}${colors.reset}`);
-      item.issues.forEach(issue => {
-        console.log(`    - ${issue}`);
-      });
-    });
-  }
-
-  // Error details
-  if (results.erroredHistory.length > 0) {
-    console.log(`\n${colors.red}=== Vehicles with Errors ===${colors.reset}`);
-    results.erroredHistory.forEach(item => {
-      console.log(`  ${item.vrm} - ${item.make} ${item.model}`);
-      console.log(`    Error: ${item.error}`);
-    });
-  }
-
-  // Recommendations
-  console.log(`\n${colors.cyan}=== Recommendations ===${colors.reset}`);
-  
-  if (results.withoutHistory > 0) {
-    console.log(`\n${colors.yellow}1. Fetch missing history data:${colors.reset}`);
-    console.log(`   Run: node backend/scripts/fetchMissingHistory.js`);
-  }
-  
-  if (results.dataIssues.length > 0) {
-    console.log(`\n${colors.yellow}2. Review data quality issues:${colors.reset}`);
-    console.log(`   - Check for placeholder values (Contact seller, Unknown)`);
-    console.log(`   - Verify write-off status contradictions`);
-    console.log(`   - Update stale data (>30 days old)`);
-  }
-  
-  if (results.historyErrors > 0) {
-    console.log(`\n${colors.yellow}3. Investigate errors:${colors.reset}`);
-    console.log(`   - Check API connectivity`);
-    console.log(`   - Verify API credentials`);
-    console.log(`   - Review error logs`);
+    console.error('❌ Error:', error);
+  } finally {
+    await mongoose.connection.close();
+    console.log('\n✅ Database connection closed');
   }
 }
 
