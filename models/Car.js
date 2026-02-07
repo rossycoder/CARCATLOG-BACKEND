@@ -1261,6 +1261,36 @@ carSchema.methods.generateSampleAdvisories = function() {
   return selectedAdvisories;
 };
 
+// Pre-save hook to ensure MOT due date is always set from MOT history
+carSchema.pre('save', function(next) {
+  try {
+    // If MOT history exists but motDue/motExpiry is missing, set it from latest test
+    if (this.motHistory && this.motHistory.length > 0) {
+      const latestTest = this.motHistory[0];
+      
+      if (latestTest && latestTest.expiryDate) {
+        // Set both motDue and motExpiry if they're missing
+        if (!this.motDue) {
+          this.motDue = latestTest.expiryDate;
+        }
+        if (!this.motExpiry) {
+          this.motExpiry = latestTest.expiryDate;
+        }
+        // Update MOT status if missing
+        if (!this.motStatus) {
+          this.motStatus = latestTest.testResult === 'PASSED' ? 'Valid' : 'Invalid';
+        }
+      }
+    }
+    
+    next();
+  } catch (error) {
+    console.error('❌ Error in MOT due date pre-save hook:', error);
+    // Don't fail the save operation
+    next();
+  }
+});
+
 // Pre-save hook to automatically enhance electric vehicles
 carSchema.pre('save', async function(next) {
   try {
@@ -1306,5 +1336,10 @@ carSchema.post('save', function(doc) {
     console.log(`   - Features: ${doc.features?.length || 0} features added`);
   }
 });
+
+// CRITICAL: Auto-complete missing car data after save
+// This ensures ALL cars have complete data (running costs, MOT, vehicle history, etc.)
+const autoCompleteCarDataMiddleware = require('../middleware/autoCompleteCarData');
+carSchema.post('save', autoCompleteCarDataMiddleware);
 
 module.exports = mongoose.model('Car', carSchema);
