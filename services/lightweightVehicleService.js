@@ -35,55 +35,47 @@ class LightweightVehicleService {
       };
     }
     
-    console.log(`❌ CACHE MISS for ${registration} - Trying FREE DVLA API first`);
+    console.log(`❌ CACHE MISS for ${registration} - Trying CheckCarDetails API first`);
     
     try {
-      // STEP 1: Try FREE DVLA API first (£0.00)
+      // STEP 1: Try CheckCarDetails API first (£0.10 for ukvehicledata - most complete data)
       let vehicleData = null;
       let apiCost = 0;
       let apiCalls = 0;
-      let apiProvider = 'dvla';
-      let shouldFallbackToCheckCar = false;
+      let apiProvider = 'checkcardetails';
+      let shouldFallbackToDVLA = false;
       
       try {
-        console.log(`🆓 Trying FREE DVLA API for ${registration}`);
-        vehicleData = await dvlaService.lookupVehicle(registration);
-        console.log(`✅ DVLA API success for ${registration} - FREE data obtained`);
+        console.log(`💎 Trying CheckCarDetails API for ${registration} (primary source)`);
+        const CheckCarDetailsClientClass = require('../clients/CheckCarDetailsClient');
+        const checkCarClient = new CheckCarDetailsClientClass();
+        const rawData = await checkCarClient.getUKVehicleData(registration);
+        vehicleData = checkCarClient.parseResponse(rawData);
+        console.log(`✅ CheckCarDetails API success for ${registration} - Complete data obtained`);
         
-        // CRITICAL FIX: Check if DVLA returned incomplete data for electric vehicles
-        if (vehicleData && vehicleData.fuelType && vehicleData.fuelType.toLowerCase().includes('electric')) {
-          console.log(`🔋 Electric vehicle detected - DVLA model: "${vehicleData.model}"`);
-          
-          // If DVLA returns generic "ELECTRICITY" model, we need proper data from CheckCarDetails
-          if (!vehicleData.model || vehicleData.model.toUpperCase() === 'ELECTRICITY') {
-            console.log(`⚠️ DVLA returned generic model "${vehicleData.model}" for electric vehicle - falling back to CheckCarDetails for proper model/variant`);
-            shouldFallbackToCheckCar = true;
-          }
-        }
-        
-        if (!shouldFallbackToCheckCar) {
-          apiCost = 0;
-          apiCalls = 1;
-          apiProvider = 'dvla-free';
-        }
-      } catch (dvlaError) {
-        console.log(`❌ DVLA API failed for ${registration}: ${dvlaError.message}`);
-        shouldFallbackToCheckCar = true;
+        apiCost = 0.10;
+        apiCalls = 1;
+        apiProvider = 'checkcardetails-primary';
+      } catch (checkCarError) {
+        console.log(`❌ CheckCarDetails API failed for ${registration}: ${checkCarError.message}`);
+        shouldFallbackToDVLA = true;
       }
       
-      // STEP 2: Fallback to CheckCarDetails if DVLA failed or returned incomplete data
-      if (shouldFallbackToCheckCar) {
-        console.log(`🔄 Falling back to CheckCarDetails Vehiclespecs API (£0.05) for complete vehicle data`);
+      // STEP 2: Fallback to FREE DVLA API only if CheckCarDetails failed
+      if (shouldFallbackToDVLA) {
+        console.log(`🔄 Falling back to FREE DVLA API (£0.00) as CheckCarDetails failed`);
         
         try {
-          vehicleData = await CheckCarDetailsClient.getVehicleSpecs(registration);
-          apiCost = 0.05;
+          console.log(`🆓 Trying FREE DVLA API for ${registration}`);
+          vehicleData = await dvlaService.lookupVehicle(registration);
+          console.log(`✅ DVLA API success for ${registration} - FREE data obtained (fallback)`);
+          
+          apiCost = 0;
           apiCalls = 1;
-          apiProvider = 'vehiclespecs-fallback';
-          console.log(`✅ CheckCarDetails Vehiclespecs API success for ${registration}`);
-        } catch (checkCarError) {
-          console.error(`❌ Both DVLA and CheckCarDetails APIs failed for ${registration}`);
-          throw new Error(`Vehicle lookup failed: DVLA (${dvlaError?.message || 'incomplete data'}), CheckCarDetails (${checkCarError.message})`);
+          apiProvider = 'dvla-fallback';
+        } catch (dvlaError) {
+          console.error(`❌ Both CheckCarDetails and DVLA APIs failed for ${registration}`);
+          throw new Error(`Vehicle lookup failed: CheckCarDetails (${checkCarError?.message}), DVLA (${dvlaError.message})`);
         }
       }
       
@@ -93,12 +85,16 @@ class LightweightVehicleService {
       
       // Parse the response to get basic vehicle data
       let parsedData;
-      if (apiProvider === 'dvla-free') {
-        // Parse DVLA response
-        parsedData = this.parseDVLAResponse(vehicleData, registration);
+      if (apiProvider.includes('checkcardetails')) {
+        // CheckCarDetails data is already parsed by parseResponse()
+        parsedData = vehicleData;
+        console.log(`🔍 Parsing CheckCarDetails response for ${registration}`);
+        console.log(`✅ CheckCarDetails data parsed: ${parsedData.make} ${parsedData.model} (${parsedData.year})`);
       } else {
-        // Parse CheckCarDetails response
-        parsedData = CheckCarDetailsClient.parseResponse(vehicleData);
+        // Parse DVLA response (fallback)
+        parsedData = this.parseDVLAResponse(vehicleData, registration);
+        console.log(`🔍 Parsing DVLA response for ${registration}`);
+        console.log(`✅ DVLA data parsed: ${parsedData.make} ${parsedData.model} (${parsedData.year})`);
       }
       
       // Format basic vehicle data for CarFinder (no history/MOT data)
