@@ -1,8 +1,11 @@
 const Bike = require('../models/Bike');
-const lightweightBikeService = require('../services/lightweightBikeService');
+const lightweightBikeService = require('./../services/universalAutoCompleteService');
 const motHistoryService = require('../services/motHistoryService');
 const historyService = require('../services/historyService');
-const CheckCarDetailsClient = require('../clients/CheckCarDetailsClient');
+const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');
+
+// Initialize services
+const universalService = new UniversalAutoCompleteService();
 
 // Get all bikes with filtering and pagination
 exports.getBikes = async (req, res) => {
@@ -816,47 +819,63 @@ exports.enhancedBikeLookup = async (req, res) => {
     // Auto-fetch additional data if requested
     if (autoFetch === 'true' || autoFetch === true) {
       try {
-        // Fetch variant and enhanced data from CheckCarDetails
-        console.log(`🔍 Auto-fetching enhanced bike data for ${registration}`);
-        const variantData = await CheckCarDetailsClient.getVehicleSpecs(registration);
+        // CRITICAL: Use Universal Auto Complete Service instead of CheckCarDetailsClient
+        // Universal Service handles all vehicle data fetching with proper caching and race condition prevention
+        console.log(`🔍 Using Universal Service for enhanced bike data: ${registration}`);
         
-        if (variantData) {
-          const parsedVariant = CheckCarDetailsClient.parseResponse(variantData);
-          
-          // Merge enhanced data
-          enhancedData = {
-            ...enhancedData,
-            variant: parsedVariant.variant || parsedVariant.modelVariant || enhancedData.variant,
-            modelVariant: parsedVariant.modelVariant || enhancedData.modelVariant,
-            engineSize: parsedVariant.engineSize || enhancedData.engineSize,
-            emissionClass: parsedVariant.emissionClass || enhancedData.emissionClass,
-            euroStatus: parsedVariant.euroStatus || enhancedData.euroStatus,
-            performance: {
-              power: parsedVariant.power || null,
-              torque: parsedVariant.torque || null,
-              acceleration: parsedVariant.acceleration || null,
-              topSpeed: parsedVariant.topSpeed || null
+        // Create a temporary bike object for the Universal Service
+        const tempBike = new Bike({
+          registrationNumber: registration,
+          mileage: mileage || 10000,
+          vehicleType: 'bike',
+          dataSource: 'auto-fetch'
+        });
+        
+        // Use Universal Service to get complete bike data
+        const completeVehicle = await universalService.completeCarData(tempBike, true); // Use cache for cost optimization
+        
+        // Merge enhanced data from Universal Service
+        enhancedData = {
+          ...enhancedData,
+          variant: completeVehicle.variant || enhancedData.variant,
+          modelVariant: completeVehicle.variant || enhancedData.modelVariant,
+          engineSize: completeVehicle.engineSize || enhancedData.engineSize,
+          emissionClass: completeVehicle.emissionClass || enhancedData.emissionClass,
+          euroStatus: completeVehicle.euroStatus || enhancedData.euroStatus,
+          performance: {
+            power: completeVehicle.power || null,
+            torque: completeVehicle.torque || null,
+            acceleration: completeVehicle.acceleration || null,
+            topSpeed: completeVehicle.topSpeed || null
+          },
+          runningCosts: {
+            fuelEconomy: {
+              urban: completeVehicle.fuelEconomyUrban || enhancedData.runningCosts?.fuelEconomy?.urban,
+              extraUrban: completeVehicle.fuelEconomyExtraUrban || enhancedData.runningCosts?.fuelEconomy?.extraUrban,
+              combined: completeVehicle.fuelEconomyCombined || enhancedData.runningCosts?.fuelEconomy?.combined
             },
-            runningCosts: {
-              fuelEconomy: {
-                urban: parsedVariant.urbanMpg || enhancedData.runningCosts?.fuelEconomy?.urban,
-                extraUrban: parsedVariant.extraUrbanMpg || enhancedData.runningCosts?.fuelEconomy?.extraUrban,
-                combined: parsedVariant.combinedMpg || enhancedData.runningCosts?.fuelEconomy?.combined
-              },
-              co2Emissions: parsedVariant.co2Emissions || enhancedData.runningCosts?.co2Emissions,
-              insuranceGroup: parsedVariant.insuranceGroup || enhancedData.runningCosts?.insuranceGroup,
-              annualTax: parsedVariant.annualTax || enhancedData.runningCosts?.annualTax
-            }
-          };
-          
-          totalCost += 0.05; // CheckCarDetails Vehiclespecs cost
-          apiCalls += 1;
-          
-          console.log(`✅ Enhanced bike data fetched for ${registration}`);
-        }
+            co2Emissions: completeVehicle.co2Emissions || enhancedData.runningCosts?.co2Emissions,
+            insuranceGroup: completeVehicle.insuranceGroup || enhancedData.runningCosts?.insuranceGroup,
+            annualTax: completeVehicle.annualTax || enhancedData.runningCosts?.annualTax
+          }
+        };
+        
+        console.log(`✅ Universal Service enhanced bike data applied successfully`);
+        console.log(`   Variant: ${enhancedData.variant}`);
+        console.log(`   Engine Size: ${enhancedData.engineSize}`);
+        console.log(`   Running Costs: Combined ${enhancedData.runningCosts?.fuelEconomy?.combined}mpg`);
+        console.log(`   Annual Tax: £${enhancedData.runningCosts?.annualTax}`);
+        
+        totalCost += 0.05; // CheckCarDetails Vehiclespecs cost
+        apiCalls += 1;
+        
+        console.log(`✅ Enhanced bike data fetched for ${registration}`);
+      } catch (enhanceError) {
+        console.log(`⚠️ Enhanced bike data fetch failed for ${registration}: ${enhanceError.message}`);
+      }
 
-        // Auto-fetch MOT history
-        try {
+      // Auto-fetch MOT history
+      try {
           console.log(`🔍 Auto-fetching MOT history for ${registration}`);
           const motResult = await motHistoryService.getMOTHistory(registration);
           
@@ -890,10 +909,6 @@ exports.enhancedBikeLookup = async (req, res) => {
         } catch (historyError) {
           console.log(`⚠️ Vehicle history fetch failed for ${registration}: ${historyError.message}`);
         }
-
-      } catch (enhancedError) {
-        console.log(`⚠️ Enhanced data fetch failed for ${registration}: ${enhancedError.message}`);
-      }
     }
 
     res.json({

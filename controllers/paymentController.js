@@ -6,9 +6,13 @@
 const StripeService = require('../services/stripeService');
 const HistoryService = require('../services/historyService');
 const EmailService = require('../services/emailService');
+const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');
 const AdvertisingPackagePurchase = require('../models/AdvertisingPackagePurchase');
 const { formatErrorResponse } = require('../utils/errorHandlers');
 const vehicleFormatter = require('../utils/vehicleFormatter');
+
+// Initialize services
+const universalService = new UniversalAutoCompleteService();
 
 /**
  * Calculate the appropriate price range based on vehicle valuation
@@ -929,29 +933,24 @@ async function handlePaymentSuccess(paymentIntent) {
               await car.save();
               console.log(`✅ Car advert UPDATED and published!`);
               
-              // CRITICAL: Fetch comprehensive vehicle data after payment (Vehicle History + MOT + Valuation)
+              // CRITICAL: Use Universal Auto Complete Service for comprehensive vehicle data after payment
+              // Universal Service handles all data fetching with proper caching and race condition prevention
               if (car.registrationNumber) {
                 try {
-                  console.log(`🔍 Fetching comprehensive vehicle data for: ${car.registrationNumber}`);
-                  const ComprehensiveVehicleService = require('../services/comprehensiveVehicleService');
-                  const comprehensiveService = new ComprehensiveVehicleService();
+                  console.log(`🔍 Using Universal Service for comprehensive vehicle data: ${car.registrationNumber}`);
                   
-                  const result = await comprehensiveService.fetchCompleteVehicleData(
-                    car.registrationNumber,
-                    car.mileage,
-                    false // Use cache if available
-                  );
+                  // Use Universal Service to complete all vehicle data (Vehicle History + MOT + Valuation)
+                  const completeVehicle = await universalService.completeCarData(car, false); // Use cache if available
                   
-                  console.log(`✅ Comprehensive data fetched - API calls: ${result.apiCalls}, Cost: £${result.totalCost.toFixed(2)}`);
+                  console.log(`✅ Universal Service comprehensive data completed successfully`);
+                  console.log(`   Vehicle data fully populated and saved to database`);
+                  console.log(`   Running costs, MOT history, and valuations included`);
                   
-                  // Update car with historyCheckId if available
-                  if (result.historyCheckId) {
-                    car.historyCheckId = result.historyCheckId;
-                    await car.save();
-                    console.log(`✅ Car linked to vehicle history: ${result.historyCheckId}`);
-                  }
+                  // The Universal Service automatically saves the updated vehicle data
+                  // and handles historyCheckId linking internally
+                  
                 } catch (error) {
-                  console.error(`⚠️ Failed to fetch comprehensive data: ${error.message}`);
+                  console.error(`⚠️ Universal Service comprehensive data failed: ${error.message}`);
                   // Don't fail the payment - car is still published
                 }
               }
@@ -1096,29 +1095,24 @@ async function handlePaymentSuccess(paymentIntent) {
               await car.save();
               console.log(`✅ Car advert CREATED and published in database!`);
               
-              // CRITICAL: Fetch comprehensive vehicle data after payment (Vehicle History + MOT + Valuation)
+              // CRITICAL: Use Universal Auto Complete Service for comprehensive vehicle data after payment
+              // Universal Service handles all data fetching with proper caching and race condition prevention
               if (car.registrationNumber) {
                 try {
-                  console.log(`🔍 Fetching comprehensive vehicle data for: ${car.registrationNumber}`);
-                  const ComprehensiveVehicleService = require('../services/comprehensiveVehicleService');
-                  const comprehensiveService = new ComprehensiveVehicleService();
+                  console.log(`🔍 Using Universal Service for comprehensive vehicle data: ${car.registrationNumber}`);
                   
-                  const result = await comprehensiveService.fetchCompleteVehicleData(
-                    car.registrationNumber,
-                    car.mileage,
-                    false // Use cache if available
-                  );
+                  // Use Universal Service to complete all vehicle data (Vehicle History + MOT + Valuation)
+                  const completeVehicle = await universalService.completeCarData(car, false); // Use cache if available
                   
-                  console.log(`✅ Comprehensive data fetched - API calls: ${result.apiCalls}, Cost: £${result.totalCost.toFixed(2)}`);
+                  console.log(`✅ Universal Service comprehensive data completed successfully`);
+                  console.log(`   Vehicle data fully populated and saved to database`);
+                  console.log(`   Running costs, MOT history, and valuations included`);
                   
-                  // Update car with historyCheckId if available
-                  if (result.historyCheckId) {
-                    car.historyCheckId = result.historyCheckId;
-                    await car.save();
-                    console.log(`✅ Car linked to vehicle history: ${result.historyCheckId}`);
-                  }
+                  // The Universal Service automatically saves the updated vehicle data
+                  // and handles historyCheckId linking internally
+                  
                 } catch (error) {
-                  console.error(`⚠️ Failed to fetch comprehensive data: ${error.message}`);
+                  console.error(`⚠️ Universal Service comprehensive data failed: ${error.message}`);
                   // Don't fail the payment - car is still published
                 }
               }

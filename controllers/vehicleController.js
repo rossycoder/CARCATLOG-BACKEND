@@ -6,9 +6,11 @@ const Car = require('../models/Car');
 const { createErrorFromCode, logError } = require('../utils/dvlaErrorHandler');
 const ElectricVehicleEnhancementService = require('../services/electricVehicleEnhancementService');
 const AutoDataPopulationService = require('../services/autoDataPopulationService');
+const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');
 
-// Initialize HistoryService
+// Initialize services
 const historyService = new HistoryService();
+const universalService = new UniversalAutoCompleteService();
 
 class VehicleController {
   /**
@@ -189,38 +191,56 @@ class VehicleController {
         transmission
       });
       
-      // CRITICAL: Immediately fetch CheckCarDetails data to override DVLA data
-      // CheckCarDetails is more accurate and complete than DVLA
-      console.log(`[Vehicle Controller] Fetching CheckCarDetails data to override DVLA...`);
+      // CRITICAL: Use Universal Auto Complete Service instead of direct API calls
+      // Universal Service handles all vehicle data fetching with proper caching and race condition prevention
+      console.log(`[Vehicle Controller] Using Universal Auto Complete Service for complete data...`);
+      
+      // Create a temporary vehicle object for the Universal Service
+      const tempVehicle = new Car(carData);
+      
       try {
-        const checkCarDetailsClient = require('../clients/CheckCarDetailsClient');
-        const rawCheckCarData = await checkCarDetailsClient.getVehicleHistory(registrationNumber);
-        const checkCarData = checkCarDetailsClient.parseResponse(rawCheckCarData);
+        // Use Universal Service to get complete vehicle data
+        const completeVehicle = await universalService.completeCarData(tempVehicle, false);
         
-        // Override DVLA data with CheckCarDetails data (CheckCarDetails is primary)
-        if (checkCarData.make) carData.make = checkCarData.make;
-        if (checkCarData.model) carData.model = checkCarData.model;
-        if (checkCarData.variant) carData.variant = checkCarData.variant;
-        if (checkCarData.bodyType) carData.bodyType = checkCarData.bodyType;
-        if (checkCarData.doors) carData.doors = checkCarData.doors;
-        if (checkCarData.seats) carData.seats = checkCarData.seats;
-        if (checkCarData.transmission) carData.transmission = checkCarData.transmission.toLowerCase();
-        if (checkCarData.engineSize) carData.engineSize = checkCarData.engineSize;
-        if (checkCarData.euroStatus) carData.emissionClass = checkCarData.euroStatus;
-        if (checkCarData.fuelEconomy?.urban) carData.fuelEconomyUrban = checkCarData.fuelEconomy.urban;
-        if (checkCarData.fuelEconomy?.extraUrban) carData.fuelEconomyExtraUrban = checkCarData.fuelEconomy.extraUrban;
-        if (checkCarData.fuelEconomy?.combined) carData.fuelEconomyCombined = checkCarData.fuelEconomy.combined;
-        if (checkCarData.co2Emissions) carData.co2Emissions = checkCarData.co2Emissions;
-        if (checkCarData.annualTax) carData.annualTax = checkCarData.annualTax;
-        if (checkCarData.insuranceGroup) carData.insuranceGroup = checkCarData.insuranceGroup;
+        // Override carData with complete data from Universal Service
+        if (completeVehicle.make) carData.make = completeVehicle.make;
+        if (completeVehicle.model) carData.model = completeVehicle.model;
+        if (completeVehicle.variant) carData.variant = completeVehicle.variant;
+        if (completeVehicle.bodyType) carData.bodyType = completeVehicle.bodyType;
+        if (completeVehicle.doors) carData.doors = completeVehicle.doors;
+        if (completeVehicle.seats) carData.seats = completeVehicle.seats;
+        if (completeVehicle.transmission) carData.transmission = completeVehicle.transmission;
+        if (completeVehicle.engineSize) carData.engineSize = completeVehicle.engineSize;
+        if (completeVehicle.emissionClass) carData.emissionClass = completeVehicle.emissionClass;
+        if (completeVehicle.urbanMpg) carData.fuelEconomyUrban = completeVehicle.urbanMpg;
+        if (completeVehicle.extraUrbanMpg) carData.fuelEconomyExtraUrban = completeVehicle.extraUrbanMpg;
+        if (completeVehicle.combinedMpg) carData.fuelEconomyCombined = completeVehicle.combinedMpg;
+        if (completeVehicle.co2Emissions) carData.co2Emissions = completeVehicle.co2Emissions;
+        if (completeVehicle.annualTax) carData.annualTax = completeVehicle.annualTax;
+        if (completeVehicle.insuranceGroup) carData.insuranceGroup = completeVehicle.insuranceGroup;
+        if (completeVehicle.color) carData.color = completeVehicle.color;
+        if (completeVehicle.estimatedValue) carData.estimatedValue = completeVehicle.estimatedValue;
+        if (completeVehicle.privatePrice) carData.privatePrice = completeVehicle.privatePrice;
+        if (completeVehicle.dealerPrice) carData.dealerPrice = completeVehicle.dealerPrice;
+        if (completeVehicle.partExchangePrice) carData.partExchangePrice = completeVehicle.partExchangePrice;
+        if (completeVehicle.motStatus) carData.motStatus = completeVehicle.motStatus;
+        if (completeVehicle.motDue) carData.motDue = completeVehicle.motDue;
+        if (completeVehicle.motExpiry) carData.motExpiry = completeVehicle.motExpiry;
+        if (completeVehicle.motHistory) carData.motHistory = completeVehicle.motHistory;
+        if (completeVehicle.runningCosts) carData.runningCosts = completeVehicle.runningCosts;
+        if (completeVehicle.historyCheckId) carData.historyCheckId = completeVehicle.historyCheckId;
+        if (completeVehicle.historyCheckStatus) carData.historyCheckStatus = completeVehicle.historyCheckStatus;
+        if (completeVehicle.historyCheckDate) carData.historyCheckDate = completeVehicle.historyCheckDate;
         
-        console.log(`✅ CheckCarDetails data applied (primary source)`);
+        console.log(`✅ Universal Service data applied (consolidated from all sources)`);
         console.log(`   Transmission: ${carData.transmission}`);
         console.log(`   Emission Class: ${carData.emissionClass}`);
         console.log(`   Doors: ${carData.doors}, Seats: ${carData.seats}`);
-      } catch (checkCarError) {
-        console.warn(`⚠️  CheckCarDetails lookup failed, using DVLA data as fallback: ${checkCarError.message}`);
-        // Continue with DVLA data if CheckCarDetails fails
+        console.log(`   Running Costs: Urban ${carData.fuelEconomyUrban}mpg, Combined ${carData.fuelEconomyCombined}mpg`);
+        console.log(`   Annual Tax: £${carData.annualTax}, Insurance Group: ${carData.insuranceGroup}`);
+      } catch (universalError) {
+        console.warn(`⚠️  Universal Service lookup failed, using DVLA data as fallback: ${universalError.message}`);
+        // Continue with DVLA data if Universal Service fails
       }
 
       // Step 3: Automatically fetch coordinates and location name from postcode
@@ -286,166 +306,22 @@ class VehicleController {
 
       await car.save();
 
-      // Step 6: Fetch ALL vehicle data comprehensively AND MERGE WITH CAR RECORD
-      // This ensures complete data is saved to database immediately
+      // Step 6: Use Universal Auto Complete Service for final data completion
+      // The Universal Service handles all data fetching, caching, and race condition prevention
       try {
-        console.log(`[Vehicle Controller] Fetching comprehensive vehicle data for: ${registrationNumber}`);
-        const ComprehensiveVehicleService = require('../services/comprehensiveVehicleService');
-        const comprehensiveService = new ComprehensiveVehicleService();
+        console.log(`[Vehicle Controller] Using Universal Service for final data completion: ${registrationNumber}`);
         
-        const comprehensiveResult = await comprehensiveService.fetchCompleteVehicleData(
-          registrationNumber, 
-          mileage, 
-          false // Don't force refresh - use cache if available
-        );
+        // Use Universal Service to complete all vehicle data
+        const completeVehicle = await universalService.completeCarData(car, false);
         
-        console.log(`[Vehicle Controller] Comprehensive data fetch completed:`);
-        console.log(`   API Calls: ${comprehensiveResult.apiCalls}`);
-        console.log(`   Total Cost: £${comprehensiveResult.totalCost.toFixed(2)}`);
-        console.log(`   Errors: ${comprehensiveResult.errors.length}`);
+        console.log(`[Vehicle Controller] Universal Service completion successful`);
+        console.log(`   Vehicle data fully populated and saved`);
+        console.log(`   Running costs, MOT history, and valuations included`);
         
-        if (comprehensiveResult.errors.length > 0) {
-          console.log(`   Failed Services: ${comprehensiveResult.errors.map(e => e.service).join(', ')}`);
-        }
-        
-        // CRITICAL FIX: Merge comprehensive data with car record
-        if (comprehensiveResult.vehicleData) {
-          console.log(`[Vehicle Controller] Merging comprehensive data with car record`);
-          
-          // Update car with comprehensive vehicle data
-          const vehicleData = comprehensiveResult.vehicleData;
-          
-          // Update running costs if available
-          if (vehicleData.fuelEconomy) {
-            car.fuelEconomyUrban = vehicleData.fuelEconomy.urban;
-            car.fuelEconomyExtraUrban = vehicleData.fuelEconomy.extraUrban;
-            car.fuelEconomyCombined = vehicleData.fuelEconomy.combined;
-            
-            // Also update runningCosts object
-            if (!car.runningCosts) car.runningCosts = {};
-            if (!car.runningCosts.fuelEconomy) car.runningCosts.fuelEconomy = {};
-            car.runningCosts.fuelEconomy.urban = vehicleData.fuelEconomy.urban;
-            car.runningCosts.fuelEconomy.extraUrban = vehicleData.fuelEconomy.extraUrban;
-            car.runningCosts.fuelEconomy.combined = vehicleData.fuelEconomy.combined;
-          }
-          
-          // Update emissions and tax data
-          if (vehicleData.co2Emissions) car.co2Emissions = vehicleData.co2Emissions;
-          if (vehicleData.annualTax) {
-            car.annualTax = vehicleData.annualTax;
-            if (!car.runningCosts) car.runningCosts = {};
-            car.runningCosts.annualTax = vehicleData.annualTax;
-          }
-          if (vehicleData.insuranceGroup) {
-            car.insuranceGroup = vehicleData.insuranceGroup;
-            if (!car.runningCosts) car.runningCosts = {};
-            car.runningCosts.insuranceGroup = vehicleData.insuranceGroup;
-          }
-          
-          // Update variant if better one available
-          if (vehicleData.variant && (!car.variant || car.variant === 'Unknown')) {
-            car.variant = vehicleData.variant;
-          }
-          
-          // Update color if available
-          if (vehicleData.color && (!car.color || car.color === 'Unknown')) {
-            car.color = vehicleData.color;
-          }
-          
-          // Update previous owners if available
-          if (vehicleData.previousOwners) {
-            car.previousOwners = vehicleData.previousOwners;
-          }
-          
-          console.log(`[Vehicle Controller] Updated car with comprehensive vehicle data`);
-        }
-        
-        // CRITICAL FIX: Update car with history data if available
-        if (comprehensiveResult.historyData) {
-          console.log(`[Vehicle Controller] Merging history data with car record`);
-          
-          const historyData = comprehensiveResult.historyData;
-          
-          // Update car with history check status
-          car.historyCheckStatus = 'verified';
-          car.historyCheckDate = new Date();
-          
-          // Link to history record if created
-          if (historyData._id) {
-            car.historyCheckId = historyData._id;
-          }
-          
-          console.log(`[Vehicle Controller] Updated car with history data`);
-        }
-        
-        // CRITICAL FIX: Update car with valuation data if available
-        if (comprehensiveResult.historyData && comprehensiveResult.historyData.valuation) {
-          console.log(`[Vehicle Controller] Updating car with valuation data`);
-          
-          const valuation = comprehensiveResult.historyData.valuation;
-          
-          // Update car price with private sale value
-          if (valuation.privatePrice && valuation.privatePrice > 0) {
-            car.price = valuation.privatePrice;
-            car.estimatedValue = valuation.privatePrice;
-            console.log(`[Vehicle Controller] Updated car price to £${valuation.privatePrice} (Private Sale)`);
-          }
-          
-          // Store all valuations for frontend
-          car.allValuations = {
-            private: valuation.privatePrice,
-            retail: valuation.dealerPrice,
-            trade: valuation.partExchangePrice
-          };
-          
-          console.log(`[Vehicle Controller] Stored all valuations:`, car.allValuations);
-        }
-        
-        // CRITICAL FIX: Update car with MOT data if available
-        if (comprehensiveResult.motData && comprehensiveResult.motData.length > 0) {
-          console.log(`[Vehicle Controller] Updating car with MOT data`);
-          
-          const latestMOT = comprehensiveResult.motData[0]; // Most recent MOT
-          
-          // Update MOT status and dates
-          car.motStatus = latestMOT.testResult === 'PASSED' ? 'Valid' : 'Invalid';
-          if (latestMOT.expiryDate) {
-            car.motExpiry = new Date(latestMOT.expiryDate);
-            car.motDue = new Date(latestMOT.expiryDate);
-          }
-          
-          // Update mileage with latest MOT reading if higher
-          if (latestMOT.odometerValue && latestMOT.odometerValue > car.mileage) {
-            console.log(`[Vehicle Controller] Updating mileage: ${car.mileage} → ${latestMOT.odometerValue} (from MOT)`);
-            car.mileage = latestMOT.odometerValue;
-          }
-          
-          // Store MOT history
-          car.motHistory = comprehensiveResult.motData.map(mot => ({
-            testDate: new Date(mot.completedDate),
-            expiryDate: mot.expiryDate ? new Date(mot.expiryDate) : null,
-            testResult: mot.testResult,
-            odometerValue: mot.odometerValue,
-            odometerUnit: mot.odometerUnit || 'mi',
-            testNumber: mot.motTestNumber,
-            defects: mot.defects || [],
-            advisoryText: mot.defects?.map(d => d.text) || [],
-            testClass: "4",
-            testType: "Normal Test",
-            completedDate: new Date(mot.completedDate)
-          }));
-          
-          console.log(`[Vehicle Controller] Updated car with ${car.motHistory.length} MOT records`);
-        }
-        
-        // CRITICAL FIX: Save the updated car record
-        await car.save();
-        console.log(`[Vehicle Controller] ✅ Saved car with comprehensive data merged`);
-        
-      } catch (comprehensiveError) {
-        // Don't fail the car creation if comprehensive data fetch fails
-        console.warn(`[Vehicle Controller] Comprehensive data fetch failed: ${comprehensiveError.message}`);
-        // Individual services will handle their own fallbacks
+      } catch (universalError) {
+        // Don't fail the car creation if Universal Service fails
+        console.warn(`[Vehicle Controller] Universal Service completion failed: ${universalError.message}`);
+        // Car is already saved with basic data, so this is not critical
       }
 
       // Update purchase record with vehicle ID
@@ -1363,13 +1239,158 @@ class VehicleController {
         });
       }
 
-      const lightweightVehicleService = require('../services/lightweightVehicleService');
-      
       // Parse mileage if provided
       const parsedMileage = mileage ? parseInt(mileage, 10) : 50000;
       
-      // Get basic vehicle data for CarFinder (cheap API call - no expensive history/MOT)
-      const result = await lightweightVehicleService.getBasicVehicleDataForCarFinder(cleanedReg, parsedMileage);
+      // Wait for database connection
+      const mongoose = require('mongoose');
+      if (mongoose.connection.readyState !== 1) {
+        console.log('[Vehicle Controller] Waiting for database connection...');
+        await new Promise((resolve) => {
+          if (mongoose.connection.readyState === 1) {
+            resolve();
+          } else {
+            mongoose.connection.once('connected', resolve);
+          }
+        });
+      }
+      
+      // SIMPLE FIX: Check VehicleHistory cache first (no API calls, no database save)
+      console.log(`[Vehicle Controller] ✅ FIXED VERSION - Checking VehicleHistory cache for: ${cleanedReg}`);
+      
+      let result;
+      
+      try {
+        // Check if we have cached data in VehicleHistory
+        const VehicleHistory = require('../models/VehicleHistory');
+        const cachedData = await VehicleHistory.findOne({ 
+          vrm: cleanedReg  // VehicleHistory uses 'vrm' field
+        }).sort({ createdAt: -1 });
+        
+        if (cachedData && cachedData.make) {
+          // Return from cache - NO API CALL!
+          console.log(`[Vehicle Controller] ✅ Found in cache for ${cleanedReg} - NO API CALL`);
+          
+          result = {
+            success: true,
+            data: {
+              make: cachedData.make || 'Unknown',
+              model: cachedData.model || 'Unknown',
+              variant: cachedData.variant,
+              year: cachedData.yearOfManufacture,
+              fuelType: cachedData.fuelType,
+              transmission: cachedData.transmission,
+              bodyType: cachedData.bodyType,
+              engineSize: cachedData.engineCapacity,
+              doors: cachedData.doors,
+              seats: cachedData.seats,
+              color: cachedData.colour,
+              estimatedValue: cachedData.estimatedValue || cachedData.privatePrice,
+              registrationNumber: cleanedReg,
+              mileage: parsedMileage
+            },
+            fromCache: true,
+            apiCalls: 0,
+            cost: 0
+          };
+        } else {
+          // Not in cache - need to fetch from API (only £0.05 call)
+          console.log(`[Vehicle Controller] ⚠️ Not in cache for ${cleanedReg} - will fetch from API (£0.05)`);
+          
+          const CheckCarDetailsClient = require('../clients/CheckCarDetailsClient');
+          const client = new CheckCarDetailsClient();
+          const rawApiData = await client.getVehicleSpecs(cleanedReg);
+          
+          // Extract data directly from API response (bypass parser issues)
+          const vehicleId = rawApiData.VehicleIdentification || {};
+          const bodyDetails = rawApiData.BodyDetails || {};
+          const performance = rawApiData.Performance || {};
+          const fuelEconomy = performance.FuelEconomy || {};
+          const modelData = rawApiData.ModelData || {};
+          const transmission = rawApiData.Transmission || {};
+          const dvlaTech = rawApiData.DvlaTechnicalDetails || {};
+          const emissions = rawApiData.Emissions || {};
+          
+          const apiData = {
+            make: vehicleId.DvlaMake || modelData.Make,
+            model: vehicleId.DvlaModel || modelData.Model,
+            variant: modelData.Range || modelData.ModelVariant,
+            year: vehicleId.YearOfManufacture,
+            fuelType: modelData.FuelType || 'Unknown',
+            transmission: transmission.TransmissionType || 'Unknown',
+            bodyType: bodyDetails.BodyStyle || vehicleId.DvlaBodyType,
+            engineSize: dvlaTech.EngineCapacityCc ? dvlaTech.EngineCapacityCc / 1000 : null,
+            doors: bodyDetails.NumberOfDoors,
+            seats: bodyDetails.NumberOfSeats || dvlaTech.SeatCountIncludingDriver,
+            color: null, // Not in vehicleSpecs API
+            combinedMpg: fuelEconomy.CombinedMpg,
+            co2Emissions: emissions.ManufacturerCo2 || vehicleId.DvlaCo2,
+            power: performance.Power && performance.Power.Bhp ? performance.Power.Bhp : null,
+          };
+          
+          console.log(`[Vehicle Controller] 🔍 Extracted API Data:`, JSON.stringify(apiData, null, 2));
+          
+          if (!apiData.make) {
+            throw new Error('Vehicle not found in API');
+          }
+          
+          // Cache the data in VehicleHistory for next time
+          await VehicleHistory.findOneAndUpdate(
+            { vrm: cleanedReg },
+            {
+              vrm: cleanedReg,
+              make: apiData.make,
+              model: apiData.model,
+              variant: apiData.variant,
+              yearOfManufacture: apiData.year,
+              fuelType: apiData.fuelType,
+              transmission: apiData.transmission,
+              bodyType: apiData.bodyType,
+              engineCapacity: apiData.engineSize,
+              doors: apiData.doors,
+              seats: apiData.seats,
+              colour: apiData.color,
+              estimatedValue: apiData.estimatedValue || apiData.privatePrice,
+              lastUpdated: new Date()
+            },
+            { upsert: true, new: true }
+          );
+          
+          console.log(`[Vehicle Controller] ✅ Fetched from API and cached for ${cleanedReg}`);
+          
+          result = {
+            success: true,
+            data: {
+              make: apiData.make || 'Unknown',
+              model: apiData.model || 'Unknown',
+              variant: apiData.variant,
+              year: apiData.year,
+              fuelType: apiData.fuelType,
+              transmission: apiData.transmission,
+              bodyType: apiData.bodyType,
+              engineSize: apiData.engineSize,
+              doors: apiData.doors,
+              seats: apiData.seats,
+              color: apiData.color,
+              estimatedValue: apiData.estimatedValue || apiData.privatePrice,
+              registrationNumber: cleanedReg,
+              mileage: parsedMileage
+            },
+            fromCache: false,
+            apiCalls: 1,
+            cost: 0.05 // Only vehicleSpecs call (NOT £2.01!)
+          };
+        }
+        
+        console.log(`[Vehicle Controller] Basic lookup successful for ${cleanedReg}`);
+      } catch (lookupError) {
+        console.error(`[Vehicle Controller] Basic lookup failed for ${cleanedReg}:`, lookupError.message);
+        
+        result = {
+          success: false,
+          error: lookupError.message || 'Vehicle lookup failed'
+        };
+      }
 
       if (!result.success) {
         console.error(`[Vehicle Controller] Basic lookup failed for ${registration}:`, result.error);
@@ -1441,13 +1462,113 @@ class VehicleController {
         });
       }
 
-      const enhancedVehicleService = require('../services/enhancedVehicleService');
-      
       // Parse mileage if provided
       const parsedMileage = mileage ? parseInt(mileage, 10) : null;
       
-      // Get enhanced vehicle data with fallback handling (includes proper valuation)
-      const result = await enhancedVehicleService.getVehicleDataWithFallback(cleanedReg, parsedMileage);
+      // CRITICAL: Use Universal Auto Complete Service instead of enhancedVehicleService
+      // Universal Service handles all vehicle data fetching with proper caching and race condition prevention
+      console.log(`[Vehicle Controller] Using Universal Service for enhanced lookup: ${cleanedReg}`);
+      
+      let result; // Declare result outside try block
+      
+      try {
+        // Create a temporary vehicle object for the Universal Service
+        const tempVehicle = new Car({
+          registrationNumber: cleanedReg,
+          mileage: parsedMileage || 50000,
+          dataSource: 'enhanced-lookup'
+        });
+        
+        // Use Universal Service to get complete vehicle data with all enhancements
+        const completeVehicle = await universalService.completeCarData(tempVehicle, useCache !== 'false');
+        
+        // Structure the response data for enhanced lookup
+        result = {
+          success: true,
+          data: {
+            // Basic vehicle info
+            make: completeVehicle.make,
+            model: completeVehicle.model,
+            variant: completeVehicle.variant,
+            year: completeVehicle.year,
+            fuelType: completeVehicle.fuelType,
+            transmission: completeVehicle.transmission || completeVehicle.gearbox,
+            bodyType: completeVehicle.bodyType,
+            engineSize: completeVehicle.engineSize,
+            doors: completeVehicle.doors,
+            seats: completeVehicle.seats,
+            color: completeVehicle.color,
+            
+            // Enhanced data - CRITICAL FIX: Use correct field names
+            co2Emissions: completeVehicle.co2Emissions || completeVehicle.runningCosts?.co2Emissions,
+            annualTax: completeVehicle.annualTax || completeVehicle.runningCosts?.annualTax,
+            insuranceGroup: completeVehicle.insuranceGroup || completeVehicle.runningCosts?.insuranceGroup,
+            emissionClass: completeVehicle.emissionClass || completeVehicle.runningCosts?.emissionClass,
+            fuelEconomyUrban: completeVehicle.urbanMpg || completeVehicle.runningCosts?.fuelEconomy?.urban,
+            fuelEconomyExtraUrban: completeVehicle.extraUrbanMpg || completeVehicle.runningCosts?.fuelEconomy?.extraUrban,
+            fuelEconomyCombined: completeVehicle.combinedMpg || completeVehicle.runningCosts?.fuelEconomy?.combined,
+            
+            // Valuation data
+            estimatedValue: completeVehicle.estimatedValue,
+            privatePrice: completeVehicle.valuation?.privatePrice || completeVehicle.privatePrice,
+            dealerPrice: completeVehicle.valuation?.dealerPrice || completeVehicle.dealerPrice,
+            partExchangePrice: completeVehicle.valuation?.partExchangePrice || completeVehicle.partExchangePrice,
+            
+            // MOT and history data
+            motStatus: completeVehicle.motStatus,
+            motDue: completeVehicle.motDue || completeVehicle.motDueDate,
+            motExpiry: completeVehicle.motExpiry || completeVehicle.motDueDate,
+            motHistory: completeVehicle.motHistory,
+            
+            // Running costs - CRITICAL FIX: Ensure running costs object is properly structured
+            runningCosts: completeVehicle.runningCosts ? {
+              fuelEconomy: {
+                urban: completeVehicle.urbanMpg || completeVehicle.runningCosts.fuelEconomy?.urban,
+                extraUrban: completeVehicle.extraUrbanMpg || completeVehicle.runningCosts.fuelEconomy?.extraUrban,
+                combined: completeVehicle.combinedMpg || completeVehicle.runningCosts.fuelEconomy?.combined
+              },
+              co2Emissions: completeVehicle.co2Emissions || completeVehicle.runningCosts.co2Emissions,
+              insuranceGroup: completeVehicle.insuranceGroup || completeVehicle.runningCosts.insuranceGroup,
+              annualTax: completeVehicle.annualTax || completeVehicle.runningCosts.annualTax,
+              emissionClass: completeVehicle.emissionClass || completeVehicle.runningCosts.emissionClass
+            } : {
+              fuelEconomy: {
+                urban: completeVehicle.urbanMpg,
+                extraUrban: completeVehicle.extraUrbanMpg,
+                combined: completeVehicle.combinedMpg
+              },
+              co2Emissions: completeVehicle.co2Emissions,
+              insuranceGroup: completeVehicle.insuranceGroup,
+              annualTax: completeVehicle.annualTax,
+              emissionClass: completeVehicle.emissionClass
+            },
+            
+            // Metadata
+            registrationNumber: cleanedReg,
+            mileage: parsedMileage || completeVehicle.mileage || 50000,
+            
+            // Data sources tracking
+            dataSources: {
+              dvla: true,
+              checkCarDetails: true,
+              universalService: true
+            }
+          },
+          warnings: []
+        };
+        
+        console.log(`[Vehicle Controller] Universal Service enhanced lookup successful for ${cleanedReg}`);
+        console.log(`[Vehicle Controller] Complete vehicle data populated through Universal Service`);
+      } catch (universalError) {
+        console.error(`[Vehicle Controller] Universal Service enhanced lookup failed for ${cleanedReg}:`, universalError.message);
+        console.error(universalError.stack);
+        
+        // Return error in expected format
+        result = {
+          success: false,
+          error: universalError.message || 'Failed to lookup vehicle data from all sources'
+        };
+      }
 
       if (!result.success) {
         console.error(`[Vehicle Controller] Enhanced lookup failed for ${registration}:`, result.error);

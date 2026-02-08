@@ -1339,7 +1339,54 @@ carSchema.post('save', function(doc) {
 
 // CRITICAL: Auto-complete missing car data after save
 // This ensures ALL cars have complete data (running costs, MOT, vehicle history, etc.)
-const autoCompleteCarDataMiddleware = require('../middleware/autoCompleteCarData');
-carSchema.post('save', autoCompleteCarDataMiddleware);
+// TEMPORARILY DISABLED TO FIX INFINITE LOOP
+carSchema.post('save', async function(doc) {
+  try {
+    // DISABLED - Causing infinite loop
+    // Will re-enable after fixing needsCompletion logic
+    return;
+    
+    // Skip if no registration number (manual entries)
+    if (!doc.registrationNumber) {
+      return;
+    }
+    
+    // Skip if this is a draft that was just created (give user time to add data)
+    const isNewDraft = doc.advertStatus === 'draft' && 
+                       (new Date() - doc.createdAt) < 60000; // Less than 1 minute old
+    
+    if (isNewDraft) {
+      console.log(`\n⏸️  [Auto-Complete] Skipping new draft: ${doc.registrationNumber} (waiting for user input)`);
+      return;
+    }
+    
+    console.log(`\n🤖 [Universal Auto-Complete] Triggered for: ${doc.registrationNumber}`);
+    console.log(`   Status: ${doc.advertStatus}`);
+    
+    const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');
+    const universalService = new UniversalAutoCompleteService();
+    
+    // Check if car needs completion
+    if (universalService.needsCompletion(doc)) {
+      console.log(`   📋 Car needs data completion - running universal service...`);
+      
+      // Run asynchronously to avoid blocking the save operation
+      setImmediate(async () => {
+        try {
+          await universalService.completeCarData(doc, false); // Don't force refresh if recently completed
+          console.log(`   ✅ Universal auto-complete finished for: ${doc.registrationNumber}`);
+        } catch (error) {
+          console.error(`   ❌ Universal auto-complete failed for ${doc.registrationNumber}:`, error.message);
+          // Don't throw - we don't want to break the save operation
+        }
+      });
+    } else {
+      console.log(`   ✅ Car already has complete data`);
+    }
+  } catch (error) {
+    console.error('❌ Universal auto-complete middleware error:', error);
+    // Don't throw - we don't want to break the save operation
+  }
+});
 
 module.exports = mongoose.model('Car', carSchema);

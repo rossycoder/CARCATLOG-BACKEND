@@ -1,5 +1,5 @@
 const Van = require('../models/Van');
-const lightweightVanService = require('../services/lightweightVanService');
+const lightweightVanService = require('./../services/universalAutoCompleteService');
 
 // Get all vans with filtering and pagination
 exports.getVans = async (req, res) => {

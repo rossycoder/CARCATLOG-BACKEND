@@ -1,5 +1,9 @@
 const Car = require('../models/Car');
 const TradeSubscription = require('../models/TradeSubscription');
+const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');
+
+// Initialize services
+const universalService = new UniversalAutoCompleteService();
 
 /**
  * Get all inventory for dealer
@@ -187,21 +191,50 @@ exports.createVehicle = async (req, res) => {
     // Use dealer's business address postcode if not provided
     const postcode = req.body.postcode || req.dealer.businessAddress?.postcode || 'SW1A 1AA';
     
-    // If we have a registration number, fetch enhanced data from CheckCarDetails API
+    // If we have a registration number, fetch enhanced data using Universal Service
     let enhancedData = null;
     if (req.body.registrationNumber || req.body.registration) {
       try {
-        const CheckCarDetailsClient = require('../clients/CheckCarDetailsClient');
+        // CRITICAL: Use Universal Auto Complete Service instead of CheckCarDetailsClient
+        // Universal Service handles all vehicle data fetching with proper caching and race condition prevention
         const registration = req.body.registrationNumber || req.body.registration;
-        console.log(`[Trade Inventory] Fetching enhanced data from CheckCarDetails API for: ${registration}`);
-        enhancedData = await CheckCarDetailsClient.getVehicleData(registration);
-        console.log(`[Trade Inventory] Enhanced data fetched:`, {
+        console.log(`[Trade Inventory] Using Universal Service for enhanced data: ${registration}`);
+        
+        // Create a temporary vehicle object for the Universal Service
+        const tempVehicle = new Car({
+          registrationNumber: registration,
+          mileage: req.body.mileage || 50000,
+          dataSource: 'trade-inventory'
+        });
+        
+        // Use Universal Service to get complete vehicle data
+        const completeVehicle = await universalService.completeCarData(tempVehicle, true); // Use cache for cost optimization
+        
+        // Extract enhanced data in the expected format
+        enhancedData = {
+          modelVariant: completeVehicle.variant,
+          variant: completeVehicle.variant,
+          engineSize: completeVehicle.engineSize,
+          make: completeVehicle.make,
+          model: completeVehicle.model,
+          bodyType: completeVehicle.bodyType,
+          transmission: completeVehicle.transmission,
+          fuelType: completeVehicle.fuelType,
+          doors: completeVehicle.doors,
+          seats: completeVehicle.seats,
+          color: completeVehicle.color,
+          co2Emissions: completeVehicle.co2Emissions,
+          annualTax: completeVehicle.annualTax,
+          insuranceGroup: completeVehicle.insuranceGroup
+        };
+        
+        console.log(`[Trade Inventory] Universal Service enhanced data fetched:`, {
           modelVariant: enhancedData?.modelVariant,
           variant: enhancedData?.variant,
           engineSize: enhancedData?.engineSize
         });
       } catch (error) {
-        console.log(`[Trade Inventory] Could not fetch enhanced data: ${error.message}`);
+        console.log(`[Trade Inventory] Universal Service could not fetch enhanced data: ${error.message}`);
       }
     }
     

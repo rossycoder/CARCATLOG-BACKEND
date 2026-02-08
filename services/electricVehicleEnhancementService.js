@@ -283,7 +283,7 @@ class ElectricVehicleEnhancementService {
     console.log(`🔋 Enhancing electric vehicle: ${vehicleData.make} ${vehicleData.model} ${vehicleData.variant}`);
 
     // Get comprehensive EV data
-    const evData = this.getComprehensiveEVData(vehicleData.make, vehicleData.model, vehicleData.variant);
+    let evData = this.getComprehensiveEVData(vehicleData.make, vehicleData.model, vehicleData.variant);
     
     if (!evData) {
       // Fall back to generic defaults

@@ -3,9 +3,13 @@
  * Handles communication with the CheckCarDetails API for vehicle data
  * API Documentation: https://api.checkcardetails.co.uk
  * Endpoint format: /vehicledata/{Datapoint}?apikey={API_KEY}&vrm={Registration}
+ * 
+ * NOTE: This client only handles HTTP communication.
+ * Business logic and data parsing is handled by ApiResponseParser and historyResponseParser utilities.
  */
 
 const axios = require('axios');
+const ApiResponseParser = require('../utils/apiResponseParser');
 const { parseHistoryResponse, handlePartialResponse } = require('../utils/historyResponseParser');
 
 class HistoryAPIClient {
@@ -108,7 +112,7 @@ class HistoryAPIClient {
 
     try {
       const apiResponse = await this.makeRequestWithRetry('vehicleregistration', vrm);
-      return this.parseVehicleRegistrationResponse(apiResponse);
+      return ApiResponseParser.parseVehicleRegistrationResponse(apiResponse);
     } catch (error) {
       throw this.formatError(error, vrm, 'vehicleregistration');
     }
@@ -131,7 +135,7 @@ class HistoryAPIClient {
 
     try {
       const apiResponse = await this.makeRequestWithRetry('vehiclespecs', vrm);
-      return this.parseVehicleSpecsResponse(apiResponse);
+      return ApiResponseParser.parseVehicleSpecsResponse(apiResponse);
     } catch (error) {
       throw this.formatError(error, vrm, 'vehiclespecs');
     }
@@ -154,7 +158,7 @@ class HistoryAPIClient {
 
     try {
       const apiResponse = await this.makeRequestWithRetry('mileage', vrm);
-      return this.parseMileageResponse(apiResponse);
+      return ApiResponseParser.parseMileageResponse(apiResponse);
     } catch (error) {
       throw this.formatError(error, vrm, 'mileage');
     }
@@ -224,7 +228,7 @@ class HistoryAPIClient {
       const apiResponse = await this.makeRequestWithRetry('mot', vrm);
       
       console.log('MOT API response received');
-      return this.parseMOTResponse(apiResponse);
+      return ApiResponseParser.parseMOTResponse(apiResponse);
     } catch (error) {
       console.log('CheckCarDetails MOT endpoint error:', error.message);
       throw this.formatError(error, vrm, 'mot');
@@ -276,6 +280,8 @@ class HistoryAPIClient {
 
   /**
    * Parse UK Vehicle Data response (comprehensive data)
+   * NOTE: This method contains complex business logic and should remain here
+   * as it's specific to the history check workflow
    * @param {Object} data - API response data
    * @returns {Object} Parsed history data
    */
@@ -457,127 +463,6 @@ class HistoryAPIClient {
       colourChangeList: vehicleHistory.ColourChangeList || [],
     };
   }
-
-  /**
-   * Parse vehicle registration response
-   * @param {Object} data - API response data
-   * @returns {Object} Parsed registration data
-   */
-  parseVehicleRegistrationResponse(data) {
-    return {
-      vrm: data.registrationNumber || data.RegistrationNumber || data.vrm,
-      make: data.make || data.Make,
-      model: data.model || data.Model,
-      colour: data.colour || data.Colour,
-      fuelType: data.fuelType || data.FuelType,
-      yearOfManufacture: data.yearOfManufacture || data.YearOfManufacture,
-      engineCapacity: data.engineCapacity || data.EngineCapacity,
-      co2Emissions: data.co2Emissions || data.Co2Emissions,
-      taxStatus: data.tax?.taxStatus || data.TaxStatus || data.taxStatus,
-      taxDueDate: data.tax?.taxDueDate || data.TaxDueDate || data.taxDueDate,
-      motStatus: data.mot?.motStatus || data.MotStatus || data.motStatus,
-      motExpiryDate: data.mot?.motDueDate || data.MotExpiryDate || data.motExpiryDate,
-    };
-  }
-
-  /**
-   * Parse vehicle specifications response
-   * @param {Object} data - API response data
-   * @returns {Object} Parsed specifications
-   */
-  parseVehicleSpecsResponse(data) {
-    const vehicleId = data.VehicleIdentification || {};
-    const modelData = data.ModelData || {};
-    const bodyDetails = data.BodyDetails || {};
-    const transmission = data.Transmission || {};
-    const performance = data.Performance || {};
-    
-    return {
-      vrm: vehicleId.Vrm || data.RegistrationNumber || data.vrm,
-      make: vehicleId.DvlaMake || modelData.Make || data.Make || data.make,
-      model: vehicleId.DvlaModel || modelData.Model || data.Model || data.model,
-      bodyType: vehicleId.DvlaBodyType || bodyDetails.BodyStyle || data.BodyType || data.bodyType,
-      transmission: transmission.TransmissionType || data.Transmission || data.transmission,
-      engineSize: data.PowerSource?.IceDetails?.EngineCapacityCc || data.EngineSize || data.engineSize,
-      fuelType: vehicleId.DvlaFuelType || modelData.FuelType || data.FuelType || data.fuelType,
-      doors: bodyDetails.NumberOfDoors || data.Doors || data.doors,
-      seats: bodyDetails.NumberOfSeats || data.Seats || data.seats,
-      wheelPlan: vehicleId.DvlaWheelPlan || data.WheelPlan || data.wheelPlan,
-      weight: data.Weights?.KerbWeightKg || data.Weight || data.weight,
-      maxPower: performance.Power?.Bhp || data.MaxPower || data.maxPower,
-      topSpeed: performance.Statistics?.MaxSpeedMph || data.TopSpeed || data.topSpeed,
-      acceleration: performance.Statistics?.ZeroToSixtyMph || data.Acceleration || data.acceleration,
-    };
-  }
-
-  /**
-   * Parse mileage history response
-   * @param {Object} data - API response data
-   * @returns {Object} Parsed mileage history
-   */
-  parseMileageResponse(data) {
-    // CheckCarDetails returns mileage array
-    const readings = data.mileage || data.MileageReadings || data.mileageReadings || [];
-    
-    return {
-      vrm: data.registrationNumber || data.RegistrationNumber || data.vrm,
-      currentMileage: data.summary?.lastRecordedMileage || data.CurrentMileage || data.currentMileage,
-      readings: readings.map(reading => ({
-        mileage: reading.mileage || reading.Mileage,
-        date: reading.dateOfInformation || reading.Date || reading.date,
-        source: reading.source || reading.Source || 'Unknown',
-      })),
-      hasDiscrepancy: data.summary?.mileageIssues === 'Yes' || this.detectMileageDiscrepancy(readings),
-    };
-  }
-
-  /**
-   * Detect mileage discrepancies
-   * @param {Array} readings - Mileage readings
-   * @returns {boolean} True if discrepancy detected
-   */
-  detectMileageDiscrepancy(readings) {
-    if (!readings || readings.length < 2) return false;
-    
-    for (let i = 1; i < readings.length; i++) {
-      const current = readings[i].Mileage || readings[i].mileage;
-      const previous = readings[i - 1].Mileage || readings[i - 1].mileage;
-      
-      if (current < previous) {
-        return true; // Mileage went down
-      }
-    }
-    
-    return false;
-  }
-
-  /**
-   * Parse MOT response from CheckCarDetails API
-   * @param {Object} data - API response data
-   * @returns {Object} Parsed MOT history
-   */
-  parseMOTResponse(data) {
-    // CheckCarDetails returns motHistory array
-    const tests = data.motHistory || data.MotTests || data.motTests || data.tests || [];
-    
-    return {
-      vrm: data.registrationNumber || data.RegistrationNumber || data.vrm || data.registration,
-      currentStatus: data.mot?.motStatus || data.MotStatus || data.motStatus || 'Unknown',
-      expiryDate: data.mot?.motDueDate || data.MotExpiryDate || data.motExpiryDate || data.expiryDate,
-      tests: tests.map(test => ({
-        testDate: test.completedDate || test.CompletedDate || test.testDate,
-        testNumber: test.motTestNumber || test.MotTestNumber || test.testNumber,
-        result: test.testResult || test.TestResult || test.result,
-        expiryDate: test.expiryDate || test.ExpiryDate,
-        odometerValue: test.odometerValue || test.OdometerValue,
-        odometerUnit: test.odometerUnit || test.OdometerUnit || 'mi',
-        rfrAndComments: test.rfrAndComments || test.RfrAndComments || [],
-        defects: test.defects || test.Defects || [],
-        advisoryNotices: test.advisoryNotices || test.AdvisoryNotices || test.minorDefects || [],
-      })),
-    };
-  }
-
 }
 
 module.exports = HistoryAPIClient;
