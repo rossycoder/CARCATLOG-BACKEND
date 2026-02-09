@@ -1,0 +1,244 @@
+{
+  "VehicleIdentification": {
+    "Vrm": "AY10AYL",
+    "Vin": "YV1MK755BA2202701",
+    "VinLast5": "02701",
+    "DvlaMake": "VOLVO",
+    "DvlaModel": "C30 R-DESIGN D AUTO",
+    "DvlaWheelPlan": "2 AXLE RIGID BODY",
+    "DateFirstRegisteredInUk": "2010-04-01T00:00:00Z",
+    "DateFirstRegistered": "2010-04-01T00:00:00Z",
+    "DateOfManufacture": "2010-04-01T00:00:00Z",
+    "YearOfManufacture": 2010,
+    "VehicleUsedBeforeFirstRegistration": false,
+    "EngineNumber": "D4204T",
+    "PreviousVrmNi": "",
+    "DvlaBodyType": "3 DOOR HATCHBACK",
+    "DvlaFuelType": "HEAVY OIL",
+    "V5cCertificateCount": 6,
+    "V5cCertificateIssueDates": [
+      "2010-04-01T00:00:00Z",
+      "2013-11-05T00:00:00Z",
+      "2021-05-07T00:00:00Z",
+      "2023-11-25T00:00:00Z",
+      "2024-11-06T00:00:00Z",
+      "2025-01-30T00:00:00Z"
+    ]
+  },
+  "VehicleExciseDutyDetails": {
+    "DvlaCo2": 156,
+    "DvlaCo2Band": "G",
+    "DvlaBand": "G",
+    "VedRate": {
+      "FirstYear": {
+        "SixMonths": null,
+        "TwelveMonths": null
+      },
+      "PremiumVehicle": {
+        "SixMonths": null,
+        "TwelveMonths": null
+      },
+      "Standard": {
+        "SixMonths": 145.75,
+        "TwelveMonths": 265
+      }
+    }
+  },
+  "DvlaTechnicalDetails": {
+    "EngineCapacityCc": 1997,
+    "PowerToWeightRatio": 0,
+    "SeatCountIncludingDriver": 4,
+    "GrossWeight": null,
+    "MaximumNetPower": 100,
+    "MassInService": 1437,
+    "MaxTowableMassBraked": 1500,
+    "MaxTowableMassUnbraked": 700
+  },
+  "ModelData": {
+    "Make": "Volvo",
+    "Range": "C30",
+    "Model": "C30 R-Design D Auto",
+    "ModelVariant": "D R-Design",
+    "Series": "533",
+    "Mark": null,
+    "StartDate": "2009-06-27T00:00:00Z",
+    "EndDate": "2010-10-20T00:00:00Z",
+    "CountryOfOrigin": "Belgium",
+    "EuroStatus": "4",
+    "FuelType": "Diesel",
+    "CabType": null,
+    "TypeApprovalCategory": "M1",
+    "MarketSectorCode": "AA",
+    "VehicleClass": "Car",
+    "TaxationClass": "Car"
+  },
+  "BodyDetails": {
+    "BodyShape": null,
+    "BodyStyle": "Coupe",
+    "PlatformName": "P1",
+    "NumberOfAxles": 2,
+    "NumberOfDoors": 3,
+    "NumberOfSeats": 4,
+    "PayloadVolumeSqM": null,
+    "FuelTankCapacityLitres": 52,
+    "WheelBaseType": "Short Wheelbase",
+    "PlatformShared": true
+  },
+  "Dimensions": {
+    "HeightMm": 1447,
+    "LengthMm": 4252,
+    "WidthMm": 1782,
+    "InternalLoadLengthMm": null,
+    "WheelBaseLengthMm": 2640
+  },
+  "Weights": {
+    "KerbWeightKg": 1454,
+    "GrossTrainWeightKg": null,
+    "UnladenWeightKg": null,
+    "PayloadWeightKg": null,
+    "GrossVehicleWeightKg": 1840,
+    "GrossCombinedWeightKg": 1840
+  },
+  "PowerSource": {
+    "VehicleType": "ICE",
+    "ElectricDetails": null,
+    "IceDetails": {
+      "EngineFamily": null,
+      "EngineLocation": "Front",
+      "EngineDescription": "D4204T/136BHP-B",
+      "EngineManufacturer": "Volvo Cars",
+      "FuelDelivery": null,
+      "Aspiration": "Turbocharged",
+      "CylinderArrangement": "Inline",
+      "NumberOfCylinders": 4,
+      "ValveGear": "DOHC",
+      "ValvesPerCylinder": 4,
+      "EngineCapacityCc": 1997,
+      "EngineCapacityLitres": 2,
+      "Stroke": 88,
+      "Bore": 85,
+      "PowerDelivery": "Normal"
+    }
+  },
+  "EuroNcap": {
+    "NcapStarRating": null,
+    "NcapChildPercent": null,
+    "NcapAdultPercent": null,
+    "NcapPedestrianPercent": null,
+    "NcapSafteyAssistPercent": null
+  },
+  "Emissions": {
+    "ManufacturerCo2": 156,
+    "HasFuelCatalyst": true
+  },
+  "Performance": {
+    "Torque": {
+      "Nm": 320,
+      "LbFt": 236.2,
+      "Rpm": 2000,
+      "TorqueDerivedFrom": null
+    },
+    "Power": {
+      "Bhp": 136,
+      "Ps": 137.9,
+      "Kw": 100,
+      "Rpm": 4000,
+      "PowerDerivedFrom": "BHP"
+    },
+    "Statistics": {
+      "ZeroToSixtyMph": 9,
+      "ZeroToOneHundredKph": null,
+      "MaxSpeedKph": 204,
+      "MaxSpeedMph": 127
+    },
+    "FuelEconomy": {
+      "UrbanColdMpg": 37.2,
+      "ExtraUrbanMpg": 57.7,
+      "CombinedMpg": 47.9,
+      "ExtraUrbanL100km": 4.9,
+      "UrbanColdL100km": 7.6,
+      "CombinedL100km": 5.9
+    },
+    "SoundLevels": {
+      "Stationary": 76,
+      "EngineSpeed": 3000,
+      "DriveBy": 72
+    }
+  },
+  "Transmission": {
+    "TransmissionType": "Automatic",
+    "NumberOfGears": 6,
+    "DriveType": "4x2",
+    "DrivingAxle": "Front"
+  },
+  "SmmtDetails": {
+    "MvrisCode": "P4CIJ",
+    "DvlaModelDescription": "C30 R-DESIGN D AUTO",
+    "SmmtMarketSectorCode": "AA",
+    "Marque": "VOLVO",
+    "Range": "C30",
+    "Series": null,
+    "Variant": "D R-DESIGN",
+    "VisibilityDate": "2009-05-01T00:00:00Z",
+    "CountryOfOrigin": "BELGIUM",
+    "NumberOfSeats": 4,
+    "NumberOfDoors": 3,
+    "BodyStyle": "HATCHBACK",
+    "CabType": "NA",
+    "Transmission": "AUTOMATIC",
+    "NumberOfGears": 6,
+    "BodyShape": "NA",
+    "DrivingAxle": "FRONT",
+    "DriveType": "4X2",
+    "NumberOfAxles": 2,
+    "RigidArtic": "RIGID",
+    "TypeApprovalCategory": "M1",
+    "Wheelbase": "SHORT WHEELBASE",
+    "Height": 1447,
+    "Width": 1782,
+    "Length": 4252,
+    "LoadLength": 0,
+    "KerbWeight": 1454,
+    "UnladenWeight": null,
+    "PayloadVolume": null,
+    "PayloadWeight": null,
+    "GrossVehicleWeight": null,
+    "GrossCombinedWeight": null,
+    "GrossTrainWeight": null,
+    "PrimaryFuelFlag": "Y",
+    "FuelType": "DIESEL",
+    "PowerDelivery": "NORMAL",
+    "NominalEngineCapacity": 2,
+    "EngineCapacity": 1997,
+    "PowerBhp": 136,
+    "PowerKw": 100,
+    "PowerRpm": 4000,
+    "TorqueLbFt": 236.2,
+    "TorqueNm": 320,
+    "TorqueRpm": 2000,
+    "Co2": 156,
+    "UrbanColdMpg": 37.2,
+    "ExtraUrbanMpg": 57.7,
+    "CombinedMpg": 47.9,
+    "UrbanColdLkm": 7.6,
+    "ExtraUrbanLkm": 4.9,
+    "CombinedLkm": 5.9,
+    "MaxSpeedMph": 127,
+    "MaxSpeedKph": 204,
+    "EngineDescription": "D4204T/136BHP-B",
+    "EngineLocation": "FRONT",
+    "EngineMake": "VOLVO CARS",
+    "EuroStatus": "4",
+    "Bore": 85,
+    "Stroke": 88,
+    "Aspiration": "TURBO",
+    "CylinderArrangement": "INLINE",
+    "NumberOfCylinders": 4,
+    "ValvesPerCylinder": 4,
+    "ValveGear": "DOHC",
+    "StatusCode": 0,
+    "StatusMessage": "Success",
+    "DocumentVersion": 1,
+    "GeneratedAt": "2025-12-04T04:02:01.955Z"
+  }
+}

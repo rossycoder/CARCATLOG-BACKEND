@@ -202,35 +202,35 @@ class VehicleController {
         // Use Universal Service to get complete vehicle data
         const completeVehicle = await universalService.completeCarData(tempVehicle, false);
         
-        // Override carData with complete data from Universal Service
-        if (completeVehicle.make) carData.make = completeVehicle.make;
-        if (completeVehicle.model) carData.model = completeVehicle.model;
-        if (completeVehicle.variant) carData.variant = completeVehicle.variant;
-        if (completeVehicle.bodyType) carData.bodyType = completeVehicle.bodyType;
-        if (completeVehicle.doors) carData.doors = completeVehicle.doors;
-        if (completeVehicle.seats) carData.seats = completeVehicle.seats;
-        if (completeVehicle.transmission) carData.transmission = completeVehicle.transmission;
-        if (completeVehicle.engineSize) carData.engineSize = completeVehicle.engineSize;
-        if (completeVehicle.emissionClass) carData.emissionClass = completeVehicle.emissionClass;
-        if (completeVehicle.urbanMpg) carData.fuelEconomyUrban = completeVehicle.urbanMpg;
-        if (completeVehicle.extraUrbanMpg) carData.fuelEconomyExtraUrban = completeVehicle.extraUrbanMpg;
-        if (completeVehicle.combinedMpg) carData.fuelEconomyCombined = completeVehicle.combinedMpg;
-        if (completeVehicle.co2Emissions) carData.co2Emissions = completeVehicle.co2Emissions;
-        if (completeVehicle.annualTax) carData.annualTax = completeVehicle.annualTax;
-        if (completeVehicle.insuranceGroup) carData.insuranceGroup = completeVehicle.insuranceGroup;
-        if (completeVehicle.color) carData.color = completeVehicle.color;
-        if (completeVehicle.estimatedValue) carData.estimatedValue = completeVehicle.estimatedValue;
-        if (completeVehicle.privatePrice) carData.privatePrice = completeVehicle.privatePrice;
-        if (completeVehicle.dealerPrice) carData.dealerPrice = completeVehicle.dealerPrice;
-        if (completeVehicle.partExchangePrice) carData.partExchangePrice = completeVehicle.partExchangePrice;
-        if (completeVehicle.motStatus) carData.motStatus = completeVehicle.motStatus;
-        if (completeVehicle.motDue) carData.motDue = completeVehicle.motDue;
-        if (completeVehicle.motExpiry) carData.motExpiry = completeVehicle.motExpiry;
-        if (completeVehicle.motHistory) carData.motHistory = completeVehicle.motHistory;
-        if (completeVehicle.runningCosts) carData.runningCosts = completeVehicle.runningCosts;
-        if (completeVehicle.historyCheckId) carData.historyCheckId = completeVehicle.historyCheckId;
-        if (completeVehicle.historyCheckStatus) carData.historyCheckStatus = completeVehicle.historyCheckStatus;
-        if (completeVehicle.historyCheckDate) carData.historyCheckDate = completeVehicle.historyCheckDate;
+        // Override carData with complete data from Universal Service - FIXED: Use proper null checking
+        if (completeVehicle.make !== null && completeVehicle.make !== undefined) carData.make = completeVehicle.make;
+        if (completeVehicle.model !== null && completeVehicle.model !== undefined) carData.model = completeVehicle.model;
+        if (completeVehicle.variant !== null && completeVehicle.variant !== undefined) carData.variant = completeVehicle.variant;
+        if (completeVehicle.bodyType !== null && completeVehicle.bodyType !== undefined) carData.bodyType = completeVehicle.bodyType;
+        if (completeVehicle.doors !== null && completeVehicle.doors !== undefined) carData.doors = completeVehicle.doors;
+        if (completeVehicle.seats !== null && completeVehicle.seats !== undefined) carData.seats = completeVehicle.seats;
+        if (completeVehicle.transmission !== null && completeVehicle.transmission !== undefined) carData.transmission = completeVehicle.transmission;
+        if (completeVehicle.engineSize !== null && completeVehicle.engineSize !== undefined) carData.engineSize = completeVehicle.engineSize;
+        if (completeVehicle.emissionClass !== null && completeVehicle.emissionClass !== undefined) carData.emissionClass = completeVehicle.emissionClass;
+        if (completeVehicle.urbanMpg !== null && completeVehicle.urbanMpg !== undefined) carData.fuelEconomyUrban = completeVehicle.urbanMpg;
+        if (completeVehicle.extraUrbanMpg !== null && completeVehicle.extraUrbanMpg !== undefined) carData.fuelEconomyExtraUrban = completeVehicle.extraUrbanMpg;
+        if (completeVehicle.combinedMpg !== null && completeVehicle.combinedMpg !== undefined) carData.fuelEconomyCombined = completeVehicle.combinedMpg;
+        if (completeVehicle.co2Emissions !== null && completeVehicle.co2Emissions !== undefined) carData.co2Emissions = completeVehicle.co2Emissions;
+        if (completeVehicle.annualTax !== null && completeVehicle.annualTax !== undefined) carData.annualTax = completeVehicle.annualTax;
+        if (completeVehicle.insuranceGroup !== null && completeVehicle.insuranceGroup !== undefined) carData.insuranceGroup = completeVehicle.insuranceGroup;
+        if (completeVehicle.color !== null && completeVehicle.color !== undefined) carData.color = completeVehicle.color;
+        if (completeVehicle.estimatedValue !== null && completeVehicle.estimatedValue !== undefined) carData.estimatedValue = completeVehicle.estimatedValue;
+        if (completeVehicle.privatePrice !== null && completeVehicle.privatePrice !== undefined) carData.privatePrice = completeVehicle.privatePrice;
+        if (completeVehicle.dealerPrice !== null && completeVehicle.dealerPrice !== undefined) carData.dealerPrice = completeVehicle.dealerPrice;
+        if (completeVehicle.partExchangePrice !== null && completeVehicle.partExchangePrice !== undefined) carData.partExchangePrice = completeVehicle.partExchangePrice;
+        if (completeVehicle.motStatus !== null && completeVehicle.motStatus !== undefined) carData.motStatus = completeVehicle.motStatus;
+        if (completeVehicle.motDue !== null && completeVehicle.motDue !== undefined) carData.motDue = completeVehicle.motDue;
+        if (completeVehicle.motExpiry !== null && completeVehicle.motExpiry !== undefined) carData.motExpiry = completeVehicle.motExpiry;
+        if (completeVehicle.motHistory !== null && completeVehicle.motHistory !== undefined) carData.motHistory = completeVehicle.motHistory;
+        if (completeVehicle.runningCosts !== null && completeVehicle.runningCosts !== undefined) carData.runningCosts = completeVehicle.runningCosts;
+        if (completeVehicle.historyCheckId !== null && completeVehicle.historyCheckId !== undefined) carData.historyCheckId = completeVehicle.historyCheckId;
+        if (completeVehicle.historyCheckStatus !== null && completeVehicle.historyCheckStatus !== undefined) carData.historyCheckStatus = completeVehicle.historyCheckStatus;
+        if (completeVehicle.historyCheckDate !== null && completeVehicle.historyCheckDate !== undefined) carData.historyCheckDate = completeVehicle.historyCheckDate;
         
         console.log(`✅ Universal Service data applied (consolidated from all sources)`);
         console.log(`   Transmission: ${carData.transmission}`);
@@ -238,6 +238,8 @@ class VehicleController {
         console.log(`   Doors: ${carData.doors}, Seats: ${carData.seats}`);
         console.log(`   Running Costs: Urban ${carData.fuelEconomyUrban}mpg, Combined ${carData.fuelEconomyCombined}mpg`);
         console.log(`   Annual Tax: £${carData.annualTax}, Insurance Group: ${carData.insuranceGroup}`);
+        console.log(`   CO2 Emissions: ${carData.co2Emissions}g/km`);
+        console.log('🔍 [CONTROLLER DEBUG] carData.runningCosts:', JSON.stringify(carData.runningCosts, null, 2));
       } catch (universalError) {
         console.warn(`⚠️  Universal Service lookup failed, using DVLA data as fallback: ${universalError.message}`);
         // Continue with DVLA data if Universal Service fails
@@ -574,6 +576,62 @@ class VehicleController {
 
       // Clean up "null" string values
       this.cleanNullStrings(carData);
+      
+      // CRITICAL FIX: Auto-sync running costs from VehicleHistory if missing
+      // This ensures running costs are ALWAYS displayed on frontend
+      if (car.registrationNumber && (!carData.runningCosts?.fuelEconomy?.combined || !carData.runningCosts?.co2Emissions)) {
+        try {
+          const VehicleHistory = require('../models/VehicleHistory');
+          const history = await VehicleHistory.findOne({ vrm: car.registrationNumber }).sort({ checkDate: -1 });
+          
+          if (history && (history.combinedMpg || history.co2Emissions)) {
+            console.log(`🔄 Auto-syncing running costs for ${car.registrationNumber} from VehicleHistory`);
+            
+            // Update carData with running costs from history
+            carData.runningCosts = {
+              fuelEconomy: {
+                urban: history.urbanMpg,
+                extraUrban: history.extraUrbanMpg,
+                combined: history.combinedMpg
+              },
+              co2Emissions: history.co2Emissions,
+              insuranceGroup: history.insuranceGroup,
+              annualTax: history.annualTax,
+              emissionClass: history.emissionClass
+            };
+            
+            // Also update legacy fields for backward compatibility
+            carData.urbanMpg = history.urbanMpg;
+            carData.extraUrbanMpg = history.extraUrbanMpg;
+            carData.combinedMpg = history.combinedMpg;
+            carData.co2Emissions = history.co2Emissions;
+            carData.insuranceGroup = history.insuranceGroup;
+            carData.annualTax = history.annualTax;
+            
+            // Save to database for future requests (async, don't wait)
+            setImmediate(async () => {
+              try {
+                car.runningCosts = carData.runningCosts;
+                car.urbanMpg = history.urbanMpg;
+                car.extraUrbanMpg = history.extraUrbanMpg;
+                car.combinedMpg = history.combinedMpg;
+                car.co2Emissions = history.co2Emissions;
+                car.insuranceGroup = history.insuranceGroup;
+                car.annualTax = history.annualTax;
+                await car.save();
+                console.log(`✅ Running costs saved to Car document for ${car.registrationNumber}`);
+              } catch (saveError) {
+                console.error(`⚠️ Failed to save running costs to Car:`, saveError.message);
+              }
+            });
+            
+            console.log(`✅ Running costs synced: MPG=${history.combinedMpg}, CO2=${history.co2Emissions}`);
+          }
+        } catch (syncError) {
+          console.warn(`⚠️ Failed to auto-sync running costs:`, syncError.message);
+          // Continue without running costs - not critical for display
+        }
+      }
       
       // Ensure allValuations is properly structured for frontend
       // Frontend expects: allValuations.private, allValuations.retail, allValuations.trade
@@ -982,6 +1040,51 @@ class VehicleController {
       const cleanedCars = cars.map(car => {
         const carData = car.toObject();
         return this.cleanNullStrings(carData);
+      });
+      
+      // CRITICAL FIX: Auto-sync running costs from VehicleHistory for cars missing data
+      // This runs in background and doesn't slow down the response
+      setImmediate(async () => {
+        try {
+          const VehicleHistory = require('../models/VehicleHistory');
+          
+          for (const car of cars) {
+            // Skip if car already has running costs
+            if (car.runningCosts?.fuelEconomy?.combined && car.runningCosts?.co2Emissions) {
+              continue;
+            }
+            
+            if (!car.registrationNumber) continue;
+            
+            const history = await VehicleHistory.findOne({ vrm: car.registrationNumber }).sort({ checkDate: -1 });
+            
+            if (history && (history.combinedMpg || history.co2Emissions)) {
+              car.runningCosts = {
+                fuelEconomy: {
+                  urban: history.urbanMpg,
+                  extraUrban: history.extraUrbanMpg,
+                  combined: history.combinedMpg
+                },
+                co2Emissions: history.co2Emissions,
+                insuranceGroup: history.insuranceGroup,
+                annualTax: history.annualTax,
+                emissionClass: history.emissionClass
+              };
+              
+              car.urbanMpg = history.urbanMpg;
+              car.extraUrbanMpg = history.extraUrbanMpg;
+              car.combinedMpg = history.combinedMpg;
+              car.co2Emissions = history.co2Emissions;
+              car.insuranceGroup = history.insuranceGroup;
+              car.annualTax = history.annualTax;
+              
+              await car.save();
+              console.log(`✅ Background sync: Running costs saved for ${car.registrationNumber}`);
+            }
+          }
+        } catch (syncError) {
+          console.error(`⚠️ Background running costs sync failed:`, syncError.message);
+        }
       });
 
       const total = await Car.countDocuments(query);
@@ -1465,22 +1568,21 @@ class VehicleController {
       // Parse mileage if provided
       const parsedMileage = mileage ? parseInt(mileage, 10) : null;
       
-      // CRITICAL: Use Universal Auto Complete Service instead of enhancedVehicleService
-      // Universal Service handles all vehicle data fetching with proper caching and race condition prevention
-      console.log(`[Vehicle Controller] Using Universal Service for enhanced lookup: ${cleanedReg}`);
+      // CRITICAL FIX: Don't use Universal Service for enhanced lookup (it tries to save to DB)
+      // Instead, directly get vehicle data from API without saving
+      console.log(`[Vehicle Controller] Fetching vehicle data for enhanced lookup: ${cleanedReg}`);
       
       let result; // Declare result outside try block
       
       try {
-        // Create a temporary vehicle object for the Universal Service
-        const tempVehicle = new Car({
-          registrationNumber: cleanedReg,
-          mileage: parsedMileage || 50000,
-          dataSource: 'enhanced-lookup'
-        });
+        // Get vehicle data directly from Universal Service without saving to database
+        const vehicleDataResponse = await universalService.getVehicleData(cleanedReg, parsedMileage || 50000);
         
-        // Use Universal Service to get complete vehicle data with all enhancements
-        const completeVehicle = await universalService.completeCarData(tempVehicle, useCache !== 'false');
+        if (!vehicleDataResponse.success) {
+          throw new Error(vehicleDataResponse.error || 'Failed to fetch vehicle data');
+        }
+        
+        const completeVehicle = vehicleDataResponse.data;
         
         // Structure the response data for enhanced lookup
         result = {
@@ -1559,6 +1661,7 @@ class VehicleController {
         
         console.log(`[Vehicle Controller] Universal Service enhanced lookup successful for ${cleanedReg}`);
         console.log(`[Vehicle Controller] Complete vehicle data populated through Universal Service`);
+        console.log('🔍 [ENHANCED LOOKUP DEBUG] Running costs in result:', JSON.stringify(result.data.runningCosts, null, 2));
       } catch (universalError) {
         console.error(`[Vehicle Controller] Universal Service enhanced lookup failed for ${cleanedReg}:`, universalError.message);
         console.error(universalError.stack);
@@ -1697,6 +1800,7 @@ class VehicleController {
       model: unwrapped.model,
       bodyType: unwrapped.bodyType
     });
+    console.log('🏃 [Vehicle Controller] Unwrapped runningCosts:', JSON.stringify(unwrapped.runningCosts, null, 2));
     
     // CRITICAL FIX: Final check for price data - ensure we have some price available
     if (!unwrapped.valuation || !unwrapped.valuation.estimatedValue || 

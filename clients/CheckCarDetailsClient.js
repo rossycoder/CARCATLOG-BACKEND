@@ -9,6 +9,7 @@
 
 const axios = require('axios');
 const ApiResponseParser = require('../utils/apiResponseParser');
+const { parseHistoryResponse } = require('../utils/historyResponseParser');
 
 class CheckCarDetailsClient {
   constructor() {
@@ -160,7 +161,8 @@ class CheckCarDetailsClient {
    */
   async checkHistory(registration) {
     const rawData = await this.getVehicleHistory(registration);
-    return ApiResponseParser.parseCheckCarDetailsResponse(rawData);
+    // Use historyResponseParser for history data (includes write-off category parsing)
+    return parseHistoryResponse(rawData, this.isTestMode);
   }
 
   /**

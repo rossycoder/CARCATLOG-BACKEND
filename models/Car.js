@@ -646,9 +646,20 @@ carSchema.pre('save', async function(next) {
       console.log(`🔍 Extracted variant: "${extractedVariant}"`);
       
       if (extractedVariant && extractedVariant !== 'null' && extractedVariant !== 'undefined' && extractedVariant.trim() !== '') {
-        // ALWAYS use the real API variant - no matter how complex it is
-        this.variant = extractedVariant.trim();
+        // CRITICAL: Clean variant - remove transmission info for AutoTrader style
+        // "Type S i-VTec Semi-Auto" -> "Type S i-VTec"
+        // "530D XDRIVE M SPORT EDITION TOURING AUTO" -> "530D XDRIVE M SPORT EDITION TOURING"
+        let cleanedVariant = extractedVariant.trim();
+        cleanedVariant = cleanedVariant
+          .replace(/\s*(semi-auto|semi auto|automatic|manual|auto|cvt|dsg|tiptronic|powershift)\s*$/gi, '')
+          .trim();
+        
+        // ALWAYS use the cleaned API variant
+        this.variant = cleanedVariant;
         console.log(`✅ REAL API VARIANT SAVED: "${this.variant}" (from ${vehicleData.dataSources?.cached ? 'CACHE' : 'API'})`);
+        if (cleanedVariant !== extractedVariant.trim()) {
+          console.log(`   🧹 Cleaned transmission info from variant`);
+        }
         
         // Link to vehicle history if available and not already linked
         if (vehicleData.historyCheckId && !this.historyCheckId) {
@@ -679,8 +690,27 @@ carSchema.pre('save', async function(next) {
           }
         }
         
-        // 2. Real API variant (the main technical specification)
-        parts.push(this.variant);
+        // 2. Real API variant (convert to proper case for AutoTrader style)
+        // Convert "530D XDRIVE M SPORT EDITION TOURING" to "530d xDrive M Sport Edition Touring"
+        const formattedVariant = this.variant
+          .split(' ')
+          .map((word, index) => {
+            // Keep BMW model codes in specific format (e.g., "530d", "320i")
+            if (index === 0 && /^\d+[a-z]$/i.test(word)) {
+              // "530D" -> "530d"
+              return word.slice(0, -1) + word.slice(-1).toLowerCase();
+            }
+            // Keep xDrive, sDrive in specific format
+            if (word.toLowerCase() === 'xdrive') return 'xDrive';
+            if (word.toLowerCase() === 'sdrive') return 'sDrive';
+            // Keep M Sport as is
+            if (word.toUpperCase() === 'M') return 'M';
+            // Title case for other words
+            return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+          })
+          .join(' ');
+        
+        parts.push(formattedVariant);
         
         // 3. Euro status if available (like "Euro 5", "Euro 6")
         if (this.emissionClass && this.emissionClass.includes('Euro')) {

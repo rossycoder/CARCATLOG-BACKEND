@@ -3,10 +3,6 @@
  * Ensures ALL cars have complete data and no important fields are null
  */
 
-const EnhancedVehicleService = require('./enhancedVehicleService');
-const ApiResponseUnwrapper = require('../utils/apiResponseUnwrapper');
-const CarDataNormalizer = require('../utils/carDataNormalizer');
-
 class AutoDataPopulationService {
   /**
    * Get default values for electric vehicles based on make and model

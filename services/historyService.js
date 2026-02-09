@@ -29,6 +29,11 @@ class HistoryService {
    */
   async getCachedHistory(vrm) {
     try {
+      // TEMPORARY FIX: Disable cache to always fetch fresh data with running costs
+      console.log(`⚠️  Cache temporarily disabled - will fetch fresh data for ${vrm}`);
+      return null;
+      
+      /* ORIGINAL CODE - RE-ENABLE AFTER RUNNING COSTS ARE STABLE
       const cached = await VehicleHistory.getMostRecent(vrm);
       
       // Check if cache is still fresh (within 30 days)
@@ -41,6 +46,7 @@ class HistoryService {
       }
       
       return null;
+      */
     } catch (error) {
       console.error('Error retrieving cached history:', error);
       return null;
@@ -222,16 +228,38 @@ class HistoryService {
         }
       }
 
-      // Call CheckCardDetails API
+      // Call CheckCardDetails API for history
       console.log(`Calling CheckCardDetails History API for VRM ${vrm}`);
       console.log(`API Endpoint: ${this.client.baseUrl}/vehicledata/history`);
       
       const result = await this.client.checkHistory(vrm);
       
+      // CRITICAL FIX: Also fetch running costs from Vehiclespecs endpoint
+      try {
+        console.log(`🏃 Fetching running costs for ${vrm}...`);
+        const specsData = await this.client.getVehicleSpecs(vrm);
+        
+        // Extract running costs from SmmtDetails
+        if (specsData && specsData.SmmtDetails) {
+          const smmt = specsData.SmmtDetails;
+          result.urbanMpg = smmt.UrbanColdMpg || null;
+          result.extraUrbanMpg = smmt.ExtraUrbanMpg || null;
+          result.combinedMpg = smmt.CombinedMpg || null;
+          result.co2Emissions = smmt.Co2 || result.co2Emissions || null;
+          result.insuranceGroup = smmt.InsuranceGroup || null;
+          result.annualTax = null; // Not available in API
+          
+          console.log(`✅ Running costs fetched: MPG=${result.combinedMpg}, CO2=${result.co2Emissions}`);
+        }
+      } catch (specsError) {
+        console.warn(`⚠️  Failed to fetch running costs for ${vrm}:`, specsError.message);
+        // Continue without running costs - not critical
+      }
+      
       const responseTime = Date.now() - startTime;
       console.log(`History API call completed in ${responseTime}ms`);
 
-      // Store result
+      // Store result (now includes running costs)
       const stored = await this.storeHistoryResult(vrm, result);
       
       return stored.toObject();

@@ -893,25 +893,121 @@ class UniversalAutoCompleteService {
     if (apiData.vehicleSpecs) {
       const specs = apiData.vehicleSpecs;
       
-      parsed.make = specs.ModelData?.Make || specs.VehicleIdentification?.DvlaMake;
-      parsed.model = specs.ModelData?.Model || specs.ModelData?.Range;
-      parsed.variant = specs.ModelData?.ModelVariant || specs.SmmtDetails?.ModelVariant;
+      // ONLY use CheckCarDetails API response (no DVLA)
+      parsed.make = specs.ModelData?.Make;
+      let rawModel = specs.ModelData?.Model;
+      
+      // CRITICAL FIX: Clean model name - remove variant/trim info
+      // "CIVIC TYPE S I-VTEC" → "Civic"
+      // "530d xDrive M Sport Edition MHEV Auto" → "530d"
+      // "C30 R-DESIGN D AUTO" → "C30"
+      if (rawModel) {
+        // Common patterns to remove from model name
+        const trimPatterns = [
+          /\s+(TYPE\s+[A-Z]|Type\s+[A-Z])/gi, // "TYPE S", "Type R"
+          /\s+I-VTEC/gi, // "I-VTEC"
+          /\s+R-DESIGN/gi, // "R-DESIGN" ← NEW
+          /\s+D\s+AUTO/gi, // "D AUTO" ← NEW
+          /\s+XDRIVE/gi, // "xDrive"
+          /\s+SDRIVE/gi, // "sDrive"
+          /\s+M\s+SPORT/gi, // "M Sport"
+          /\s+EDITION/gi, // "Edition"
+          /\s+MHEV/gi, // "MHEV"
+          /\s+(AUTO|MANUAL|AUTOMATIC|SEMI-AUTO)/gi, // Transmission
+          /\s+TOURING/gi, // Body style
+          /\s+SALOON/gi,
+          /\s+HATCHBACK/gi,
+          /\s+ESTATE/gi
+        ];
+        
+        let cleanModel = rawModel;
+        trimPatterns.forEach(pattern => {
+          cleanModel = cleanModel.replace(pattern, '');
+        });
+        
+        parsed.model = cleanModel.trim();
+        
+        if (cleanModel !== rawModel) {
+          console.log(`🧹 Cleaned model: "${rawModel}" → "${parsed.model}"`);
+        }
+      } else {
+        parsed.model = rawModel;
+      }
+      
+      // CRITICAL FIX: Prioritize SmmtDetails for variant (more detailed)
+      parsed.variant = specs.SmmtDetails?.Variant || 
+                      specs.ModelData?.ModelVariant || 
+                      null;
       parsed.year = specs.VehicleIdentification?.YearOfManufacture;
-      parsed.fuelType = this.normalizeFuelType(specs.ModelData?.FuelType || specs.VehicleIdentification?.DvlaFuelType);
-      parsed.transmission = this.normalizeTransmission(specs.Transmission?.TransmissionType || specs.SmmtDetails?.Transmission);
-      parsed.bodyType = specs.BodyDetails?.BodyStyle || specs.SmmtDetails?.BodyStyle;
-      parsed.doors = specs.BodyDetails?.NumberOfDoors || specs.SmmtDetails?.NumberOfDoors;
-      parsed.seats = specs.BodyDetails?.NumberOfSeats || specs.SmmtDetails?.NumberOfSeats;
-      parsed.engineSize = specs.Engine?.EngineCapacity || specs.SmmtDetails?.EngineCapacity;
+      parsed.fuelType = this.normalizeFuelType(specs.ModelData?.FuelType);
+      // CRITICAL FIX: Prioritize SmmtDetails for transmission
+      parsed.transmission = this.normalizeTransmission(
+        specs.SmmtDetails?.Transmission || 
+        specs.Transmission?.TransmissionType
+      );
+      // CRITICAL FIX: Prioritize SmmtDetails for body type
+      parsed.bodyType = specs.SmmtDetails?.BodyStyle || 
+                       specs.BodyDetails?.BodyStyle || 
+                       null;
       
-      // CO2 and tax
-      parsed.co2Emissions = specs.Emissions?.ManufacturerCo2 || specs.VehicleExciseDutyDetails?.DvlaCo2 || 0;
-      parsed.annualTax = specs.VehicleExciseDutyDetails?.VedRate?.Standard?.TwelveMonths;
+      // CRITICAL FIX: Parse from correct API structure - prioritize SmmtDetails
+      parsed.doors = specs.SmmtDetails?.NumberOfDoors || 
+                    specs.BodyDetails?.NumberOfDoors || 
+                    null;
+      parsed.seats = specs.SmmtDetails?.NumberOfSeats || 
+                    specs.BodyDetails?.NumberOfSeats || 
+                    specs.DvlaTechnicalDetails?.SeatCountIncludingDriver || 
+                    null;
+      parsed.engineSize = specs.SmmtDetails?.EngineCapacity || 
+                         specs.DvlaTechnicalDetails?.EngineCapacityCc || 
+                         specs.PowerSource?.IceDetails?.EngineCapacityCc ||
+                         null;
       
-      // CRITICAL FIX: Parse emission class from API
-      parsed.emissionClass = specs.Emissions?.EmissionClass || 
+      // CRITICAL FIX: Parse MPG/Fuel Economy data from API
+      // Check multiple possible locations in API response (CheckCarDetails API structure)
+      // PRIORITY: SmmtDetails (most reliable source)
+      parsed.urbanMpg = specs.SmmtDetails?.UrbanColdMpg || 
+                       specs.SmmtDetails?.FuelConsumptionUrbanMpg || 
+                       specs.Performance?.FuelEconomy?.UrbanColdMpg || 
+                       specs.FuelConsumption?.Urban?.Mpg || 
+                       null;
+      parsed.extraUrbanMpg = specs.SmmtDetails?.ExtraUrbanMpg || 
+                            specs.SmmtDetails?.FuelConsumptionExtraUrbanMpg || 
+                            specs.Performance?.FuelEconomy?.ExtraUrbanMpg || 
+                            specs.FuelConsumption?.ExtraUrban?.Mpg || 
+                            null;
+      parsed.combinedMpg = specs.SmmtDetails?.CombinedMpg || 
+                          specs.SmmtDetails?.FuelConsumptionCombinedMpg || 
+                          specs.Performance?.FuelEconomy?.CombinedMpg || 
+                          specs.FuelConsumption?.Combined?.Mpg || 
+                          null;
+      
+      // Insurance group - prioritize SmmtDetails
+      parsed.insuranceGroup = specs.SmmtDetails?.InsuranceGroup || 
+                             specs.Insurance?.InsuranceGroup ||
+                             null;
+      
+      // CO2 and tax - prioritize SmmtDetails
+      parsed.co2Emissions = specs.SmmtDetails?.Co2 || 
+                           specs.Emissions?.ManufacturerCo2 || 
+                           specs.VehicleExciseDutyDetails?.DvlaCo2 || 
+                           0;
+      parsed.annualTax = specs.VehicleExciseDutyDetails?.VedRate?.Standard?.TwelveMonths || null;
+      
+      // DEBUG: Log running costs parsing
+      console.log('🏃 [RUNNING COSTS PARSED]:', {
+        urbanMpg: parsed.urbanMpg,
+        extraUrbanMpg: parsed.extraUrbanMpg,
+        combinedMpg: parsed.combinedMpg,
+        insuranceGroup: parsed.insuranceGroup,
+        co2Emissions: parsed.co2Emissions,
+        annualTax: parsed.annualTax
+      });
+      
+      // CRITICAL FIX: Parse emission class from API - prioritize SmmtDetails
+      parsed.emissionClass = specs.SmmtDetails?.EmissionClass || 
+                            specs.Emissions?.EmissionClass || 
                             specs.VehicleIdentification?.EmissionClass ||
-                            specs.SmmtDetails?.EmissionClass ||
                             null;
       
       // Performance
@@ -946,9 +1042,55 @@ class UniversalAutoCompleteService {
       
       parsed.color = history.VehicleRegistration?.Colour;
       parsed.numberOfPreviousKeepers = history.VehicleHistory?.NumberOfPreviousKeepers || 0;
-      parsed.exported = history.VehicleHistory?.stolenRecord === false;
-      parsed.scrapped = history.VehicleHistory?.financeRecord === false;
-      parsed.writeOffCategory = history.VehicleHistory?.writeOffRecord ? 'unknown' : 'none';
+      parsed.exported = history.VehicleHistory?.Exported || false;
+      parsed.scrapped = history.VehicleHistory?.Scrapped || false;
+      
+      // CRITICAL FIX: Extract actual write-off category (A/B/C/D/S/N)
+      if (history.VehicleHistory?.writeOffRecord && history.VehicleHistory?.writeoff) {
+        const writeoffData = Array.isArray(history.VehicleHistory.writeoff) 
+          ? history.VehicleHistory.writeoff[0] 
+          : history.VehicleHistory.writeoff;
+        
+        // Extract category from status field or category field
+        let category = 'unknown';
+        
+        if (writeoffData.category) {
+          category = writeoffData.category.toUpperCase();
+        } else if (writeoffData.status) {
+          const status = writeoffData.status.toUpperCase();
+          if (status.includes('CAT N') || status.includes('CATEGORY N')) category = 'N';
+          else if (status.includes('CAT S') || status.includes('CATEGORY S')) category = 'S';
+          else if (status.includes('CAT A') || status.includes('CATEGORY A')) category = 'A';
+          else if (status.includes('CAT B') || status.includes('CATEGORY B')) category = 'B';
+          else if (status.includes('CAT C') || status.includes('CATEGORY C')) category = 'C';
+          else if (status.includes('CAT D') || status.includes('CATEGORY D')) category = 'D';
+        }
+        
+        parsed.writeOffCategory = category;
+        parsed.isWrittenOff = true;
+        
+        // Store write-off details
+        parsed.writeOffDetails = {
+          category: category,
+          date: writeoffData.lossdate ? new Date(writeoffData.lossdate) : null,
+          status: writeoffData.status || null,
+          description: writeoffData.status || null,
+          insurerName: writeoffData.insurername || null,
+          claimNumber: writeoffData.claimnumber || null,
+          damageLocations: writeoffData.damagelocations || []
+        };
+        
+        console.log(`⚠️  Write-off detected: Category ${category}, Date: ${writeoffData.lossdate || 'N/A'}`);
+      } else {
+        parsed.writeOffCategory = 'none';
+        parsed.isWrittenOff = false;
+        parsed.writeOffDetails = {
+          category: 'none',
+          date: null,
+          status: null,
+          description: null
+        };
+      }
     }
 
     // Parse MOT History
@@ -1004,16 +1146,25 @@ class UniversalAutoCompleteService {
     vehicle.seats = parsedData.seats || vehicle.seats;
     vehicle.engineSize = parsedData.engineSize || vehicle.engineSize;
     
-    // Running costs (common to all vehicle types)
-    vehicle.urbanMpg = parsedData.urbanMpg || vehicle.urbanMpg;
-    vehicle.extraUrbanMpg = parsedData.extraUrbanMpg || vehicle.extraUrbanMpg;
-    vehicle.combinedMpg = parsedData.combinedMpg || vehicle.combinedMpg;
-    vehicle.co2Emissions = parsedData.co2Emissions || vehicle.co2Emissions;
-    vehicle.insuranceGroup = parsedData.insuranceGroup || vehicle.insuranceGroup;
-    vehicle.annualTax = parsedData.annualTax || vehicle.annualTax;
+    // Running costs (common to all vehicle types) - CRITICAL FIX: Use proper null checking
+    if (parsedData.urbanMpg !== null && parsedData.urbanMpg !== undefined) vehicle.urbanMpg = parsedData.urbanMpg;
+    if (parsedData.extraUrbanMpg !== null && parsedData.extraUrbanMpg !== undefined) vehicle.extraUrbanMpg = parsedData.extraUrbanMpg;
+    if (parsedData.combinedMpg !== null && parsedData.combinedMpg !== undefined) vehicle.combinedMpg = parsedData.combinedMpg;
+    if (parsedData.co2Emissions !== null && parsedData.co2Emissions !== undefined) vehicle.co2Emissions = parsedData.co2Emissions;
+    if (parsedData.insuranceGroup !== null && parsedData.insuranceGroup !== undefined) vehicle.insuranceGroup = parsedData.insuranceGroup;
+    if (parsedData.annualTax !== null && parsedData.annualTax !== undefined) vehicle.annualTax = parsedData.annualTax;
+    if (parsedData.emissionClass !== null && parsedData.emissionClass !== undefined) vehicle.emissionClass = parsedData.emissionClass;
     
-    // CRITICAL FIX: Save emission class from API
-    vehicle.emissionClass = parsedData.emissionClass || vehicle.emissionClass;
+    // DEBUG: Log running costs saving
+    console.log('💾 [RUNNING COSTS SAVED TO VEHICLE]:', {
+      urbanMpg: vehicle.urbanMpg,
+      extraUrbanMpg: vehicle.extraUrbanMpg,
+      combinedMpg: vehicle.combinedMpg,
+      insuranceGroup: vehicle.insuranceGroup,
+      co2Emissions: vehicle.co2Emissions,
+      annualTax: vehicle.annualTax,
+      emissionClass: vehicle.emissionClass
+    });
     
     // Performance (common to all vehicle types)
     vehicle.power = parsedData.power || vehicle.power;
@@ -1076,6 +1227,7 @@ class UniversalAutoCompleteService {
     };
     
     console.log('✅ Vehicle updated with complete data');
+    console.log('📦 [FINAL RUNNING COSTS OBJECT]:', JSON.stringify(vehicle.runningCosts, null, 2));
     console.log(`   Running costs: MPG=${vehicle.combinedMpg}, CO2=${vehicle.co2Emissions}, Insurance=${vehicle.insuranceGroup}, Emission Class=${vehicle.emissionClass}`);
     return vehicle;
   }
@@ -1088,34 +1240,47 @@ class UniversalAutoCompleteService {
       // Delete existing records - within transaction if provided
       await VehicleHistory.deleteMany({ vrm: vrm }, session ? { session } : {});
       
-      // Create new record
+      // Create new record with ALL fields
       const vehicleHistory = new VehicleHistory({
         vrm: vrm,
         make: parsedData.make,
         model: parsedData.model,
+        variant: parsedData.variant, // CRITICAL FIX: Save variant
         colour: parsedData.color,
         fuelType: parsedData.fuelType,
         yearOfManufacture: parsedData.year,
+        bodyType: parsedData.bodyType, // CRITICAL FIX: Save body type
+        transmission: parsedData.transmission, // CRITICAL FIX: Save transmission
+        doors: parsedData.doors, // CRITICAL FIX: Save doors
+        seats: parsedData.seats, // CRITICAL FIX: Save seats
+        engineCapacity: parsedData.engineSize, // CRITICAL FIX: Save engine size
         numberOfPreviousKeepers: parsedData.numberOfPreviousKeepers,
         exported: parsedData.exported,
         scrapped: parsedData.scrapped,
+        isWrittenOff: parsedData.isWrittenOff || false,
         writeOffCategory: parsedData.writeOffCategory,
+        writeOffDetails: parsedData.writeOffDetails || {
+          category: parsedData.writeOffCategory || 'none',
+          date: null,
+          status: null,
+          description: null
+        },
         motStatus: parsedData.motStatus,
         motExpiryDate: parsedData.motDueDate ? new Date(parsedData.motDueDate) : null,
-        motTests: parsedData.motHistory || [],
+        motHistory: parsedData.motHistory || [],
         urbanMpg: parsedData.urbanMpg,
         extraUrbanMpg: parsedData.extraUrbanMpg,
         combinedMpg: parsedData.combinedMpg,
         co2Emissions: parsedData.co2Emissions,
         insuranceGroup: parsedData.insuranceGroup,
         annualTax: parsedData.annualTax,
-        emissionClass: parsedData.emissionClass, // CRITICAL FIX: Save emission class to cache
+        emissionClass: parsedData.emissionClass,
         checkDate: new Date()
       });
       
       // Save within transaction if provided
       await vehicleHistory.save(session ? { session } : {});
-      console.log('✅ Data cached in VehicleHistory (including emission class)');
+      console.log('✅ Data cached in VehicleHistory (complete with variant, doors, seats, engine)');
       return vehicleHistory;
       
     } catch (error) {
@@ -1129,6 +1294,11 @@ class UniversalAutoCompleteService {
    */
   async getCachedData(vrm) {
     try {
+      // TEMPORARY FIX: Disable cache to always fetch fresh data with running costs
+      console.log(`⚠️  Cache temporarily disabled for ${vrm} - will fetch fresh data`);
+      return null;
+      
+      /* ORIGINAL CODE - RE-ENABLE AFTER RUNNING COSTS ARE STABLE
       console.log(`🔍 Checking cache for ${vrm}...`);
       
       // Find the most recent cache entry for this VRM
@@ -1176,6 +1346,7 @@ class UniversalAutoCompleteService {
       console.log('⏰ Cache expired, cleaning up old entries...');
       await this.cleanupExpiredCache(vrm);
       return null;
+      */
       
     } catch (error) {
       console.error('❌ Cache check failed:', error.message);
@@ -2320,6 +2491,153 @@ class UniversalAutoCompleteService {
     }
     
     return recommendations;
+  }
+
+  /**
+   * Get vehicle data without saving to database (for enhanced lookup endpoint)
+   * @param {string} vrm - Vehicle registration mark
+   * @param {number} mileage - Vehicle mileage
+   * @returns {Promise<Object>} Vehicle data response
+   */
+  async getVehicleData(vrm, mileage = 50000) {
+    try {
+      console.log(`\n🔍 [UniversalAutoComplete] Fetching vehicle data for: ${vrm} (no database save)`);
+      
+      const cleanedVrm = vrm.toUpperCase().replace(/\s/g, '');
+      
+      // Step 1: Try cache first
+      const cachedData = await this.getCachedData(cleanedVrm);
+      if (cachedData) {
+        console.log('✅ Using cached data for enhanced lookup');
+        return {
+          success: true,
+          data: this.formatVehicleDataResponse(cachedData),
+          cached: true
+        };
+      }
+      
+      // Step 2: Fetch from API
+      console.log('📡 Fetching fresh data from API...');
+      const apiData = await this.fetchAllAPIData(cleanedVrm);
+      
+      // Step 3: Parse data
+      const parsedData = this.parseAllAPIData(apiData);
+      
+      // Step 4: Save to cache (VehicleHistory) for future use
+      await this.saveToVehicleHistory(cleanedVrm, parsedData);
+      
+      // Step 5: Return formatted data
+      return {
+        success: true,
+        data: this.formatVehicleDataResponse(parsedData),
+        cached: false
+      };
+      
+    } catch (error) {
+      console.error(`❌ [UniversalAutoComplete] getVehicleData error for ${vrm}:`, error.message);
+      return {
+        success: false,
+        error: error.message || 'Failed to fetch vehicle data'
+      };
+    }
+  }
+
+  /**
+   * Format parsed data for API response
+   * @param {Object} data - Parsed vehicle data OR cached VehicleHistory data
+   * @returns {Object} Formatted response
+   */
+  formatVehicleDataResponse(data) {
+    // CRITICAL FIX: Handle both parsed data and cached VehicleHistory data
+    // VehicleHistory uses: yearOfManufacture, colour, motExpiryDate
+    // Parsed data uses: year, color, motDueDate
+    
+    // DEBUG: Log what data we're formatting
+    console.log('🔍 [formatVehicleDataResponse] Input data fields:', {
+      urbanMpg: data.urbanMpg,
+      combinedMpg: data.combinedMpg,
+      co2Emissions: data.co2Emissions,
+      insuranceGroup: data.insuranceGroup,
+      annualTax: data.annualTax
+    });
+    
+    const formatted = {
+      // Basic info - handle both field name formats
+      make: data.make,
+      model: data.model,
+      variant: data.variant,
+      year: data.year || data.yearOfManufacture,
+      fuelType: data.fuelType,
+      transmission: data.transmission,
+      bodyType: data.bodyType,
+      engineSize: data.engineSize || data.engineCapacity,
+      doors: data.doors,
+      seats: data.seats,
+      color: data.color || data.colour,
+      
+      // Running costs (both nested and flat for compatibility)
+      urbanMpg: data.urbanMpg,
+      extraUrbanMpg: data.extraUrbanMpg,
+      combinedMpg: data.combinedMpg,
+      co2Emissions: data.co2Emissions,
+      insuranceGroup: data.insuranceGroup,
+      annualTax: data.annualTax,
+      emissionClass: data.emissionClass,
+      
+      // Running costs object
+      runningCosts: {
+        fuelEconomy: {
+          urban: data.urbanMpg,
+          extraUrban: data.extraUrbanMpg,
+          combined: data.combinedMpg
+        },
+        co2Emissions: data.co2Emissions,
+        insuranceGroup: data.insuranceGroup,
+        annualTax: data.annualTax,
+        emissionClass: data.emissionClass
+      },
+      
+      // Valuation - handle both formats
+      estimatedValue: data.estimatedValue || data.valuation?.privatePrice,
+      privatePrice: data.privatePrice || data.valuation?.privatePrice,
+      dealerPrice: data.dealerPrice || data.valuation?.dealerPrice,
+      partExchangePrice: data.partExchangePrice || data.valuation?.partExchangePrice,
+      
+      // MOT - handle both field name formats
+      motStatus: data.motStatus,
+      motDue: data.motDueDate || data.motExpiryDate,
+      motExpiry: data.motDueDate || data.motExpiryDate,
+      motHistory: data.motHistory,
+      
+      // Vehicle history
+      numberOfPreviousKeepers: data.numberOfPreviousKeepers,
+      exported: data.exported,
+      scrapped: data.scrapped,
+      writeOffCategory: data.writeOffCategory,
+      
+      // Electric vehicle data (if applicable)
+      electricRange: data.electricRange,
+      batteryCapacity: data.batteryCapacity,
+      chargingTime: data.chargingTime,
+      
+      // Metadata
+      registrationNumber: data.vrm,
+      dataSources: {
+        dvla: true,
+        checkCarDetails: true,
+        universalService: true
+      }
+    };
+    
+    // DEBUG: Log what we're returning
+    console.log('🔍 [formatVehicleDataResponse] Output running costs:', {
+      urbanMpg: formatted.urbanMpg,
+      combinedMpg: formatted.combinedMpg,
+      co2Emissions: formatted.co2Emissions,
+      runningCosts: formatted.runningCosts
+    });
+    
+    return formatted;
   }
 }
 
