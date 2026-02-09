@@ -1013,11 +1013,30 @@ async function handlePaymentSuccess(paymentIntent) {
               const normalizedEngineSize = vehicleData.engineSize ? 
                 parseFloat(String(vehicleData.engineSize).replace(/[^0-9.]/g, '')) : null;
               
-              const normalizedTransmission = vehicleData.transmission ? 
-                vehicleData.transmission.toLowerCase().replace(/\s+/g, '-') : 'manual';
+              // CRITICAL FIX: Map transmission types to valid enum values
+              let normalizedTransmission = 'manual'; // default
+              if (vehicleData.transmission) {
+                const trans = vehicleData.transmission.toLowerCase();
+                if (trans.includes('cvt') || trans.includes('automatic') || trans.includes('auto')) {
+                  normalizedTransmission = 'automatic';
+                } else if (trans.includes('semi') || trans.includes('dsg') || trans.includes('tiptronic')) {
+                  normalizedTransmission = 'semi-automatic';
+                } else {
+                  normalizedTransmission = 'manual';
+                }
+              }
+              
+              // CRITICAL FIX: Map fuel types to valid enum values
+              let normalizedFuelType = vehicleData.fuelType || 'Petrol';
+              if (normalizedFuelType.includes('/') || normalizedFuelType.toLowerCase().includes('hybrid')) {
+                normalizedFuelType = 'Hybrid';
+              } else if (!['Petrol', 'Diesel', 'Electric', 'Hybrid'].includes(normalizedFuelType)) {
+                normalizedFuelType = 'Petrol'; // default
+              }
               
               console.log(`   Engine size: "${vehicleData.engineSize}" → ${normalizedEngineSize}`);
               console.log(`   Transmission: "${vehicleData.transmission}" → "${normalizedTransmission}"`);
+              console.log(`   Fuel type: "${vehicleData.fuelType}" → "${normalizedFuelType}"`);
               
               // Import validator
               const CarDataValidator = require('../utils/carDataValidator');
@@ -1033,7 +1052,7 @@ async function handlePaymentSuccess(paymentIntent) {
               year: vehicleData.year,
               mileage: vehicleData.mileage,
               color: vehicleData.color,
-              fuelType: vehicleData.fuelType,
+              fuelType: normalizedFuelType,
               transmission: normalizedTransmission,
               registrationNumber: vehicleData.registrationNumber,
               engineSize: normalizedEngineSize,
@@ -1073,6 +1092,7 @@ async function handlePaymentSuccess(paymentIntent) {
                 stripeSessionId: paymentData.sessionId,
                 stripePaymentIntentId: paymentIntent.id
               },
+              // CRITICAL FIX: Don't set historyCheckId if it's empty string
               historyCheckStatus: vehicleData.registrationNumber ? 'pending' : 'not_required',
               advertStatus: 'active',
               publishedAt: new Date()
