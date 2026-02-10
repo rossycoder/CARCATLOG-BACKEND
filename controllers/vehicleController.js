@@ -931,7 +931,17 @@ class VehicleController {
       if (gearbox) query.transmission = gearbox;
       if (bodyType) query.bodyType = bodyType;
       if (colour) query.color = colour; // Map 'colour' param to 'color' field
-      if (fuelType) query.fuelType = fuelType;
+      
+      // Fuel type filter - handle "Petrol Hybrid" and "Diesel Hybrid"
+      if (fuelType) {
+        if (fuelType === 'Petrol Hybrid' || fuelType === 'Diesel Hybrid') {
+          // Both map to "Hybrid" in database
+          query.fuelType = 'Hybrid';
+          console.log('[Vehicle Controller] Fuel type filter: Searching for Hybrid vehicles');
+        } else {
+          query.fuelType = fuelType;
+        }
+      }
       
       // Numeric filters
       if (doors) query.doors = parseInt(doors);
@@ -1203,8 +1213,26 @@ class VehicleController {
       });
       
       // Get unique fuel types (filtered based on selection)
-      const fuelTypes = await Car.distinct('fuelType', filteredQuery);
+      let fuelTypes = await Car.distinct('fuelType', filteredQuery);
       console.log('[Vehicle Controller] Found fuelTypes:', fuelTypes.length);
+      
+      // Expand "Hybrid" into "Petrol Hybrid" and "Diesel Hybrid" for better filtering
+      if (fuelTypes.includes('Hybrid')) {
+        // Remove generic "Hybrid"
+        fuelTypes = fuelTypes.filter(ft => ft !== 'Hybrid');
+        // Add specific hybrid types
+        fuelTypes.push('Petrol Hybrid', 'Diesel Hybrid');
+      }
+      
+      // Sort fuel types in a logical order
+      const fuelTypeOrder = ['Petrol', 'Diesel', 'Petrol Hybrid', 'Diesel Hybrid', 'Electric'];
+      fuelTypes.sort((a, b) => {
+        const indexA = fuelTypeOrder.indexOf(a);
+        const indexB = fuelTypeOrder.indexOf(b);
+        if (indexA === -1) return 1;
+        if (indexB === -1) return -1;
+        return indexA - indexB;
+      });
       
       // Get unique transmissions (filtered based on selection)
       const transmissions = await Car.distinct('transmission', filteredQuery);
