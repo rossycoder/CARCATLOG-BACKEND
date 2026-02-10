@@ -1110,11 +1110,132 @@ async function handlePaymentSuccess(paymentIntent) {
               
               console.log('✅ Car data validated and cleaned - no null values');
               
-              car = new Car(cleanedCarData);
-            
-              await car.save();
-              console.log(`✅ Car advert CREATED and published in database!`);
+              // CRITICAL: Check if car with same registration already exists
+              let existingCar = null;
+              if (vehicleData.registrationNumber) {
+                // First, try to find pending car by same user
+                if (purchase.userId) {
+                  existingCar = await Car.findOne({
+                    registrationNumber: vehicleData.registrationNumber,
+                    userId: purchase.userId,
+                    advertStatus: { $in: ['pending', 'draft', 'pending_payment'] }
+                  });
+                  
+                  if (existingCar) {
+                    console.log(`🔄 Found existing pending car by SAME USER with registration ${vehicleData.registrationNumber}`);
+                    console.log(`   User ID: ${purchase.userId}`);
+                    console.log(`   Existing car ID: ${existingCar._id}`);
+                    console.log(`   Updating existing car instead of creating new one`);
+                  }
+                }
+                
+                // If no pending car by same user, check for any pending car without userId
+                if (!existingCar) {
+                  existingCar = await Car.findOne({
+                    registrationNumber: vehicleData.registrationNumber,
+                    userId: { $exists: false },
+                    advertStatus: { $in: ['pending', 'draft', 'pending_payment'] }
+                  });
+                  
+                  if (existingCar) {
+                    console.log(`🔄 Found existing pending car WITHOUT USER with registration ${vehicleData.registrationNumber}`);
+                    console.log(`   Existing car ID: ${existingCar._id}`);
+                    console.log(`   Will assign to current user and update`);
+                  }
+                }
+              }
               
+              if (existingCar) {
+                // Update existing pending car - SMART MERGE
+                // Preserve correct data from first attempt, only update missing/empty fields
+                console.log(`🔄 Smart merging data from 2nd attempt with existing car data`);
+                
+                // Set flag to skip API calls in pre-save hooks (we'll call Universal Service manually)
+                existingCar._skipAPICallsInHooks = true;
+                
+                // Fields that should ALWAYS be updated (payment/advert related)
+                existingCar.price = cleanedCarData.price;
+                existingCar.description = cleanedCarData.description;
+                existingCar.images = cleanedCarData.images;
+                existingCar.features = cleanedCarData.features;
+                existingCar.videoUrl = cleanedCarData.videoUrl;
+                existingCar.postcode = cleanedCarData.postcode;
+                existingCar.locationName = cleanedCarData.locationName;
+                existingCar.latitude = cleanedCarData.latitude;
+                existingCar.longitude = cleanedCarData.longitude;
+                existingCar.sellerContact = cleanedCarData.sellerContact;
+                existingCar.advertisingPackage = cleanedCarData.advertisingPackage;
+                existingCar.advertStatus = 'active';
+                existingCar.publishedAt = new Date();
+                existingCar.userId = cleanedCarData.userId;
+                
+                // Fields that should only be updated if missing in existing car
+                // This preserves correct data from 1st attempt
+                if (!existingCar.fuelType || existingCar.fuelType === 'Unknown') {
+                  existingCar.fuelType = cleanedCarData.fuelType;
+                } else {
+                  console.log(`   Preserving existing fuel type: ${existingCar.fuelType} (not overwriting with ${cleanedCarData.fuelType})`);
+                }
+                
+                if (!existingCar.engineSize || existingCar.engineSize === 0) {
+                  existingCar.engineSize = cleanedCarData.engineSize;
+                } else {
+                  console.log(`   Preserving existing engine size: ${existingCar.engineSize}`);
+                }
+                
+                if (!existingCar.transmission || existingCar.transmission === 'Unknown') {
+                  existingCar.transmission = cleanedCarData.transmission;
+                } else {
+                  console.log(`   Preserving existing transmission: ${existingCar.transmission}`);
+                }
+                
+                // MOT data - update if new data has it and existing doesn't
+                if ((!existingCar.motHistory || existingCar.motHistory.length === 0) && 
+                    cleanedCarData.motHistory && cleanedCarData.motHistory.length > 0) {
+                  existingCar.motHistory = cleanedCarData.motHistory;
+                  existingCar.motStatus = cleanedCarData.motStatus;
+                  existingCar.motExpiry = cleanedCarData.motExpiry;
+                  existingCar.motDue = cleanedCarData.motDue;
+                  console.log(`   Added MOT data from 2nd attempt`);
+                }
+                
+                // History check - update if new data has it
+                if (cleanedCarData.historyCheckId && !existingCar.historyCheckId) {
+                  existingCar.historyCheckId = cleanedCarData.historyCheckId;
+                  existingCar.historyCheckStatus = cleanedCarData.historyCheckStatus;
+                  existingCar.historyCheckDate = cleanedCarData.historyCheckDate;
+                  console.log(`   Added history check data from 2nd attempt`);
+                }
+                
+                // Running costs - update if new data has it
+                if (cleanedCarData.runningCosts && Object.keys(cleanedCarData.runningCosts).length > 0) {
+                  existingCar.runningCosts = cleanedCarData.runningCosts;
+                  console.log(`   Added running costs from 2nd attempt`);
+                }
+                
+                // Other fields - update if missing
+                if (!existingCar.variant) existingCar.variant = cleanedCarData.variant;
+                if (!existingCar.displayTitle) existingCar.displayTitle = cleanedCarData.displayTitle;
+                if (!existingCar.bodyType) existingCar.bodyType = cleanedCarData.bodyType;
+                if (!existingCar.doors) existingCar.doors = cleanedCarData.doors;
+                if (!existingCar.seats) existingCar.seats = cleanedCarData.seats;
+                if (!existingCar.color) existingCar.color = cleanedCarData.color;
+                
+                car = existingCar;
+                await car.save();
+                console.log(`✅ Existing car UPDATED and published with smart merge!`);
+                console.log(`   Final fuel type: ${car.fuelType}`);
+                console.log(`   Final engine size: ${car.engineSize}`);
+                console.log(`   Car now belongs to user: ${car.userId || 'N/A'}`);
+              } else {
+                // Create new car
+                // Set flag to skip API calls in pre-save hooks (we'll call Universal Service manually)
+                cleanedCarData._skipAPICallsInHooks = true;
+                car = new Car(cleanedCarData);
+                await car.save();
+                console.log(`✅ New car advert CREATED and published in database!`);
+              }
+            
               // CRITICAL: Use Universal Auto Complete Service for comprehensive vehicle data after payment
               // Universal Service handles all data fetching with proper caching and race condition prevention
               if (car.registrationNumber) {

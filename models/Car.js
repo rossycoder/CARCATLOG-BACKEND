@@ -870,6 +870,12 @@ carSchema.pre('save', async function(next) {
   
   // History check for new listings with registration numbers
   if (this.isNew && this.registrationNumber && this.historyCheckStatus === 'pending') {
+    // Skip API calls if flag is set (payment controller will handle it)
+    if (this._skipAPICallsInHooks) {
+      console.log(`⏭️  Skipping history check in pre-save hook (will be handled by payment controller)`);
+      return next();
+    }
+    
     try {
       const HistoryService = require('../services/historyService');
       const historyService = new HistoryService();
