@@ -292,6 +292,10 @@ const updateAdvert = async (req, res) => {
             console.log('📝 [updateAdvert] Updating features:', advertData.features);
             updateObj.features = advertData.features;
           }
+          if (advertData.hasOwnProperty('videoUrl')) {
+            updateObj.videoUrl = advertData.videoUrl || '';
+            console.log('📝 [updateAdvert] Updating videoUrl:', advertData.videoUrl);
+          }
         }
         
         // Update contact details
