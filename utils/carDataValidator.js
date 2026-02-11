@@ -124,9 +124,14 @@ class CarDataValidator {
     cleaned.historyCheckStatus = this.cleanString(carData.historyCheckStatus) || 'not_required';
 
     // User and IDs - NO NULLS (empty string instead of null)
+    // CRITICAL FIX: Don't set historyCheckId if it's empty or undefined (causes ObjectId cast error)
     cleaned.userId = carData.userId || '';
     cleaned.advertId = this.cleanString(carData.advertId) || '';
-    cleaned.historyCheckId = carData.historyCheckId || '';
+    // Only set historyCheckId if it's a valid non-empty string
+    if (carData.historyCheckId && carData.historyCheckId !== '' && carData.historyCheckId !== 'undefined') {
+      cleaned.historyCheckId = carData.historyCheckId;
+    }
+    // Don't set historyCheckId at all if it's empty - let Mongoose handle it
 
     // Timestamps - NO NULLS
     cleaned.publishedAt = this.cleanDate(carData.publishedAt) || '';

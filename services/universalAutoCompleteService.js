@@ -1548,18 +1548,50 @@ class UniversalAutoCompleteService {
   }
 
   /**
-   * Normalize fuel type
+   * Normalize fuel type (matches apiResponseParser logic)
    */
   normalizeFuelType(fuelType) {
     if (!fuelType) return null;
     
-    const normalized = fuelType.toUpperCase();
-    if (normalized.includes('ELECTRIC')) return 'Electric';
-    if (normalized.includes('DIESEL')) return 'Diesel';
-    if (normalized.includes('PETROL') || normalized.includes('GASOLINE')) return 'Petrol';
-    if (normalized.includes('HYBRID')) return 'Hybrid';
+    const normalized = fuelType.toLowerCase().trim();
     
-    return fuelType;
+    // CRITICAL: Check hybrid BEFORE electric to avoid "HYBRID ELECTRIC" being classified as "Electric"
+    // Also preserve the hybrid subtype (Petrol Hybrid, Diesel Hybrid, etc.)
+    if (normalized.includes('plug-in') && normalized.includes('hybrid')) {
+      // Check for specific plug-in hybrid types
+      if (normalized.includes('petrol')) {
+        return 'Petrol Plug-in Hybrid';
+      }
+      if (normalized.includes('diesel')) {
+        return 'Diesel Plug-in Hybrid';
+      }
+      return 'Plug-in Hybrid';
+    }
+    
+    if (normalized.includes('hybrid')) {
+      // Check for specific hybrid types
+      if (normalized.includes('petrol') || normalized.includes('gasoline')) {
+        return 'Petrol Hybrid';
+      }
+      if (normalized.includes('diesel')) {
+        return 'Diesel Hybrid';
+      }
+      // Generic hybrid (when subtype not specified)
+      return 'Hybrid';
+    }
+    
+    if (normalized.includes('petrol') || normalized.includes('gasoline')) {
+      return 'Petrol';
+    }
+    if (normalized.includes('diesel')) {
+      return 'Diesel';
+    }
+    if (normalized.includes('electric') || normalized.includes('ev')) {
+      return 'Electric';
+    }
+    
+    // Return capitalized version if no match
+    return fuelType.charAt(0).toUpperCase() + fuelType.slice(1).toLowerCase();
   }
 
   /**
