@@ -1307,11 +1307,6 @@ class UniversalAutoCompleteService {
    */
   async getCachedData(vrm) {
     try {
-      // TEMPORARY FIX: Disable cache to always fetch fresh data with running costs
-      console.log(`⚠️  Cache temporarily disabled for ${vrm} - will fetch fresh data`);
-      return null;
-      
-      /* ORIGINAL CODE - RE-ENABLE AFTER RUNNING COSTS ARE STABLE
       console.log(`🔍 Checking cache for ${vrm}...`);
       
       // Find the most recent cache entry for this VRM
@@ -1359,7 +1354,6 @@ class UniversalAutoCompleteService {
       console.log('⏰ Cache expired, cleaning up old entries...');
       await this.cleanupExpiredCache(vrm);
       return null;
-      */
       
     } catch (error) {
       console.error('❌ Cache check failed:', error.message);
