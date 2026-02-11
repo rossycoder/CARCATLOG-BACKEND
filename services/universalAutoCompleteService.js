@@ -1172,15 +1172,27 @@ class UniversalAutoCompleteService {
     vehicle.acceleration = parsedData.acceleration || vehicle.acceleration;
     vehicle.topSpeed = parsedData.topSpeed || vehicle.topSpeed;
     
-    // Electric vehicle data (if applicable)
-    if (parsedData.electricRange) vehicle.electricRange = parsedData.electricRange;
-    if (parsedData.batteryCapacity) vehicle.batteryCapacity = parsedData.batteryCapacity;
-    if (parsedData.chargingTime) vehicle.chargingTime = parsedData.chargingTime;
-    if (parsedData.homeChargingSpeed) vehicle.homeChargingSpeed = parsedData.homeChargingSpeed;
-    if (parsedData.rapidChargingSpeed) vehicle.rapidChargingSpeed = parsedData.rapidChargingSpeed;
-    if (parsedData.electricMotorPower) vehicle.electricMotorPower = parsedData.electricMotorPower;
-    if (parsedData.electricMotorTorque) vehicle.electricMotorTorque = parsedData.electricMotorTorque;
-    if (parsedData.chargingPortType) vehicle.chargingPortType = parsedData.chargingPortType;
+    // Electric vehicle data (ONLY for pure electric vehicles, NOT hybrids)
+    if (vehicle.fuelType === 'Electric') {
+      if (parsedData.electricRange) vehicle.electricRange = parsedData.electricRange;
+      if (parsedData.batteryCapacity) vehicle.batteryCapacity = parsedData.batteryCapacity;
+      if (parsedData.chargingTime) vehicle.chargingTime = parsedData.chargingTime;
+      if (parsedData.homeChargingSpeed) vehicle.homeChargingSpeed = parsedData.homeChargingSpeed;
+      if (parsedData.rapidChargingSpeed) vehicle.rapidChargingSpeed = parsedData.rapidChargingSpeed;
+      if (parsedData.electricMotorPower) vehicle.electricMotorPower = parsedData.electricMotorPower;
+      if (parsedData.electricMotorTorque) vehicle.electricMotorTorque = parsedData.electricMotorTorque;
+      if (parsedData.chargingPortType) vehicle.chargingPortType = parsedData.chargingPortType;
+    } else {
+      // For non-electric vehicles (including hybrids), ensure EV fields are null
+      vehicle.electricRange = null;
+      vehicle.batteryCapacity = null;
+      vehicle.chargingTime = null;
+      vehicle.homeChargingSpeed = null;
+      vehicle.rapidChargingSpeed = null;
+      vehicle.electricMotorPower = null;
+      vehicle.electricMotorTorque = null;
+      vehicle.chargingPortType = null;
+    }
     
     // MOT data (common to all vehicle types)
     vehicle.motStatus = parsedData.motStatus || vehicle.motStatus;
@@ -1216,8 +1228,9 @@ class UniversalAutoCompleteService {
       insuranceGroup: vehicle.insuranceGroup,
       annualTax: vehicle.annualTax,
       emissionClass: vehicle.emissionClass, // CRITICAL FIX: Include emission class in running costs
-      electricRange: vehicle.electricRange,
-      batteryCapacity: vehicle.batteryCapacity,
+      // Electric vehicle data (ONLY for pure electric, NOT hybrids)
+      electricRange: vehicle.fuelType === 'Electric' ? vehicle.electricRange : null,
+      batteryCapacity: vehicle.fuelType === 'Electric' ? vehicle.batteryCapacity : null,
       chargingTime: vehicle.chargingTime,
       homeChargingSpeed: vehicle.homeChargingSpeed,
       rapidChargingSpeed: vehicle.rapidChargingSpeed,
