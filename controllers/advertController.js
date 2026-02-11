@@ -39,12 +39,16 @@ const createAdvert = async (req, res) => {
     // Normalize transmission value to match enum
     let normalizedTransmission = vehicleData.transmission || 'manual';
     if (normalizedTransmission) {
-      normalizedTransmission = normalizedTransmission.toLowerCase().replace(/\s+/g, '-');
-      // Map common variations
-      if (normalizedTransmission === 'semi-automatic' || normalizedTransmission === 'semiautomatic') {
-        normalizedTransmission = 'semi-automatic';
-      } else if (normalizedTransmission === 'auto') {
+      const trans = normalizedTransmission.toLowerCase().trim();
+      // Map common variations to valid enum values
+      if (trans.includes('cvt') || trans.includes('automatic') || trans === 'auto') {
         normalizedTransmission = 'automatic';
+      } else if (trans.includes('semi') || trans.includes('dsg') || trans.includes('tiptronic')) {
+        normalizedTransmission = 'semi-automatic';
+      } else if (trans.includes('manual')) {
+        normalizedTransmission = 'manual';
+      } else {
+        normalizedTransmission = 'manual'; // default
       }
     }
     
