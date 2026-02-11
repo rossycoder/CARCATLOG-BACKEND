@@ -1026,11 +1026,35 @@ async function handlePaymentSuccess(paymentIntent) {
                 }
               }
               
-              // CRITICAL FIX: Map fuel types to valid enum values
+              // CRITICAL FIX: Map fuel types to valid enum values (including hybrid subtypes)
               let normalizedFuelType = vehicleData.fuelType || 'Petrol';
-              if (normalizedFuelType.includes('/') || normalizedFuelType.toLowerCase().includes('hybrid')) {
-                normalizedFuelType = 'Hybrid';
-              } else if (!['Petrol', 'Diesel', 'Electric', 'Hybrid'].includes(normalizedFuelType)) {
+              const fuelLower = normalizedFuelType.toLowerCase();
+              
+              // Check for hybrid types FIRST (before checking for petrol/diesel alone)
+              if (fuelLower.includes('plug-in') && fuelLower.includes('hybrid')) {
+                if (fuelLower.includes('petrol')) {
+                  normalizedFuelType = 'Petrol Plug-in Hybrid';
+                } else if (fuelLower.includes('diesel')) {
+                  normalizedFuelType = 'Diesel Plug-in Hybrid';
+                } else {
+                  normalizedFuelType = 'Plug-in Hybrid';
+                }
+              } else if (fuelLower.includes('hybrid') || fuelLower.includes('/')) {
+                // "Petrol/Electric" or "Petrol Hybrid Electric"
+                if (fuelLower.includes('petrol')) {
+                  normalizedFuelType = 'Petrol Hybrid';
+                } else if (fuelLower.includes('diesel')) {
+                  normalizedFuelType = 'Diesel Hybrid';
+                } else {
+                  normalizedFuelType = 'Hybrid';
+                }
+              } else if (fuelLower.includes('electric')) {
+                normalizedFuelType = 'Electric';
+              } else if (fuelLower.includes('diesel')) {
+                normalizedFuelType = 'Diesel';
+              } else if (fuelLower.includes('petrol')) {
+                normalizedFuelType = 'Petrol';
+              } else if (!['Petrol', 'Diesel', 'Electric', 'Hybrid', 'Petrol Hybrid', 'Diesel Hybrid', 'Plug-in Hybrid', 'Petrol Plug-in Hybrid', 'Diesel Plug-in Hybrid'].includes(normalizedFuelType)) {
                 normalizedFuelType = 'Petrol'; // default
               }
               
@@ -1092,7 +1116,8 @@ async function handlePaymentSuccess(paymentIntent) {
                 stripeSessionId: paymentData.sessionId,
                 stripePaymentIntentId: paymentIntent.id
               },
-              // CRITICAL FIX: Don't set historyCheckId if it's empty string
+              // CRITICAL FIX: Don't set historyCheckId if it's empty string or invalid
+              historyCheckId: (vehicleData.historyCheckId && vehicleData.historyCheckId !== '') ? vehicleData.historyCheckId : undefined,
               historyCheckStatus: vehicleData.registrationNumber ? 'pending' : 'not_required',
               advertStatus: 'active',
               publishedAt: new Date()

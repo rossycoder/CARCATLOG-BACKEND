@@ -49,7 +49,7 @@ const bikeSchema = new mongoose.Schema({
   fuelType: {
     type: String,
     required: [true, 'Fuel type is required'],
-    enum: ['Petrol', 'Electric', 'Hybrid']
+    enum: ['Petrol', 'Electric', 'Hybrid', 'Petrol Hybrid', 'Diesel Hybrid', 'Plug-in Hybrid', 'Petrol Plug-in Hybrid', 'Diesel Plug-in Hybrid']
   },
   description: {
     type: String,

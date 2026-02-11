@@ -23,6 +23,7 @@ const vehicleHistorySchema = new mongoose.Schema({
   fuelType: {
     type: String,
     trim: true,
+    enum: ['Petrol', 'Diesel', 'Electric', 'Hybrid', 'Petrol Hybrid', 'Diesel Hybrid', 'Plug-in Hybrid', 'Petrol Plug-in Hybrid', 'Diesel Plug-in Hybrid', null],
   },
   yearOfManufacture: {
     type: Number,
