@@ -944,11 +944,10 @@ class UniversalAutoCompleteService {
                       null;
       parsed.year = specs.VehicleIdentification?.YearOfManufacture;
       
-      // CRITICAL: Use RAW model/variant (before cleaning) to detect MHEV hybrids
+      // Simple approach: Use API fuel type, but check DVLA as fallback for hybrids
       parsed.fuelType = this.normalizeFuelType(
-        specs.ModelData?.FuelType, 
-        rawModelForFuelType,  // Use raw model (with MHEV)
-        rawVariantForFuelType // Use raw variant (with MHEV)
+        specs.ModelData?.FuelType,
+        specs.VehicleIdentification?.DvlaFuelType
       );
       
       // CRITICAL FIX: Prioritize SmmtDetails for transmission
@@ -998,11 +997,15 @@ class UniversalAutoCompleteService {
                              specs.Insurance?.InsuranceGroup ||
                              null;
       
-      // CO2 and tax - prioritize SmmtDetails
-      parsed.co2Emissions = specs.SmmtDetails?.Co2 || 
+      // CO2 and tax - prioritize DvlaCo2 over SmmtDetails (SMMT often has wrong data like 1)
+      parsed.co2Emissions = specs.VehicleExciseDutyDetails?.DvlaCo2 || 
+                           specs.SmmtDetails?.Co2 || 
                            specs.Emissions?.ManufacturerCo2 || 
-                           specs.VehicleExciseDutyDetails?.DvlaCo2 || 
                            0;
+      
+      // Log CO2 selection for debugging
+      console.log(`🔍 CO2 Selection: DVLA="${specs.VehicleExciseDutyDetails?.DvlaCo2}", SMMT="${specs.SmmtDetails?.Co2}", Selected="${parsed.co2Emissions}"`);
+      
       parsed.annualTax = specs.VehicleExciseDutyDetails?.VedRate?.Standard?.TwelveMonths || null;
       
       // DEBUG: Log running costs parsing
@@ -1553,44 +1556,47 @@ class UniversalAutoCompleteService {
   }
 
   /**
-   * Normalize fuel type (matches apiResponseParser logic)
-   * Enhanced to detect MHEV (Mild Hybrid) from model/variant names
+   * Normalize fuel type (simple approach with DVLA fallback)
+   * @param {string} apiFuelType - Fuel type from CheckCarDetails API
+   * @param {string} dvlaFuelType - Fuel type from DVLA (optional fallback)
    */
-  normalizeFuelType(fuelType, modelName = '', variantName = '') {
-    if (!fuelType) return null;
+  normalizeFuelType(apiFuelType, dvlaFuelType = null) {
+    if (!apiFuelType) return null;
     
-    const normalized = fuelType.toLowerCase().trim();
-    const modelLower = (modelName || '').toLowerCase();
-    const variantLower = (variantName || '').toLowerCase();
+    const apiNormalized = apiFuelType.toLowerCase().trim();
+    const dvlaNormalized = dvlaFuelType ? dvlaFuelType.toLowerCase().trim() : '';
     
-    // CRITICAL: Detect MHEV (Mild Hybrid Electric Vehicle) from model/variant
-    const isMHEV = modelLower.includes('mhev') || 
-                   variantLower.includes('mhev') ||
-                   modelLower.includes('mild hybrid') ||
-                   variantLower.includes('mild hybrid');
+    // SPECIAL CASE: If API says "Diesel" but DVLA says "HYBRID ELECTRIC"
+    // This indicates a Diesel Hybrid (MHEV) that API didn't detect
+    if (apiNormalized === 'diesel' && dvlaNormalized.includes('hybrid')) {
+      return 'Diesel Hybrid';
+    }
     
-    // CRITICAL: Check for hybrid patterns BEFORE checking individual fuel types
-    // Handle "Petrol/Electric", "Diesel/Electric", "Petrol Hybrid", etc.
+    // SPECIAL CASE: If API says "Petrol" but DVLA says "HYBRID ELECTRIC"
+    // This indicates a Petrol Hybrid that API didn't detect
+    if (apiNormalized === 'petrol' && dvlaNormalized.includes('hybrid')) {
+      return 'Petrol Hybrid';
+    }
     
     // Check for plug-in hybrids first
-    if (normalized.includes('plug-in') && (normalized.includes('hybrid') || normalized.includes('/'))) {
-      if (normalized.includes('petrol')) {
+    if (apiNormalized.includes('plug-in') && (apiNormalized.includes('hybrid') || apiNormalized.includes('/'))) {
+      if (apiNormalized.includes('petrol')) {
         return 'Petrol Plug-in Hybrid';
       }
-      if (normalized.includes('diesel')) {
+      if (apiNormalized.includes('diesel')) {
         return 'Diesel Plug-in Hybrid';
       }
       return 'Plug-in Hybrid';
     }
     
-    // Check for regular hybrids (including "Petrol/Electric" format and MHEV)
-    if (normalized.includes('hybrid') || normalized.includes('/') || isMHEV) {
-      // "Petrol/Electric" or "Petrol Hybrid Electric" or "Petrol MHEV"
-      if (normalized.includes('petrol') || normalized.includes('gasoline')) {
+    // Check for regular hybrids (including "Petrol/Electric" format)
+    if (apiNormalized.includes('hybrid') || apiNormalized.includes('/')) {
+      // "Petrol/Electric" or "Petrol Hybrid Electric"
+      if (apiNormalized.includes('petrol') || apiNormalized.includes('gasoline')) {
         return 'Petrol Hybrid';
       }
-      // "Diesel/Electric" or "Diesel Hybrid" or "Diesel MHEV"
-      if (normalized.includes('diesel')) {
+      // "Diesel/Electric" or "Diesel Hybrid"
+      if (apiNormalized.includes('diesel')) {
         return 'Diesel Hybrid';
       }
       // Generic hybrid (when subtype not specified)
@@ -1598,18 +1604,18 @@ class UniversalAutoCompleteService {
     }
     
     // Pure fuel types (only if no hybrid indicators)
-    if (normalized.includes('petrol') || normalized.includes('gasoline')) {
+    if (apiNormalized.includes('petrol') || apiNormalized.includes('gasoline')) {
       return 'Petrol';
     }
-    if (normalized.includes('diesel')) {
+    if (apiNormalized.includes('diesel')) {
       return 'Diesel';
     }
-    if (normalized.includes('electric') || normalized.includes('ev')) {
+    if (apiNormalized.includes('electric') || apiNormalized.includes('ev')) {
       return 'Electric';
     }
     
     // Return capitalized version if no match
-    return fuelType.charAt(0).toUpperCase() + fuelType.slice(1).toLowerCase();
+    return apiFuelType.charAt(0).toUpperCase() + apiFuelType.slice(1).toLowerCase();
   }
 
   /**
