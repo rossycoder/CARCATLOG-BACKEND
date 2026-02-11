@@ -1555,10 +1555,11 @@ class UniversalAutoCompleteService {
     
     const normalized = fuelType.toLowerCase().trim();
     
-    // CRITICAL: Check hybrid BEFORE electric to avoid "HYBRID ELECTRIC" being classified as "Electric"
-    // Also preserve the hybrid subtype (Petrol Hybrid, Diesel Hybrid, etc.)
-    if (normalized.includes('plug-in') && normalized.includes('hybrid')) {
-      // Check for specific plug-in hybrid types
+    // CRITICAL: Check for hybrid patterns BEFORE checking individual fuel types
+    // Handle "Petrol/Electric", "Diesel/Electric", "Petrol Hybrid", etc.
+    
+    // Check for plug-in hybrids first
+    if (normalized.includes('plug-in') && (normalized.includes('hybrid') || normalized.includes('/'))) {
       if (normalized.includes('petrol')) {
         return 'Petrol Plug-in Hybrid';
       }
@@ -1568,11 +1569,13 @@ class UniversalAutoCompleteService {
       return 'Plug-in Hybrid';
     }
     
-    if (normalized.includes('hybrid')) {
-      // Check for specific hybrid types
+    // Check for regular hybrids (including "Petrol/Electric" format)
+    if (normalized.includes('hybrid') || normalized.includes('/')) {
+      // "Petrol/Electric" or "Petrol Hybrid Electric"
       if (normalized.includes('petrol') || normalized.includes('gasoline')) {
         return 'Petrol Hybrid';
       }
+      // "Diesel/Electric" or "Diesel Hybrid"
       if (normalized.includes('diesel')) {
         return 'Diesel Hybrid';
       }
@@ -1580,6 +1583,7 @@ class UniversalAutoCompleteService {
       return 'Hybrid';
     }
     
+    // Pure fuel types (only if no hybrid indicators)
     if (normalized.includes('petrol') || normalized.includes('gasoline')) {
       return 'Petrol';
     }
