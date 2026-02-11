@@ -897,6 +897,10 @@ class UniversalAutoCompleteService {
       parsed.make = specs.ModelData?.Make;
       let rawModel = specs.ModelData?.Model;
       
+      // CRITICAL: Get raw model/variant BEFORE cleaning for MHEV detection
+      const rawModelForFuelType = specs.ModelData?.Model || specs.VehicleIdentification?.Model || '';
+      const rawVariantForFuelType = specs.SmmtDetails?.Variant || specs.ModelData?.ModelVariant || '';
+      
       // CRITICAL FIX: Clean model name - remove variant/trim info
       // "CIVIC TYPE S I-VTEC" → "Civic"
       // "530d xDrive M Sport Edition MHEV Auto" → "530d"
@@ -939,7 +943,14 @@ class UniversalAutoCompleteService {
                       specs.ModelData?.ModelVariant || 
                       null;
       parsed.year = specs.VehicleIdentification?.YearOfManufacture;
-      parsed.fuelType = this.normalizeFuelType(specs.ModelData?.FuelType);
+      
+      // CRITICAL: Use RAW model/variant (before cleaning) to detect MHEV hybrids
+      parsed.fuelType = this.normalizeFuelType(
+        specs.ModelData?.FuelType, 
+        rawModelForFuelType,  // Use raw model (with MHEV)
+        rawVariantForFuelType // Use raw variant (with MHEV)
+      );
+      
       // CRITICAL FIX: Prioritize SmmtDetails for transmission
       parsed.transmission = this.normalizeTransmission(
         specs.SmmtDetails?.Transmission || 
@@ -1543,11 +1554,20 @@ class UniversalAutoCompleteService {
 
   /**
    * Normalize fuel type (matches apiResponseParser logic)
+   * Enhanced to detect MHEV (Mild Hybrid) from model/variant names
    */
-  normalizeFuelType(fuelType) {
+  normalizeFuelType(fuelType, modelName = '', variantName = '') {
     if (!fuelType) return null;
     
     const normalized = fuelType.toLowerCase().trim();
+    const modelLower = (modelName || '').toLowerCase();
+    const variantLower = (variantName || '').toLowerCase();
+    
+    // CRITICAL: Detect MHEV (Mild Hybrid Electric Vehicle) from model/variant
+    const isMHEV = modelLower.includes('mhev') || 
+                   variantLower.includes('mhev') ||
+                   modelLower.includes('mild hybrid') ||
+                   variantLower.includes('mild hybrid');
     
     // CRITICAL: Check for hybrid patterns BEFORE checking individual fuel types
     // Handle "Petrol/Electric", "Diesel/Electric", "Petrol Hybrid", etc.
@@ -1563,13 +1583,13 @@ class UniversalAutoCompleteService {
       return 'Plug-in Hybrid';
     }
     
-    // Check for regular hybrids (including "Petrol/Electric" format)
-    if (normalized.includes('hybrid') || normalized.includes('/')) {
-      // "Petrol/Electric" or "Petrol Hybrid Electric"
+    // Check for regular hybrids (including "Petrol/Electric" format and MHEV)
+    if (normalized.includes('hybrid') || normalized.includes('/') || isMHEV) {
+      // "Petrol/Electric" or "Petrol Hybrid Electric" or "Petrol MHEV"
       if (normalized.includes('petrol') || normalized.includes('gasoline')) {
         return 'Petrol Hybrid';
       }
-      // "Diesel/Electric" or "Diesel Hybrid"
+      // "Diesel/Electric" or "Diesel Hybrid" or "Diesel MHEV"
       if (normalized.includes('diesel')) {
         return 'Diesel Hybrid';
       }
