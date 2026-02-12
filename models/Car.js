@@ -552,6 +552,15 @@ carSchema.index({ vehicleType: 1, condition: 1 });
 
 // Pre-save hook for validation and normalization
 carSchema.pre('save', async function(next) {
+  // Format color to proper case (Title Case)
+  if (this.color && typeof this.color === 'string') {
+    const { formatColor } = require('../utils/colorFormatter');
+    const formattedColor = formatColor(this.color);
+    if (formattedColor) {
+      this.color = formattedColor;
+    }
+  }
+
   // Prevent saving incomplete cars - they should be draft or active
   if (this.advertStatus === 'incomplete') {
     console.log(`⚠️  Preventing save of incomplete car: ${this.registrationNumber}`);
