@@ -54,6 +54,11 @@ const userSchema = new mongoose.Schema({
     enum: ['user', 'admin'],
     default: 'user'
   },
+  isAdmin: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
   savedCars: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Car'

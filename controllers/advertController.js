@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const Car = require('../models/Car');
 const CarDataNormalizer = require('../utils/carDataNormalizer'); // Add this import
+const DataProtection = require('../utils/dataProtection'); // Add data protection
 
 /**
  * Create a new advert - SIMPLIFIED VERSION
@@ -255,6 +256,64 @@ const updateAdvert = async (req, res) => {
             console.log('🔧 [updateAdvert] Removed allValuations (not part of Car schema)');
           }
           
+          // Handle MOT date updates
+          if (cleanVehicleData.motDue) {
+            updateObj.motDue = new Date(cleanVehicleData.motDue);
+            updateObj.motExpiry = new Date(cleanVehicleData.motDue);
+            console.log('📝 [updateAdvert] Updating MOT date:', cleanVehicleData.motDue);
+            
+            // Mark as user-edited
+            DataProtection.markAsUserEdited(car, 'motDue');
+            DataProtection.markAsUserEdited(car, 'motExpiry');
+            if (!updateObj.userEditedFields) updateObj.userEditedFields = car.userEditedFields || [];
+            if (!updateObj.userEditedFields.includes('motDue')) updateObj.userEditedFields.push('motDue');
+            if (!updateObj.userEditedFields.includes('motExpiry')) updateObj.userEditedFields.push('motExpiry');
+          }
+          
+          // Handle seats updates
+          if (cleanVehicleData.seats) {
+            updateObj.seats = parseInt(cleanVehicleData.seats);
+            console.log('📝 [updateAdvert] Updating seats:', cleanVehicleData.seats);
+            
+            // Mark as user-edited
+            DataProtection.markAsUserEdited(car, 'seats');
+            if (!updateObj.userEditedFields) updateObj.userEditedFields = car.userEditedFields || [];
+            if (!updateObj.userEditedFields.includes('seats')) updateObj.userEditedFields.push('seats');
+          }
+          
+          // Handle service history updates
+          if (cleanVehicleData.serviceHistory) {
+            updateObj.serviceHistory = cleanVehicleData.serviceHistory;
+            console.log('📝 [updateAdvert] Updating serviceHistory from vehicleData:', cleanVehicleData.serviceHistory);
+            
+            // Mark as user-edited
+            DataProtection.markAsUserEdited(car, 'serviceHistory');
+            if (!updateObj.userEditedFields) updateObj.userEditedFields = car.userEditedFields || [];
+            if (!updateObj.userEditedFields.includes('serviceHistory')) updateObj.userEditedFields.push('serviceHistory');
+          }
+          
+          // Handle fuel type updates
+          if (cleanVehicleData.fuelType) {
+            updateObj.fuelType = cleanVehicleData.fuelType;
+            console.log('📝 [updateAdvert] Updating fuelType:', cleanVehicleData.fuelType);
+            
+            // Mark as user-edited
+            DataProtection.markAsUserEdited(car, 'fuelType');
+            if (!updateObj.userEditedFields) updateObj.userEditedFields = car.userEditedFields || [];
+            if (!updateObj.userEditedFields.includes('fuelType')) updateObj.userEditedFields.push('fuelType');
+          }
+          
+          // Handle color updates
+          if (cleanVehicleData.color) {
+            updateObj.color = cleanVehicleData.color;
+            console.log('📝 [updateAdvert] Updating color:', cleanVehicleData.color);
+            
+            // Mark as user-edited
+            DataProtection.markAsUserEdited(car, 'color');
+            if (!updateObj.userEditedFields) updateObj.userEditedFields = car.userEditedFields || [];
+            if (!updateObj.userEditedFields.includes('color')) updateObj.userEditedFields.push('color');
+          }
+          
           Object.assign(updateObj, cleanVehicleData);
         }
         
@@ -299,6 +358,10 @@ const updateAdvert = async (req, res) => {
           if (advertData.hasOwnProperty('videoUrl')) {
             updateObj.videoUrl = advertData.videoUrl || '';
             console.log('📝 [updateAdvert] Updating videoUrl:', advertData.videoUrl);
+          }
+          if (advertData.hasOwnProperty('serviceHistory')) {
+            updateObj.serviceHistory = advertData.serviceHistory;
+            console.log('📝 [updateAdvert] Updating serviceHistory:', advertData.serviceHistory);
           }
         }
         
@@ -364,6 +427,45 @@ const updateAdvert = async (req, res) => {
           attempt++;
           await new Promise(resolve => setTimeout(resolve, 100 * attempt)); // Exponential backoff
           continue;
+        }
+        
+        // CRITICAL: Also update VehicleHistory if it exists and we're updating service history, MOT, or seats
+        if (car.historyCheckId && (updateObj.serviceHistory || updateObj.motDue || updateObj.seats || updateObj.fuelType)) {
+          try {
+            const VehicleHistory = require('../models/VehicleHistory');
+            const historyUpdate = {};
+            
+            if (updateObj.serviceHistory) {
+              historyUpdate.serviceHistory = updateObj.serviceHistory;
+              console.log('📝 [updateAdvert] Updating VehicleHistory serviceHistory:', updateObj.serviceHistory);
+            }
+            
+            if (updateObj.motDue) {
+              historyUpdate.motExpiryDate = updateObj.motDue;
+              console.log('📝 [updateAdvert] Updating VehicleHistory motExpiryDate:', updateObj.motDue);
+            }
+            
+            if (updateObj.seats) {
+              historyUpdate.seats = updateObj.seats;
+              console.log('📝 [updateAdvert] Updating VehicleHistory seats:', updateObj.seats);
+            }
+            
+            if (updateObj.fuelType) {
+              historyUpdate.fuelType = updateObj.fuelType;
+              console.log('📝 [updateAdvert] Updating VehicleHistory fuelType:', updateObj.fuelType);
+            }
+            
+            await VehicleHistory.findByIdAndUpdate(
+              car.historyCheckId,
+              { $set: historyUpdate },
+              { runValidators: true }
+            );
+            
+            console.log('✅ [updateAdvert] VehicleHistory updated successfully');
+          } catch (historyError) {
+            console.error('⚠️ [updateAdvert] Failed to update VehicleHistory:', historyError.message);
+            // Don't fail the whole operation if VehicleHistory update fails
+          }
         }
         
         console.log('✅ [updateAdvert] Car updated successfully');

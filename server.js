@@ -136,7 +136,8 @@ const valuationRoutes = require('./routes/valuationRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const advertRoutes = require('./routes/advertRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
-const adminRoutes = require('./routes/adminRoutes');
+const adminRoutes = require('./routes/admin'); // Admin CRUD operations
+const adminUtilityRoutes = require('./routes/adminRoutes'); // Admin utility functions (expiration, etc.)
 const adminFixRoutes = require('./routes/adminFixRoutes');
 const tradeDealerRoutes = require('./routes/tradeDealerRoutes');
 const tradeInventoryRoutes = require('./routes/tradeInventoryRoutes');
@@ -158,7 +159,8 @@ app.use('/api/vehicle-valuation', valuationRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/adverts', advertRoutes);
 app.use('/api/upload', uploadRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/admin', adminRoutes); // Admin CRUD operations (view/edit/delete listings)
+app.use('/api/admin/utilities', adminUtilityRoutes); // Admin utility functions (expiration, cleanup)
 app.use('/api/admin', adminFixRoutes);
 app.use('/api/trade/auth', tradeDealerRoutes);
 app.use('/api/trade/inventory', tradeInventoryRoutes);

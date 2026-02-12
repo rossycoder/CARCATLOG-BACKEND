@@ -400,6 +400,13 @@ const carSchema = new mongoose.Schema({
     default: []
   },
   
+  // Service history
+  serviceHistory: {
+    type: String,
+    enum: ['Contact seller', 'Full service history', 'Partial service history', 'No service history'],
+    default: 'Contact seller'
+  },
+  
   // Enhanced running costs data (from CheckCarDetails API)
   runningCosts: {
     fuelEconomy: {
@@ -509,6 +516,13 @@ const carSchema = new mongoose.Schema({
   soldAt: {
     type: Date
   },
+  
+  // Track user-edited fields to prevent API overwrites
+  userEditedFields: {
+    type: [String],
+    default: []
+  },
+  
   createdAt: {
     type: Date,
     default: Date.now
