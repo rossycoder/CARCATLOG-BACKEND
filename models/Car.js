@@ -552,6 +552,38 @@ carSchema.index({ vehicleType: 1, condition: 1 });
 
 // Pre-save hook for validation and normalization
 carSchema.pre('save', async function(next) {
+  // Auto-fetch color from DVLA if missing
+  if ((!this.color || this.color === 'null') && this.registrationNumber && this.isNew) {
+    try {
+      console.log(`🎨 [Car Model] Fetching color for ${this.registrationNumber}...`);
+      const axios = require('axios');
+      const dvlaApiKey = process.env.DVLA_API_KEY;
+      
+      if (dvlaApiKey) {
+        const response = await axios.post(
+          'https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles',
+          { registrationNumber: this.registrationNumber },
+          {
+            headers: {
+              'x-api-key': dvlaApiKey,
+              'Content-Type': 'application/json'
+            },
+            timeout: 5000 // 5 second timeout
+          }
+        );
+        
+        if (response.data.colour) {
+          const { formatColor } = require('../utils/colorFormatter');
+          this.color = formatColor(response.data.colour);
+          console.log(`✅ [Car Model] Color fetched and set: ${this.color}`);
+        }
+      }
+    } catch (error) {
+      // Don't fail the save if color fetch fails
+      console.log(`⚠️  [Car Model] Could not fetch color: ${error.message}`);
+    }
+  }
+  
   // Format color to proper case (Title Case)
   if (this.color && typeof this.color === 'string') {
     const { formatColor } = require('../utils/colorFormatter');
