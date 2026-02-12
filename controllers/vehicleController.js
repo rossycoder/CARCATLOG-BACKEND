@@ -1878,6 +1878,7 @@ class VehicleController {
   /**
    * GET /api/vehicles/my-listings
    * Get all listings for the authenticated user
+   * If user is admin, returns ALL listings from all users
    */
   async getMyListings(req, res, next) {
     try {
@@ -1891,27 +1892,45 @@ class VehicleController {
       }
 
       const userId = req.user._id || req.user.id;
+      const isAdmin = req.user.isAdmin || req.user.role === 'admin';
+      
       console.log('[Vehicle Controller] Fetching listings for user:', userId);
+      console.log('[Vehicle Controller] Is Admin:', isAdmin);
       console.log('[Vehicle Controller] User object:', req.user);
 
       // Import Bike model
       const Bike = require('../models/Bike');
 
-      // Find all vehicles created by this user (cars and bikes)
+      // If admin, get ALL listings. Otherwise, get only user's listings
+      const query = isAdmin ? {} : { userId: userId };
+      
+      // Find vehicles (cars and bikes)
       const [cars, bikes] = await Promise.all([
-        Car.find({ userId: userId }).sort({ createdAt: -1 }),
-        Bike.find({ userId: userId }).sort({ createdAt: -1 })
+        Car.find(query).populate('userId', 'email name').sort({ createdAt: -1 }),
+        Bike.find(query).populate('userId', 'email name').sort({ createdAt: -1 })
       ]);
 
-      console.log('[Vehicle Controller] Found', cars.length, 'cars and', bikes.length, 'bikes for user:', userId);
+      console.log('[Vehicle Controller] Found', cars.length, 'cars and', bikes.length, 'bikes');
+      if (isAdmin) {
+        console.log('[Vehicle Controller] Admin view: Showing ALL listings from all users');
+      } else {
+        console.log('[Vehicle Controller] User view: Showing only listings for user:', userId);
+      }
 
       // Combine and mark vehicle types
       const allListings = [
-        ...cars.map(car => ({ ...car.toObject(), vehicleType: 'car' })),
+        ...cars.map(car => ({ 
+          ...car.toObject(), 
+          vehicleType: 'car',
+          ownerEmail: car.userId?.email || 'Unknown',
+          ownerName: car.userId?.name || 'Unknown'
+        })),
         ...bikes.map(bike => ({ 
           ...bike.toObject(), 
           vehicleType: 'bike',
-          advertStatus: bike.status // Map bike.status to advertStatus for frontend consistency
+          advertStatus: bike.status, // Map bike.status to advertStatus for frontend consistency
+          ownerEmail: bike.userId?.email || 'Unknown',
+          ownerName: bike.userId?.name || 'Unknown'
         }))
       ];
 
@@ -1936,7 +1955,8 @@ class VehicleController {
       return res.json({
         success: true,
         listings: cleanedListings,
-        count: cleanedListings.length
+        count: cleanedListings.length,
+        isAdmin: isAdmin // Let frontend know if this is admin view
       });
 
     } catch (error) {
