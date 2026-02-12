@@ -552,35 +552,48 @@ carSchema.index({ vehicleType: 1, condition: 1 });
 
 // Pre-save hook for validation and normalization
 carSchema.pre('save', async function(next) {
-  // Auto-fetch color from DVLA if missing
-  if ((!this.color || this.color === 'null') && this.registrationNumber && this.isNew) {
-    try {
-      console.log(`🎨 [Car Model] Fetching color for ${this.registrationNumber}...`);
-      const axios = require('axios');
-      const dvlaApiKey = process.env.DVLA_API_KEY;
-      
-      if (dvlaApiKey) {
-        const response = await axios.post(
-          'https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles',
-          { registrationNumber: this.registrationNumber },
-          {
-            headers: {
-              'x-api-key': dvlaApiKey,
-              'Content-Type': 'application/json'
-            },
-            timeout: 5000 // 5 second timeout
-          }
-        );
+  // Auto-fetch color and MOT from DVLA if missing
+  if (this.registrationNumber && this.isNew) {
+    const needsColor = !this.color || this.color === 'null';
+    const needsMOT = !this.motDue;
+    
+    if (needsColor || needsMOT) {
+      try {
+        console.log(`🔍 [Car Model] Fetching data from DVLA for ${this.registrationNumber}...`);
+        const axios = require('axios');
+        const dvlaApiKey = process.env.DVLA_API_KEY;
         
-        if (response.data.colour) {
-          const { formatColor } = require('../utils/colorFormatter');
-          this.color = formatColor(response.data.colour);
-          console.log(`✅ [Car Model] Color fetched and set: ${this.color}`);
+        if (dvlaApiKey) {
+          const response = await axios.post(
+            'https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles',
+            { registrationNumber: this.registrationNumber },
+            {
+              headers: {
+                'x-api-key': dvlaApiKey,
+                'Content-Type': 'application/json'
+              },
+              timeout: 5000
+            }
+          );
+          
+          // Fetch color if missing
+          if (needsColor && response.data.colour) {
+            const { formatColor } = require('../utils/colorFormatter');
+            this.color = formatColor(response.data.colour);
+            console.log(`✅ [Car Model] Color fetched: ${this.color}`);
+          }
+          
+          // Fetch MOT expiry if missing
+          if (needsMOT && response.data.motExpiryDate) {
+            this.motDue = new Date(response.data.motExpiryDate);
+            this.motExpiry = new Date(response.data.motExpiryDate);
+            console.log(`✅ [Car Model] MOT expiry fetched: ${this.motDue.toDateString()}`);
+          }
         }
+      } catch (error) {
+        // Don't fail the save if fetch fails
+        console.log(`⚠️  [Car Model] Could not fetch data: ${error.message}`);
       }
-    } catch (error) {
-      // Don't fail the save if color fetch fails
-      console.log(`⚠️  [Car Model] Could not fetch color: ${error.message}`);
     }
   }
   
