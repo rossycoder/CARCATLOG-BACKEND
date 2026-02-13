@@ -736,6 +736,7 @@ async function handlePaymentSuccess(paymentIntent) {
                 
                 van = new Van({
                   advertId: advertId,
+                  userId: userId, // Add userId field
                   make: vehicleData.make || 'Unknown',
                   model: vehicleData.model || 'Unknown',
                   year: vehicleData.year || new Date().getFullYear(),
@@ -1512,7 +1513,7 @@ async function createBikeCheckoutSession(req, res) {
     const { 
       packageId, packageName, price, duration,
       advertId, advertData, vehicleData, contactDetails,
-      vehicleType
+      vehicleType, userId // Add userId from request body
     } = req.body;
     
     console.log('📦 createBikeCheckoutSession called with:', {
@@ -1585,7 +1586,7 @@ async function createBikeCheckoutSession(req, res) {
         advertData: JSON.stringify(safeAdvertData),
         vehicleData: JSON.stringify(safeVehicleData),
         contactDetails: JSON.stringify(safeContactDetails),
-        userId: req.user ? (req.user._id || req.user.id).toString() : null
+        userId: userId || (req.user ? (req.user._id || req.user.id).toString() : null)
       }
     });
 
@@ -1667,7 +1668,7 @@ async function createBikeCheckoutSession(req, res) {
           console.log(`📝 Creating NEW bike document`);
           bike = new Bike({
             advertId: advertId,
-            userId: req.user ? (req.user._id || req.user.id) : null, // Add userId field
+            userId: userId || (req.user ? (req.user._id || req.user.id) : null), // Use userId from request body
             make: vehicleData.make || 'Unknown',
             model: vehicleData.model || 'Unknown',
             year: vehicleData.year || new Date().getFullYear(),
@@ -1760,7 +1761,7 @@ async function createVanCheckoutSession(req, res) {
     const { 
       packageId, packageName, price, duration, durationDays,
       advertId, advertData, vehicleData, contactDetails,
-      vehicleType
+      vehicleType, userId // Add userId from request body
     } = req.body;
     
     console.log('📦 createVanCheckoutSession called with:', {
@@ -1832,7 +1833,8 @@ async function createVanCheckoutSession(req, res) {
         vehicleType: 'van',
         advertData: JSON.stringify(safeAdvertData),
         vehicleData: JSON.stringify(safeVehicleData),
-        contactDetails: JSON.stringify(safeContactDetails)
+        contactDetails: JSON.stringify(safeContactDetails),
+        userId: userId || (req.user ? (req.user._id || req.user.id).toString() : null)
       }
     });
 
@@ -1914,6 +1916,7 @@ async function createVanCheckoutSession(req, res) {
           console.log(`📝 Creating NEW van document`);
           van = new Van({
             advertId: advertId,
+            userId: userId || (req.user ? (req.user._id || req.user.id) : null), // Add userId field
             make: vehicleData.make || 'Unknown',
             model: vehicleData.model || 'Unknown',
             year: vehicleData.year || new Date().getFullYear(),

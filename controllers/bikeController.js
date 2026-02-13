@@ -1,5 +1,5 @@
 const Bike = require('../models/Bike');
-const lightweightBikeService = require('./../services/universalAutoCompleteService');
+const lightweightBikeService = require('../services/lightweightBikeService');
 const motHistoryService = require('../services/motHistoryService');
 const historyService = require('../services/historyService');
 const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');

@@ -552,6 +552,78 @@ carSchema.index({ vehicleType: 1, condition: 1 });
 
 // Pre-save hook for validation and normalization
 carSchema.pre('save', async function(next) {
+  // CRITICAL: Auto-fetch coordinates from postcode if missing
+  // This ensures ALL cars can be found in postcode searches
+  if (this.postcode && this.isNew) {
+    const needsCoordinates = !this.coordinates?.latitude || !this.latitude;
+    const needsLocationName = !this.locationName;
+    
+    if (needsCoordinates || needsLocationName) {
+      try {
+        console.log(`📍 [Car Model] Fetching coordinates for postcode: ${this.postcode}`);
+        const postcodeService = require('../services/postcodeService');
+        const postcodeData = await postcodeService.lookupPostcode(this.postcode);
+        
+        if (postcodeData) {
+          // Set coordinates in multiple formats for compatibility
+          this.coordinates = {
+            latitude: postcodeData.latitude,
+            longitude: postcodeData.longitude
+          };
+          this.latitude = postcodeData.latitude;
+          this.longitude = postcodeData.longitude;
+          
+          // Set GeoJSON location for geospatial queries
+          this.location = {
+            type: 'Point',
+            coordinates: [postcodeData.longitude, postcodeData.latitude]
+          };
+          
+          // Set location name
+          this.locationName = postcodeData.locationName;
+          
+          console.log(`✅ [Car Model] Coordinates set: ${postcodeData.latitude}, ${postcodeData.longitude}`);
+          console.log(`✅ [Car Model] Location name set: ${postcodeData.locationName}`);
+        } else {
+          console.log(`⚠️  [Car Model] Could not fetch coordinates for postcode: ${this.postcode}`);
+          // Set a default location name based on postcode area
+          if (!this.locationName) {
+            const postcodeArea = this.postcode.substring(0, 2).toUpperCase();
+            const areaNames = {
+              'SW': 'London',
+              'SE': 'London',
+              'NW': 'London',
+              'NE': 'London',
+              'E': 'London',
+              'W': 'London',
+              'N': 'London',
+              'EC': 'London',
+              'WC': 'London',
+              'M': 'Manchester',
+              'B': 'Birmingham',
+              'L': 'Liverpool',
+              'LS': 'Leeds',
+              'S': 'Sheffield',
+              'BS': 'Bristol',
+              'G': 'Glasgow',
+              'EH': 'Edinburgh',
+              'CF': 'Cardiff',
+              'SS': 'Essex'
+            };
+            this.locationName = areaNames[postcodeArea] || 'UK';
+            console.log(`✅ [Car Model] Set default location name: ${this.locationName}`);
+          }
+        }
+      } catch (error) {
+        console.log(`⚠️  [Car Model] Error fetching coordinates: ${error.message}`);
+        // Set default location name if fetch fails
+        if (!this.locationName) {
+          this.locationName = 'UK';
+        }
+      }
+    }
+  }
+  
   // Auto-fetch color and MOT from DVLA if missing
   if (this.registrationNumber && this.isNew) {
     const needsColor = !this.color || this.color === 'null';
