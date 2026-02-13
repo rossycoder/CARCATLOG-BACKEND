@@ -624,19 +624,28 @@ carSchema.pre('save', async function(next) {
     }
   }
   
-  // Auto-fetch color, MOT, and tax from DVLA if missing or on every save
-  if (this.registrationNumber) {
+  // Auto-fetch color, MOT, and tax from DVLA when needed
+  // Skip if explicitly disabled (e.g., when syncing from VehicleHistory)
+  if (this.registrationNumber && !this.$locals.skipPreSave) {
     const needsColor = !this.color || this.color === 'null';
-    const needsMOT = !this.motDue;
     const needsTax = !this.taxStatus;
     
-    // CRITICAL: Always fetch MOT on new cars, or if MOT is missing/invalid
-    // This ensures MOT date is always accurate from DVLA
-    const shouldFetchMOT = this.isNew || needsMOT || (this.motDue && new Date(this.motDue) > new Date(Date.now() + 365 * 24 * 60 * 60 * 1000));
+    // CRITICAL: Fetch MOT from DVLA in these cases:
+    // 1. New car (this.isNew)
+    // 2. MOT is missing (!this.motDue)
+    // 3. MOT date is suspicious (>1 year in future)
+    // 4. MOT was just modified by user (needs validation)
+    const motDateSuspicious = this.motDue && new Date(this.motDue) > new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    const motWasModified = this.isModified('motDue');
+    const shouldFetchMOT = this.isNew || !this.motDue || motDateSuspicious || motWasModified;
     
     if (needsColor || shouldFetchMOT || needsTax) {
       try {
         console.log(`🔍 [Car Model] Fetching data from DVLA for ${this.registrationNumber}...`);
+        if (shouldFetchMOT) {
+          console.log(`   Reason: ${this.isNew ? 'New car' : !this.motDue ? 'MOT missing' : motDateSuspicious ? 'Suspicious date' : 'MOT modified'}`);
+        }
+        
         const axios = require('axios');
         const dvlaApiKey = process.env.DVLA_API_KEY;
         
@@ -660,15 +669,16 @@ carSchema.pre('save', async function(next) {
             console.log(`✅ [Car Model] Color fetched: ${this.color}`);
           }
           
-          // CRITICAL: Always fetch and update MOT from DVLA (most accurate source)
-          if (response.data.motExpiryDate) {
+          // CRITICAL: Fetch and update MOT from DVLA when needed
+          // This ensures MOT is ALWAYS correct from official source
+          if (shouldFetchMOT && response.data.motExpiryDate) {
             const motDate = new Date(response.data.motExpiryDate);
             this.motDue = motDate;
             this.motExpiry = motDate;
             this.motStatus = response.data.motStatus || 'Valid';
             console.log(`✅ [Car Model] MOT expiry fetched from DVLA: ${motDate.toDateString()}`);
             console.log(`✅ [Car Model] MOT status: ${this.motStatus}`);
-          } else {
+          } else if (shouldFetchMOT) {
             console.log(`⚠️  [Car Model] No MOT expiry date in DVLA response`);
           }
           

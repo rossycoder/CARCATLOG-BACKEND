@@ -262,6 +262,9 @@ class HistoryService {
       // Store result (now includes running costs)
       const stored = await this.storeHistoryResult(vrm, result);
       
+      // CRITICAL FIX: Sync MOT data from VehicleHistory to Car model
+      await this.syncMOTDataToCar(vrm, stored);
+      
       return stored.toObject();
     } catch (error) {
       const responseTime = Date.now() - startTime;
@@ -441,6 +444,73 @@ class HistoryService {
       }
 
       throw error;
+    }
+  }
+
+  /**
+   * Sync MOT data from VehicleHistory to Car model
+   * This ensures MOT data from CheckCarDetails API is saved to the Car model
+   * @param {string} vrm - Vehicle Registration Mark
+   * @param {Object} vehicleHistory - VehicleHistory document
+   * @returns {Promise<void>}
+   */
+  async syncMOTDataToCar(vrm, vehicleHistory) {
+    try {
+      console.log(`🔄 [HistoryService] Syncing MOT data to Car model for ${vrm}...`);
+      
+      // Find the car by registration number
+      const Car = require('../models/Car');
+      const car = await Car.findOne({ 
+        registrationNumber: vrm.toUpperCase() 
+      });
+      
+      if (!car) {
+        console.log(`⚠️  [HistoryService] No car found with VRM ${vrm}, skipping MOT sync`);
+        return;
+      }
+      
+      // Update MOT data from VehicleHistory
+      let updated = false;
+      
+      if (vehicleHistory.motStatus) {
+        car.motStatus = vehicleHistory.motStatus;
+        updated = true;
+        console.log(`   ✅ MOT status: ${vehicleHistory.motStatus}`);
+      }
+      
+      if (vehicleHistory.motExpiryDate) {
+        car.motDue = vehicleHistory.motExpiryDate;
+        car.motExpiry = vehicleHistory.motExpiryDate;
+        updated = true;
+        console.log(`   ✅ MOT expiry: ${new Date(vehicleHistory.motExpiryDate).toDateString()}`);
+      }
+      
+      // Also sync other useful data from history check
+      if (vehicleHistory.colour && (!car.color || car.color === 'null')) {
+        car.color = vehicleHistory.colour;
+        updated = true;
+        console.log(`   ✅ Color: ${vehicleHistory.colour}`);
+      }
+      
+      if (vehicleHistory.numberOfPreviousKeepers !== undefined) {
+        car.previousOwners = vehicleHistory.numberOfPreviousKeepers;
+        updated = true;
+        console.log(`   ✅ Previous owners: ${vehicleHistory.numberOfPreviousKeepers}`);
+      }
+      
+      // Save the car if any updates were made
+      if (updated) {
+        // Disable the pre-save hook temporarily to avoid re-fetching from DVLA
+        car.$locals.skipPreSave = true;
+        await car.save();
+        console.log(`✅ [HistoryService] MOT data synced to Car model for ${vrm}`);
+      } else {
+        console.log(`ℹ️  [HistoryService] No MOT data to sync for ${vrm}`);
+      }
+      
+    } catch (error) {
+      // Don't throw error - this is a non-critical operation
+      console.error(`❌ [HistoryService] Failed to sync MOT data to Car model for ${vrm}:`, error.message);
     }
   }
 }
