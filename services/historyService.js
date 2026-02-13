@@ -187,6 +187,9 @@ class HistoryService {
         
         // Add mileage if available
         mileage: result.mileage,
+        
+        // CRITICAL: Add MOT history if available
+        motHistory: result.motHistory || result.motTests || []
       };
 
       // IMPORTANT: Delete any existing records for this VRM first to prevent duplicates

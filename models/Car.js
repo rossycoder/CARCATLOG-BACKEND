@@ -1137,7 +1137,13 @@ carSchema.pre('save', async function(next) {
       }
       
       console.log(`🔍 Fetching MOT history from CheckCarDetails API for: ${this.registrationNumber}`);
-      const motData = await CheckCarDetailsClient.getMOTHistory(this.registrationNumber);
+      
+      // Create client instance
+      const apiKey = process.env.CHECKCARD_API_KEY;
+      const baseUrl = process.env.CHECKCARD_API_BASE_URL || 'https://api.checkcardetails.co.uk';
+      const client = new CheckCarDetailsClient(apiKey, baseUrl, false);
+      
+      const motData = await client.getMOTHistory(this.registrationNumber);
       
       if (motData && motData.tests && motData.tests.length > 0) {
         console.log(`✅ MOT history fetched from API: ${motData.tests.length} tests for ${this.registrationNumber}`);
