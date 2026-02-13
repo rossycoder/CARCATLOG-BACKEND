@@ -624,12 +624,17 @@ carSchema.pre('save', async function(next) {
     }
   }
   
-  // Auto-fetch color and MOT from DVLA if missing
-  if (this.registrationNumber && this.isNew) {
+  // Auto-fetch color, MOT, and tax from DVLA if missing or on every save
+  if (this.registrationNumber) {
     const needsColor = !this.color || this.color === 'null';
     const needsMOT = !this.motDue;
+    const needsTax = !this.taxStatus;
     
-    if (needsColor || needsMOT) {
+    // CRITICAL: Always fetch MOT on new cars, or if MOT is missing/invalid
+    // This ensures MOT date is always accurate from DVLA
+    const shouldFetchMOT = this.isNew || needsMOT || (this.motDue && new Date(this.motDue) > new Date(Date.now() + 365 * 24 * 60 * 60 * 1000));
+    
+    if (needsColor || shouldFetchMOT || needsTax) {
       try {
         console.log(`🔍 [Car Model] Fetching data from DVLA for ${this.registrationNumber}...`);
         const axios = require('axios');
@@ -655,16 +660,30 @@ carSchema.pre('save', async function(next) {
             console.log(`✅ [Car Model] Color fetched: ${this.color}`);
           }
           
-          // Fetch MOT expiry if missing
-          if (needsMOT && response.data.motExpiryDate) {
-            this.motDue = new Date(response.data.motExpiryDate);
-            this.motExpiry = new Date(response.data.motExpiryDate);
-            console.log(`✅ [Car Model] MOT expiry fetched: ${this.motDue.toDateString()}`);
+          // CRITICAL: Always fetch and update MOT from DVLA (most accurate source)
+          if (response.data.motExpiryDate) {
+            const motDate = new Date(response.data.motExpiryDate);
+            this.motDue = motDate;
+            this.motExpiry = motDate;
+            this.motStatus = response.data.motStatus || 'Valid';
+            console.log(`✅ [Car Model] MOT expiry fetched from DVLA: ${motDate.toDateString()}`);
+            console.log(`✅ [Car Model] MOT status: ${this.motStatus}`);
+          } else {
+            console.log(`⚠️  [Car Model] No MOT expiry date in DVLA response`);
+          }
+          
+          // Fetch tax status if missing
+          if (needsTax && response.data.taxStatus) {
+            this.taxStatus = response.data.taxStatus;
+            if (response.data.taxDueDate) {
+              this.taxDueDate = new Date(response.data.taxDueDate);
+            }
+            console.log(`✅ [Car Model] Tax status fetched: ${this.taxStatus}`);
           }
         }
       } catch (error) {
         // Don't fail the save if fetch fails
-        console.log(`⚠️  [Car Model] Could not fetch data: ${error.message}`);
+        console.log(`⚠️  [Car Model] Could not fetch data from DVLA: ${error.message}`);
       }
     }
   }
