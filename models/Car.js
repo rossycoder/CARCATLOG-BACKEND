@@ -1131,8 +1131,8 @@ carSchema.pre('save', async function(next) {
       
       // Validate API key is available
       if (!process.env.CHECKCARD_API_KEY) {
-        console.log(`⚠️  CHECKCARD_API_KEY not found - adding sample MOT data for ${this.registrationNumber}`);
-        this.addSampleMOTData();
+        console.log(`⚠️  CHECKCARD_API_KEY not found - skipping MOT history fetch for ${this.registrationNumber}`);
+        // Don't add fake sample data - MOT will be fetched from DVLA in pre-save hook
         return;
       }
       
@@ -1185,22 +1185,20 @@ carSchema.pre('save', async function(next) {
         
         console.log(`✅ MOT history automatically saved for new car: ${this.registrationNumber}`);
       } else {
-        console.log(`ℹ️  No MOT history found in API response for ${this.registrationNumber} - adding sample data`);
-        this.addSampleMOTData();
+        console.log(`ℹ️  No MOT history found in API response for ${this.registrationNumber}`);
+        // Don't add fake sample data - MOT will be fetched from DVLA in pre-save hook
       }
     } catch (error) {
       console.error(`❌ MOT history API call failed for ${this.registrationNumber}:`, error.message);
       
       // Check if it's a daily limit error (403)
       if (error.isDailyLimitError || error.details?.status === 403 || error.message.includes('daily limit')) {
-        console.log(`⏰ API daily limit exceeded - adding sample MOT data for now`);
-        console.log(`   Real MOT history can be added later when API limit resets`);
+        console.log(`⏰ API daily limit exceeded - MOT will be fetched from DVLA instead`);
       } else {
-        console.log(`🔧 API error - adding sample MOT data for ${this.registrationNumber}`);
+        console.log(`🔧 API error - MOT will be fetched from DVLA for ${this.registrationNumber}`);
       }
       
-      // Add sample MOT data as fallback
-      this.addSampleMOTData();
+      // Don't add fake sample data - MOT will be fetched from DVLA in pre-save hook
     }
   }
   
@@ -1387,6 +1385,9 @@ carSchema.statics.deleteCarWithCleanup = async function(carId) {
 };
 
 // Instance method to add sample MOT data when API fails
+// DISABLED: This was generating fake future MOT dates
+// MOT data should come from DVLA API or CheckCarDetails API only
+/*
 carSchema.methods.addSampleMOTData = function() {
   console.log(`🔧 Adding sample MOT data for ${this.registrationNumber}`);
   
@@ -1452,8 +1453,11 @@ carSchema.methods.addSampleMOTData = function() {
     console.log(`✅ Sample MOT data added: ${sampleMOTData.length} tests, latest: ${latestTest.testResult}`);
   }
 };
+*/
 
 // Instance method to generate sample defects
+// DISABLED: Part of fake MOT data generation
+/*
 carSchema.methods.generateSampleDefects = function(testResult) {
   const defects = [];
   
@@ -1488,8 +1492,11 @@ carSchema.methods.generateSampleDefects = function(testResult) {
   
   return defects;
 };
+*/
 
 // Instance method to generate sample advisories
+// DISABLED: Part of fake MOT data generation
+/*
 carSchema.methods.generateSampleAdvisories = function() {
   const advisories = [
     'Nearside front tyre worn close to legal limit (5.2.3 (e))',
@@ -1510,6 +1517,7 @@ carSchema.methods.generateSampleAdvisories = function() {
   
   return selectedAdvisories;
 };
+*/
 
 // Pre-save hook to ensure MOT due date is always set from MOT history
 carSchema.pre('save', function(next) {
