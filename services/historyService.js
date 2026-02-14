@@ -259,6 +259,30 @@ class HistoryService {
         // Continue without running costs - not critical
       }
       
+      // CRITICAL FIX: Fetch MOT history separately (not included in carhistorycheck endpoint)
+      try {
+        console.log(`🔧 Fetching MOT history for ${vrm}...`);
+        const motData = await this.client.getMOTHistory(vrm);
+        
+        // Extract MOT history from the response
+        if (motData) {
+          // MOT history array
+          result.motHistory = motData.tests || motData.motHistory || motData.motTests || [];
+          
+          // MOT status and expiry
+          result.motStatus = motData.motStatus || null;
+          result.motExpiryDate = motData.motDueDate || motData.motExpiryDate || null;
+          
+          console.log(`✅ MOT history fetched: ${result.motHistory.length} tests, Status: ${result.motStatus}`);
+        }
+      } catch (motError) {
+        console.warn(`⚠️  Failed to fetch MOT history for ${vrm}:`, motError.message);
+        // Continue without MOT history - not critical
+        result.motHistory = [];
+        result.motStatus = null;
+        result.motExpiryDate = null;
+      }
+      
       const responseTime = Date.now() - startTime;
       console.log(`History API call completed in ${responseTime}ms`);
 
@@ -486,6 +510,13 @@ class HistoryService {
         car.motExpiry = vehicleHistory.motExpiryDate;
         updated = true;
         console.log(`   ✅ MOT expiry: ${new Date(vehicleHistory.motExpiryDate).toDateString()}`);
+      }
+      
+      // CRITICAL: Sync MOT history array
+      if (vehicleHistory.motHistory && Array.isArray(vehicleHistory.motHistory) && vehicleHistory.motHistory.length > 0) {
+        car.motHistory = vehicleHistory.motHistory;
+        updated = true;
+        console.log(`   ✅ MOT history: ${vehicleHistory.motHistory.length} tests`);
       }
       
       // Also sync other useful data from history check
