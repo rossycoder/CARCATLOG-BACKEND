@@ -631,19 +631,24 @@ carSchema.pre('save', async function(next) {
     const needsTax = !this.taxStatus;
     
     // CRITICAL: Fetch MOT from DVLA in these cases:
-    // 1. New car (this.isNew)
+    // 1. New car (this.isNew) AND no MOT history from CheckCarDetails
     // 2. MOT is missing (!this.motDue)
     // 3. MOT date is suspicious (>1 year in future)
     // 4. MOT was just modified by user (needs validation)
+    const hasMOTHistory = this.motHistory && this.motHistory.length > 0;
     const motDateSuspicious = this.motDue && new Date(this.motDue) > new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
     const motWasModified = this.isModified('motDue');
-    const shouldFetchMOT = this.isNew || !this.motDue || motDateSuspicious || motWasModified;
+    // Don't fetch from DVLA if we already have MOT history from CheckCarDetails API
+    const shouldFetchMOT = !hasMOTHistory && (this.isNew || !this.motDue || motDateSuspicious || motWasModified);
     
     if (needsColor || shouldFetchMOT || needsTax) {
       try {
         console.log(`🔍 [Car Model] Fetching data from DVLA for ${this.registrationNumber}...`);
         if (shouldFetchMOT) {
           console.log(`   Reason: ${this.isNew ? 'New car' : !this.motDue ? 'MOT missing' : motDateSuspicious ? 'Suspicious date' : 'MOT modified'}`);
+        }
+        if (hasMOTHistory) {
+          console.log(`   ℹ️  Skipping DVLA MOT fetch - already have ${this.motHistory.length} tests from CheckCarDetails`);
         }
         
         const axios = require('axios');
@@ -1086,43 +1091,45 @@ carSchema.pre('save', async function(next) {
   if (this.isNew && this.registrationNumber && this.historyCheckStatus === 'pending') {
     // Skip API calls if flag is set (payment controller will handle it)
     if (this._skipAPICallsInHooks) {
-      console.log(`⏭️  Skipping history check in pre-save hook (will be handled by payment controller)`);
-      return next();
-    }
-    
-    try {
-      const HistoryService = require('../services/historyService');
-      const historyService = new HistoryService();
-      
-      console.log(`🔍 Triggering history check for new listing: ${this.registrationNumber}`);
-      
-      // Perform history check
-      const historyResult = await historyService.checkVehicleHistory(this.registrationNumber);
-      
-      // Update listing with history check results
-      this.historyCheckStatus = 'verified';
-      this.historyCheckDate = new Date();
-      this.historyCheckId = historyResult._id;
-      
-      console.log(`✅ History check completed for ${this.registrationNumber}: ${historyResult.checkStatus}`);
-    } catch (error) {
-      console.error(`❌ History check failed for ${this.registrationNumber}:`, error.message);
-      
-      // Check if it's a daily limit error (403)
-      if (error.isDailyLimitError || error.details?.status === 403 || error.message.includes('daily limit')) {
-        console.log(`⏰ API daily limit exceeded - skipping history check for now`);
-        console.log(`   History can be added later when API limit resets`);
-        this.historyCheckStatus = 'pending'; // Keep as pending so it can be retried later
-      } else {
-        // Mark as failed for other errors
-        this.historyCheckStatus = 'failed';
+      console.log(`⏭️  Skipping history check and MOT fetch in pre-save hook (will be handled by payment controller)`);
+      // Don't return early - let other pre-save logic run (coordinates, etc.)
+      // Just skip the API calls below
+    } else {
+      try {
+        const HistoryService = require('../services/historyService');
+        const historyService = new HistoryService();
+        
+        console.log(`🔍 Triggering history check for new listing: ${this.registrationNumber}`);
+        
+        // Perform history check
+        const historyResult = await historyService.checkVehicleHistory(this.registrationNumber);
+        
+        // Update listing with history check results
+        this.historyCheckStatus = 'verified';
+        this.historyCheckDate = new Date();
+        this.historyCheckId = historyResult._id;
+        
+        console.log(`✅ History check completed for ${this.registrationNumber}: ${historyResult.checkStatus}`);
+      } catch (error) {
+        console.error(`❌ History check failed for ${this.registrationNumber}:`, error.message);
+        
+        // Check if it's a daily limit error (403)
+        if (error.isDailyLimitError || error.details?.status === 403 || error.message.includes('daily limit')) {
+          console.log(`⏰ API daily limit exceeded - skipping history check for now`);
+          console.log(`   History can be added later when API limit resets`);
+          this.historyCheckStatus = 'pending'; // Keep as pending so it can be retried later
+        } else {
+          // Mark as failed for other errors
+          this.historyCheckStatus = 'failed';
+        }
+        this.historyCheckDate = new Date();
       }
-      this.historyCheckDate = new Date();
     }
   }
 
   // MOT History check for new listings with registration numbers
-  if (this.isNew && this.registrationNumber && (!this.motHistory || this.motHistory.length === 0)) {
+  // Skip if payment controller will handle it
+  if (this.isNew && this.registrationNumber && (!this.motHistory || this.motHistory.length === 0) && !this._skipAPICallsInHooks) {
     try {
       console.log(`🔍 Triggering MOT history check for new listing: ${this.registrationNumber}`);
       
