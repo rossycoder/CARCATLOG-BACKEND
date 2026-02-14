@@ -1249,6 +1249,23 @@ class UniversalAutoCompleteService {
     vehicle.dealerPrice = parsedData.dealerPrice || vehicle.dealerPrice;
     vehicle.partExchangePrice = parsedData.partExchangePrice || vehicle.partExchangePrice;
     
+    // Calculate annual tax if not provided by API
+    if (!parsedData.annualTax && parsedData.co2Emissions && vehicle.year) {
+      const { calculateAnnualTax } = require('../utils/taxCalculator');
+      const calculatedTax = calculateAnnualTax({
+        year: vehicle.year,
+        co2Emissions: parsedData.co2Emissions,
+        engineSize: parsedData.engineSize || vehicle.engineSize,
+        price: vehicle.price,
+        fuelType: parsedData.fuelType || vehicle.fuelType
+      });
+      
+      if (calculatedTax !== null) {
+        parsedData.annualTax = calculatedTax;
+        console.log(`💰 [UniversalService] Calculated annual tax: £${calculatedTax} (CO2: ${parsedData.co2Emissions}g/km, Year: ${vehicle.year})`);
+      }
+    }
+    
     // Vehicle history reference
     if (vehicleHistory) {
       vehicle.historyCheckId = vehicleHistory._id;
