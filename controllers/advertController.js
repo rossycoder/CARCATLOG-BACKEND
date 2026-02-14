@@ -92,11 +92,82 @@ const createAdvert = async (req, res) => {
     console.log(`✅ Car saved with displayTitle: "${car.displayTitle}"`);
     console.log(`✅ Car saved: ${advertId}`);
     
+    // CRITICAL: Sync MOT data from VehicleHistory to Car model after car is saved
+    if (car.registrationNumber) {
+      try {
+        const VehicleHistory = require('../models/VehicleHistory');
+        const history = await VehicleHistory.findOne({ 
+          vrm: car.registrationNumber.toUpperCase() 
+        }).sort({ checkDate: -1 });
+        
+        if (history && history.motHistory && history.motHistory.length > 0) {
+          console.log(`🔄 Syncing MOT data from VehicleHistory for ${car.registrationNumber}`);
+          
+          // Normalize MOT history
+          const normalizedMotHistory = history.motHistory.map(test => ({
+            testDate: test.testDate || test.completedDate || test.date,
+            expiryDate: test.expiryDate,
+            testResult: test.testResult || test.result || 'PASSED',
+            odometerValue: test.odometerValue || test.mileage,
+            odometerUnit: (test.odometerUnit || 'MI').toLowerCase(),
+            testNumber: test.testNumber,
+            testCertificateNumber: test.testCertificateNumber,
+            defects: test.defects || [],
+            advisoryText: test.advisoryText || [],
+            testClass: test.testClass,
+            testType: test.testType,
+            completedDate: test.completedDate || test.testDate,
+            testStation: test.testStation
+          })).filter(test => test.testDate);
+          
+          car.motHistory = normalizedMotHistory;
+          
+          if (history.motStatus) {
+            car.motStatus = history.motStatus;
+          }
+          
+          if (history.motExpiryDate) {
+            car.motDue = history.motExpiryDate;
+            car.motExpiry = history.motExpiryDate;
+          }
+          
+          car.$locals.skipPreSave = true;
+          await car.save();
+          
+          console.log(`✅ MOT data synced: ${normalizedMotHistory.length} tests, Due: ${car.motDue ? new Date(car.motDue).toDateString() : 'NOT SET'}`);
+        } else {
+          console.log(`⚠️  No MOT history found in VehicleHistory for ${car.registrationNumber}`);
+        }
+      } catch (syncError) {
+        console.error(`❌ Failed to sync MOT data:`, syncError.message);
+        // Don't fail the request - continue without MOT data
+      }
+    }
+    
     res.status(201).json({
       success: true,
       data: {
         id: advertId,
-        vehicleData: { ...vehicleData, estimatedValue: estimatedPrice },
+        vehicleData: { 
+          ...vehicleData, 
+          estimatedValue: estimatedPrice,
+          // CRITICAL: Include valuation structure for frontend
+          valuation: car.valuation ? {
+            privatePrice: car.valuation.privatePrice,
+            dealerPrice: car.valuation.dealerPrice,
+            partExchangePrice: car.valuation.partExchangePrice
+          } : null,
+          allValuations: car.valuation ? {
+            private: car.valuation.privatePrice,
+            retail: car.valuation.dealerPrice,
+            trade: car.valuation.partExchangePrice
+          } : null,
+          // CRITICAL: Include MOT data for frontend
+          motDue: car.motDue,
+          motExpiry: car.motExpiry,
+          motStatus: car.motStatus,
+          motHistory: car.motHistory
+        },
         advertData: {
           price: estimatedPrice,
           description: '',
@@ -155,7 +226,23 @@ const getAdvert = async (req, res) => {
           bodyType: car.bodyType,
           doors: car.doors,
           seats: car.seats,
-          estimatedValue: privatePrice
+          estimatedValue: privatePrice,
+          // CRITICAL: Include MOT data for frontend display
+          motDue: car.motDue,
+          motExpiry: car.motExpiry,
+          motStatus: car.motStatus,
+          motHistory: car.motHistory,
+          // CRITICAL: Include valuation structure for frontend
+          valuation: car.valuation ? {
+            privatePrice: car.valuation.privatePrice,
+            dealerPrice: car.valuation.dealerPrice,
+            partExchangePrice: car.valuation.partExchangePrice
+          } : null,
+          allValuations: car.valuation ? {
+            private: car.valuation.privatePrice,
+            retail: car.valuation.dealerPrice,
+            trade: car.valuation.partExchangePrice
+          } : null
         },
         advertData: {
           price: privatePrice,
