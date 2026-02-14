@@ -308,23 +308,10 @@ class VehicleController {
 
       await car.save();
 
-      // Step 6: Use Universal Auto Complete Service for final data completion
-      // The Universal Service handles all data fetching, caching, and race condition prevention
-      try {
-        console.log(`[Vehicle Controller] Using Universal Service for final data completion: ${registrationNumber}`);
-        
-        // Use Universal Service to complete all vehicle data
-        const completeVehicle = await universalService.completeCarData(car, false);
-        
-        console.log(`[Vehicle Controller] Universal Service completion successful`);
-        console.log(`   Vehicle data fully populated and saved`);
-        console.log(`   Running costs, MOT history, and valuations included`);
-        
-      } catch (universalError) {
-        // Don't fail the car creation if Universal Service fails
-        console.warn(`[Vehicle Controller] Universal Service completion failed: ${universalError.message}`);
-        // Car is already saved with basic data, so this is not critical
-      }
+      // REMOVED: Second Universal Service call - data already fetched above (line 203)
+      // The Universal Service was already called before car creation to populate carData
+      // Calling it again here causes duplicate API calls and wastes money
+      // The car.save() will use the data already in carData from the first Universal Service call
 
       // Update purchase record with vehicle ID
       purchase.vehicleId = car._id;
