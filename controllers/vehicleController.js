@@ -372,6 +372,7 @@ class VehicleController {
    * POST /api/vehicles/dvla-lookup
    * Lookup vehicle from DVLA without creating database record
    * Enhanced to also fetch data from CheckCarDetails for comprehensive information
+   * CRITICAL: Checks database FIRST to avoid duplicate API calls
    */
   async dvlaLookup(req, res, next) {
     try {
@@ -390,8 +391,127 @@ class VehicleController {
 
       const { registrationNumber } = req.body;
 
-      // Lookup vehicle from both DVLA and CheckCarDetails
       console.log(`[Vehicle Controller] Enhanced lookup for: ${registrationNumber}`);
+      
+      // CRITICAL: Check database FIRST to avoid duplicate API calls
+      const Car = require('../models/Car');
+      const VehicleHistory = require('../models/VehicleHistory');
+      
+      const existingCar = await Car.findOne({ 
+        registrationNumber: registrationNumber.toUpperCase() 
+      });
+      
+      if (existingCar) {
+        console.log(`✅ [Vehicle Controller] Car already exists in database - returning cached data`);
+        console.log(`   Status: ${existingCar.advertStatus}`);
+        console.log(`   MOT Due: ${existingCar.motDue ? new Date(existingCar.motDue).toDateString() : 'NOT SET'}`);
+        console.log(`   💰 Saved API call cost!`);
+        
+        // Return existing car data in the same format as API response
+        return res.json({
+          success: true,
+          data: {
+            make: existingCar.make,
+            model: existingCar.model,
+            colour: existingCar.color,
+            fuelType: existingCar.fuelType,
+            yearOfManufacture: existingCar.year,
+            engineCapacity: existingCar.engineSize,
+            bodyType: existingCar.bodyType,
+            transmission: existingCar.transmission,
+            previousOwners: existingCar.previousOwners || 0,
+            vin: existingCar.vin,
+            co2Emissions: existingCar.co2Emissions,
+            taxStatus: existingCar.taxStatus,
+            taxDueDate: existingCar.taxDueDate,
+            motStatus: existingCar.motStatus,
+            motExpiryDate: existingCar.motDue || existingCar.motExpiry,
+            _sources: {
+              database: true,
+              dvla: false,
+              checkCarDetails: false
+            },
+            _existingCarId: existingCar._id,
+            _message: 'Vehicle already exists in database - using cached data to save API costs'
+          },
+          vehicle: {
+            make: existingCar.make,
+            model: existingCar.model,
+            colour: existingCar.color,
+            fuelType: existingCar.fuelType,
+            yearOfManufacture: existingCar.year,
+            engineCapacity: existingCar.engineSize,
+            bodyType: existingCar.bodyType,
+            transmission: existingCar.transmission,
+            previousOwners: existingCar.previousOwners || 0,
+            vin: existingCar.vin,
+            co2Emissions: existingCar.co2Emissions,
+            taxStatus: existingCar.taxStatus,
+            taxDueDate: existingCar.taxDueDate,
+            motStatus: existingCar.motStatus,
+            motExpiryDate: existingCar.motDue || existingCar.motExpiry
+          }
+        });
+      }
+      
+      // Check VehicleHistory cache (30-day cache)
+      const cachedHistory = await VehicleHistory.findOne({ 
+        vrm: registrationNumber.toUpperCase() 
+      }).sort({ checkDate: -1 });
+      
+      if (cachedHistory) {
+        const daysSinceCheck = (Date.now() - cachedHistory.checkDate.getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSinceCheck <= 30) {
+          console.log(`✅ [Vehicle Controller] Found cached VehicleHistory (${Math.floor(daysSinceCheck)} days old)`);
+          console.log(`   💰 Saved API call cost!`);
+          
+          // Return cached history data
+          return res.json({
+            success: true,
+            data: {
+              make: cachedHistory.make,
+              model: cachedHistory.model,
+              colour: cachedHistory.colour,
+              fuelType: cachedHistory.fuelType,
+              yearOfManufacture: cachedHistory.yearOfManufacture,
+              engineCapacity: cachedHistory.engineCapacity,
+              bodyType: cachedHistory.bodyType,
+              transmission: cachedHistory.transmission,
+              previousOwners: cachedHistory.previousOwners || cachedHistory.numberOfPreviousKeepers || 0,
+              vin: cachedHistory.vin,
+              co2Emissions: cachedHistory.co2Emissions,
+              motStatus: cachedHistory.motStatus,
+              motExpiryDate: cachedHistory.motExpiryDate,
+              _sources: {
+                database: true,
+                cache: true,
+                dvla: false,
+                checkCarDetails: false
+              },
+              _cacheAge: Math.floor(daysSinceCheck),
+              _message: 'Using cached vehicle history to save API costs'
+            },
+            vehicle: {
+              make: cachedHistory.make,
+              model: cachedHistory.model,
+              colour: cachedHistory.colour,
+              fuelType: cachedHistory.fuelType,
+              yearOfManufacture: cachedHistory.yearOfManufacture,
+              engineCapacity: cachedHistory.engineCapacity,
+              bodyType: cachedHistory.bodyType,
+              transmission: cachedHistory.transmission,
+              previousOwners: cachedHistory.previousOwners || cachedHistory.numberOfPreviousKeepers || 0,
+              vin: cachedHistory.vin,
+              co2Emissions: cachedHistory.co2Emissions,
+              motStatus: cachedHistory.motStatus,
+              motExpiryDate: cachedHistory.motExpiryDate
+            }
+          });
+        }
+      }
+      
+      // No cache found - make API calls
+      console.log(`⚠️  [Vehicle Controller] No cache found - making API calls...`);
       
       try {
         // Call both APIs in parallel for faster response
