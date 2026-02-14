@@ -148,6 +148,7 @@ const vanRoutes = require('./routes/vanRoutes');
 const seoRoutes = require('./routes/seoRoutes');
 const electricVehicleRoutes = require('./routes/electricVehicles');
 const demoRoutes = require('./routes/demo');
+const refreshMOTRoutes = require('./routes/refreshMOT');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/vehicles', vehicleRoutes);
@@ -169,6 +170,7 @@ app.use('/api/trade/analytics', tradeAnalyticsRoutes);
 app.use('/api/bikes', bikeRoutes);
 app.use('/api/vans', vanRoutes);
 app.use('/api/seo', seoRoutes);
+app.use('/api/refresh-mot', refreshMOTRoutes); // Refresh MOT history for cars
 
 // Error handling middleware
 app.use((err, req, res, next) => {

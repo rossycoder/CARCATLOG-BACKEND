@@ -1111,20 +1111,45 @@ class UniversalAutoCompleteService {
     if (apiData.motHistory) {
       const mot = apiData.motHistory;
       
-      parsed.motStatus = mot.mot?.motStatus;
-      parsed.motDueDate = mot.mot?.motDueDate;
+      parsed.motStatus = mot.mot?.motStatus || mot.motStatus;
+      parsed.motDueDate = mot.mot?.motDueDate || mot.motDueDate;
       
-      if (mot.motHistory && mot.motHistory.length > 0) {
-        parsed.motHistory = mot.motHistory.map(test => ({
-          testDate: new Date(test.completedDate),
-          expiryDate: new Date(test.expiryDate),
-          testResult: test.testResult,
+      // Handle both direct motHistory array and nested structure
+      const motTests = mot.motHistory || mot.motTests || mot.tests || [];
+      
+      if (motTests && motTests.length > 0) {
+        parsed.motHistory = motTests.map(test => ({
+          testDate: test.completedDate ? new Date(test.completedDate) : (test.testDate ? new Date(test.testDate) : null),
+          expiryDate: test.expiryDate ? new Date(test.expiryDate) : null,
+          testResult: test.testResult || test.result || 'UNKNOWN',
           odometerValue: parseInt(test.odometerValue) || 0,
           odometerUnit: test.odometerUnit?.toLowerCase() || 'mi',
-          testNumber: test.motTestNumber,
-          defects: test.defects || []
-        }));
+          testNumber: test.motTestNumber || test.testNumber || '',
+          testCertificateNumber: test.testCertificateNumber || '',
+          defects: test.defects || test.rfrAndComments || [],
+          advisoryText: (test.defects || test.rfrAndComments || [])
+            .filter(item => item.type === 'ADVISORY')
+            .map(item => item.text)
+            .filter(text => text && text.trim().length > 0),
+          testClass: test.testClass || '',
+          testType: test.testType || '',
+          completedDate: test.completedDate ? new Date(test.completedDate) : (test.testDate ? new Date(test.testDate) : null),
+          testStation: {
+            name: test.testStationName || '',
+            number: test.testStationNumber || '',
+            address: test.testStationAddress || '',
+            postcode: test.testStationPostcode || ''
+          }
+        })).filter(test => test.testDate); // Only include tests with valid dates
+        
+        console.log(`✅ [UniversalService] Parsed ${parsed.motHistory.length} MOT tests`);
+      } else {
+        console.log(`⚠️  [UniversalService] No MOT tests found in API response`);
+        parsed.motHistory = [];
       }
+    } else {
+      console.log(`⚠️  [UniversalService] No MOT data in API response`);
+      parsed.motHistory = [];
     }
 
     // Parse Valuation
