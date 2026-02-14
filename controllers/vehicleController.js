@@ -1205,7 +1205,20 @@ class VehicleController {
           if (model) {
             modelsByMake[make].push(model);
             submodelsByMakeModel[make][model] = modelGroup.submodels.filter(Boolean).sort();
-            variantsByMakeModel[make][model] = modelGroup.variants.filter(Boolean).sort();
+            
+            // Sort variants with natural/alphanumeric sorting (A-Z, 1-9)
+            // This handles cases like "1.0", "1.2", "2.0" correctly
+            variantsByMakeModel[make][model] = modelGroup.variants
+              .filter(Boolean)
+              .sort((a, b) => {
+                // Natural sort that handles numbers correctly
+                return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+              });
+            
+            // DEBUG: Log variants order
+            if (variantsByMakeModel[make][model].length > 0) {
+              console.log(`[Vehicle Controller] Variants for ${make} ${model}:`, variantsByMakeModel[make][model]);
+            }
           }
         });
         
@@ -1326,6 +1339,9 @@ class VehicleController {
           }
         }
       };
+      
+      // DEBUG: Log variants data being sent
+      console.log('[Vehicle Controller] variantsByMakeModel:', JSON.stringify(variantsByMakeModel, null, 2));
       
       console.log('[Vehicle Controller] Returning filter options with counts');
       

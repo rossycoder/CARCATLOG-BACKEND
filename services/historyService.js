@@ -512,11 +512,28 @@ class HistoryService {
         console.log(`   ✅ MOT expiry: ${new Date(vehicleHistory.motExpiryDate).toDateString()}`);
       }
       
-      // CRITICAL: Sync MOT history array
+      // CRITICAL: Normalize and sync MOT history array
       if (vehicleHistory.motHistory && Array.isArray(vehicleHistory.motHistory) && vehicleHistory.motHistory.length > 0) {
-        car.motHistory = vehicleHistory.motHistory;
+        // Normalize MOT history data to match Car schema
+        const normalizedMotHistory = vehicleHistory.motHistory.map(test => ({
+          testDate: test.testDate || test.completedDate || test.date,
+          expiryDate: test.expiryDate,
+          testResult: test.testResult || test.result || 'PASSED',
+          odometerValue: test.odometerValue || test.mileage,
+          odometerUnit: (test.odometerUnit || 'MI').toLowerCase(), // CRITICAL: Convert to lowercase
+          testNumber: test.testNumber,
+          testCertificateNumber: test.testCertificateNumber,
+          defects: test.defects || [],
+          advisoryText: test.advisoryText || [],
+          testClass: test.testClass,
+          testType: test.testType,
+          completedDate: test.completedDate || test.testDate,
+          testStation: test.testStation
+        })).filter(test => test.testDate); // Only include tests with valid testDate
+        
+        car.motHistory = normalizedMotHistory;
         updated = true;
-        console.log(`   ✅ MOT history: ${vehicleHistory.motHistory.length} tests`);
+        console.log(`   ✅ MOT history: ${normalizedMotHistory.length} tests (normalized)`);
       }
       
       // Also sync other useful data from history check

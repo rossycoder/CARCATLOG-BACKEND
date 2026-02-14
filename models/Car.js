@@ -552,6 +552,32 @@ carSchema.index({ vehicleType: 1, condition: 1 });
 
 // Pre-save hook for validation and normalization
 carSchema.pre('save', async function(next) {
+  // CRITICAL: Normalize model and variant for BMW i-series cars
+  // BMW i3, i4, i8 etc. should have model="i3/i4/i8" and variant="trim level"
+  // Sometimes API returns them reversed: model="I4 M50", variant="i4"
+  if (this.make && this.make.toUpperCase() === 'BMW') {
+    const modelUpper = this.model ? this.model.toUpperCase() : '';
+    const variantLower = this.variant ? this.variant.toLowerCase() : '';
+    
+    // Check if model contains variant-like pattern (e.g., "I4 M50", "I3 S", "I8 ROADSTER")
+    // and variant is the actual model (e.g., "i4", "i3", "i8")
+    const iSeriesPattern = /^I[0-9]/i; // Matches I3, I4, I8, etc.
+    
+    if (iSeriesPattern.test(modelUpper) && iSeriesPattern.test(variantLower)) {
+      // Model and variant are swapped - fix them
+      console.log(`🔄 [Car Model] Normalizing BMW i-series: model="${this.model}", variant="${this.variant}"`);
+      
+      const tempModel = this.model;
+      const tempVariant = this.variant;
+      
+      // Swap: variant becomes model, model becomes variant
+      this.model = tempVariant;
+      this.variant = tempModel;
+      
+      console.log(`✅ [Car Model] Normalized to: model="${this.model}", variant="${this.variant}"`);
+    }
+  }
+  
   // CRITICAL: Auto-fetch coordinates from postcode if missing
   // This ensures ALL cars can be found in postcode searches
   if (this.postcode && this.isNew) {
