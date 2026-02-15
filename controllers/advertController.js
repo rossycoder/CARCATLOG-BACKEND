@@ -242,7 +242,25 @@ const getAdvert = async (req, res) => {
             private: car.valuation.privatePrice,
             retail: car.valuation.dealerPrice,
             trade: car.valuation.partExchangePrice
-          } : null
+          } : null,
+          // CRITICAL: Include running costs for frontend display
+          runningCosts: {
+            fuelEconomy: {
+              urban: car.fuelEconomyUrban || car.runningCosts?.fuelEconomy?.urban || null,
+              extraUrban: car.fuelEconomyExtraUrban || car.runningCosts?.fuelEconomy?.extraUrban || null,
+              combined: car.fuelEconomyCombined || car.runningCosts?.fuelEconomy?.combined || null
+            },
+            annualTax: car.annualTax || car.runningCosts?.annualTax || null,
+            co2Emissions: car.co2Emissions || car.runningCosts?.co2Emissions || null,
+            insuranceGroup: car.insuranceGroup || car.runningCosts?.insuranceGroup || null
+          },
+          // Also include top-level fields for backward compatibility
+          annualTax: car.annualTax,
+          co2Emissions: car.co2Emissions,
+          insuranceGroup: car.insuranceGroup,
+          fuelEconomyCombined: car.fuelEconomyCombined,
+          fuelEconomyUrban: car.fuelEconomyUrban,
+          fuelEconomyExtraUrban: car.fuelEconomyExtraUrban
         },
         advertData: {
           price: privatePrice,

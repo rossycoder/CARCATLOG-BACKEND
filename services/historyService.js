@@ -61,6 +61,17 @@ class HistoryService {
    */
   async storeHistoryResult(vrm, result) {
     try {
+      // IMPORTANT: Preserve existing running costs data BEFORE creating historyData
+      let preservedAnnualTax = null;
+      let preservedInsuranceGroup = null;
+      
+      const existingHistory = await VehicleHistory.findOne({ vrm: vrm.toUpperCase() });
+      if (existingHistory) {
+        preservedAnnualTax = existingHistory.annualTax;
+        preservedInsuranceGroup = existingHistory.insuranceGroup;
+        console.log(`📦 Preserved from existing cache: annualTax=${preservedAnnualTax}, insuranceGroup=${preservedInsuranceGroup}`);
+      }
+      
       // Map API response to VehicleHistory schema
       const historyData = {
         vrm: vrm.toUpperCase(),
@@ -188,11 +199,15 @@ class HistoryService {
         // Add mileage if available
         mileage: result.mileage,
         
+        // CRITICAL: Preserve annualTax and insuranceGroup from existing cache
+        annualTax: result.annualTax || preservedAnnualTax || null,
+        insuranceGroup: result.insuranceGroup || preservedInsuranceGroup || null,
+        
         // CRITICAL: Add MOT history if available
         motHistory: result.motHistory || result.motTests || []
       };
 
-      // IMPORTANT: Delete any existing records for this VRM first to prevent duplicates
+      // Delete any existing records for this VRM first to prevent duplicates
       await VehicleHistory.deleteMany({ vrm: vrm.toUpperCase() });
       console.log(`🗑️  Deleted existing history records for ${vrm}`);
       

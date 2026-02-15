@@ -732,7 +732,7 @@ class VehicleController {
               }
             });
             
-            console.log(`✅ Running costs synced: MPG=${history.combinedMpg}, CO2=${history.co2Emissions}`);
+            console.log(`✅ Running costs synced: MPG=${history.combinedMpg}, CO2=${history.co2Emissions}, Tax=£${history.annualTax || 'N/A'}, Insurance=${history.insuranceGroup || 'N/A'}`);
           }
         } catch (syncError) {
           console.warn(`⚠️ Failed to auto-sync running costs:`, syncError.message);
@@ -1539,6 +1539,10 @@ class VehicleController {
               doors: cachedData.doors,
               seats: cachedData.seats,
               color: cachedData.colour,
+              combinedMpg: cachedData.combinedMpg,
+              co2Emissions: cachedData.co2Emissions,
+              annualTax: cachedData.annualTax,
+              insuranceGroup: cachedData.insuranceGroup,
               estimatedValue: cachedData.estimatedValue || cachedData.privatePrice,
               registrationNumber: cleanedReg,
               mileage: parsedMileage
@@ -1582,6 +1586,53 @@ class VehicleController {
             power: performance.Power && performance.Power.Bhp ? performance.Power.Bhp : null,
           };
           
+          // CRITICAL FIX: Calculate annual tax if not provided by API
+          const vedDetails = rawApiData.VehicleExciseDutyDetails || {};
+          apiData.annualTax = vedDetails.VedRate?.Standard?.TwelveMonths || null;
+          
+          if (!apiData.annualTax && apiData.co2Emissions && apiData.year) {
+            const { calculateAnnualTax } = require('../utils/taxCalculator');
+            const calculatedTax = calculateAnnualTax({
+              year: apiData.year,
+              co2Emissions: apiData.co2Emissions,
+              engineSize: apiData.engineSize,
+              fuelType: apiData.fuelType
+            });
+            
+            if (calculatedTax !== null) {
+              apiData.annualTax = calculatedTax;
+              console.log(`💰 [BasicLookup] Calculated annual tax: £${calculatedTax} (CO2: ${apiData.co2Emissions}g/km, Year: ${apiData.year})`);
+            }
+          }
+          
+          // CRITICAL FIX: Estimate insurance group if not provided by API
+          const smmtDetails = rawApiData.SmmtDetails || {};
+          apiData.insuranceGroup = smmtDetails.InsuranceGroup || null;
+          
+          if (!apiData.insuranceGroup && apiData.engineSize && apiData.year) {
+            const engineSize = parseFloat(apiData.engineSize);
+            const age = new Date().getFullYear() - apiData.year;
+            
+            let estimatedGroup = 15; // Default middle group
+            
+            if (engineSize <= 1.0) {
+              estimatedGroup = age > 10 ? 5 : 8;
+            } else if (engineSize <= 1.4) {
+              estimatedGroup = age > 10 ? 8 : 12;
+            } else if (engineSize <= 1.6) {
+              estimatedGroup = age > 10 ? 10 : 15;
+            } else if (engineSize <= 2.0) {
+              estimatedGroup = age > 10 ? 15 : 20;
+            } else if (engineSize <= 3.0) {
+              estimatedGroup = age > 10 ? 20 : 28;
+            } else {
+              estimatedGroup = age > 10 ? 25 : 35;
+            }
+            
+            apiData.insuranceGroup = estimatedGroup;
+            console.log(`🛡️ [BasicLookup] Estimated insurance group: ${estimatedGroup} (Engine: ${engineSize}L, Age: ${age} years)`);
+          }
+          
           console.log(`[Vehicle Controller] 🔍 Extracted API Data:`, JSON.stringify(apiData, null, 2));
           
           if (!apiData.make) {
@@ -1604,6 +1655,10 @@ class VehicleController {
               doors: apiData.doors,
               seats: apiData.seats,
               colour: apiData.color,
+              combinedMpg: apiData.combinedMpg,
+              co2Emissions: apiData.co2Emissions,
+              annualTax: apiData.annualTax,
+              insuranceGroup: apiData.insuranceGroup,
               estimatedValue: apiData.estimatedValue || apiData.privatePrice,
               lastUpdated: new Date()
             },
@@ -1626,6 +1681,10 @@ class VehicleController {
               doors: apiData.doors,
               seats: apiData.seats,
               color: apiData.color,
+              combinedMpg: apiData.combinedMpg,
+              co2Emissions: apiData.co2Emissions,
+              annualTax: apiData.annualTax,
+              insuranceGroup: apiData.insuranceGroup,
               estimatedValue: apiData.estimatedValue || apiData.privatePrice,
               registrationNumber: cleanedReg,
               mileage: parsedMileage

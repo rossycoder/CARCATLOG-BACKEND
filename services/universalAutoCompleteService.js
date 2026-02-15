@@ -1262,8 +1262,37 @@ class UniversalAutoCompleteService {
       
       if (calculatedTax !== null) {
         parsedData.annualTax = calculatedTax;
+        vehicle.annualTax = calculatedTax; // CRITICAL FIX: Also set on vehicle object
         console.log(`💰 [UniversalService] Calculated annual tax: £${calculatedTax} (CO2: ${parsedData.co2Emissions}g/km, Year: ${vehicle.year})`);
       }
+    }
+    
+    // CRITICAL FIX: Estimate insurance group if not provided by API
+    if (!parsedData.insuranceGroup && parsedData.engineSize && vehicle.year) {
+      // Simple estimation based on engine size and age
+      // Smaller engines and older cars = lower insurance groups
+      const engineSize = parseFloat(parsedData.engineSize);
+      const age = new Date().getFullYear() - vehicle.year;
+      
+      let estimatedGroup = 15; // Default middle group
+      
+      if (engineSize <= 1.0) {
+        estimatedGroup = age > 10 ? 5 : 8;
+      } else if (engineSize <= 1.4) {
+        estimatedGroup = age > 10 ? 8 : 12;
+      } else if (engineSize <= 1.6) {
+        estimatedGroup = age > 10 ? 10 : 15;
+      } else if (engineSize <= 2.0) {
+        estimatedGroup = age > 10 ? 15 : 20;
+      } else if (engineSize <= 3.0) {
+        estimatedGroup = age > 10 ? 20 : 28;
+      } else {
+        estimatedGroup = age > 10 ? 25 : 35;
+      }
+      
+      parsedData.insuranceGroup = estimatedGroup;
+      vehicle.insuranceGroup = estimatedGroup;
+      console.log(`🛡️ [UniversalService] Estimated insurance group: ${estimatedGroup} (Engine: ${engineSize}L, Age: ${age} years)`);
     }
     
     // Vehicle history reference
