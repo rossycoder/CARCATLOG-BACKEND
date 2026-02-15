@@ -1345,7 +1345,15 @@ class VehicleController {
       }
       
       // Sort fuel types in a logical order
-      const fuelTypeOrder = ['Petrol', 'Diesel', 'Petrol Hybrid', 'Diesel Hybrid', 'Electric'];
+      const fuelTypeOrder = [
+        'Petrol', 
+        'Diesel', 
+        'Petrol Hybrid', 
+        'Diesel Hybrid',
+        'Petrol Plug-in Hybrid',
+        'Diesel Plug-in Hybrid',
+        'Electric'
+      ];
       fuelTypes.sort((a, b) => {
         const indexA = fuelTypeOrder.indexOf(a);
         const indexB = fuelTypeOrder.indexOf(b);
