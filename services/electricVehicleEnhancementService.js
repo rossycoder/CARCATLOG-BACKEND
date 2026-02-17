@@ -222,6 +222,128 @@ class ElectricVehicleEnhancementService {
           regenerativeBraking: 'Adjustable regenerative braking'
         }
       }
+    },
+    'MG': {
+      'ZS': {
+        'default': {
+          electricRange: 163,
+          batteryCapacity: 51,
+          chargingTime: 8.5,
+          homeChargingSpeed: 7,
+          publicChargingSpeed: 50,
+          rapidChargingSpeed: 76,
+          chargingTime10to80: 42,
+          electricMotorPower: 105,
+          electricMotorTorque: 280,
+          chargingPortType: 'Type 2 / CCS',
+          fastChargingCapability: 'CCS Rapid Charging up to 76kW',
+          batteryType: 'Lithium-ion',
+          batteryWarranty: '7 years / 80,000 miles',
+          energyConsumption: 3.2,
+          chargingCurve: 'Standard charging curve',
+          preconditioning: 'Basic battery management',
+          regenerativeBraking: 'Regenerative braking with adjustable levels'
+        },
+        'Long Range': {
+          electricRange: 273,
+          batteryCapacity: 72.6,
+          chargingTime: 10.5,
+          homeChargingSpeed: 7,
+          publicChargingSpeed: 50,
+          rapidChargingSpeed: 92,
+          chargingTime10to80: 47,
+          electricMotorPower: 130,
+          electricMotorTorque: 280,
+          chargingPortType: 'Type 2 / CCS',
+          fastChargingCapability: 'CCS Rapid Charging up to 92kW',
+          batteryType: 'Lithium-ion',
+          batteryWarranty: '7 years / 80,000 miles',
+          energyConsumption: 3.8,
+          chargingCurve: 'Standard charging curve',
+          preconditioning: 'Basic battery management',
+          regenerativeBraking: 'Regenerative braking with adjustable levels'
+        },
+        'Extended Range': {
+          electricRange: 273,
+          batteryCapacity: 72.6,
+          chargingTime: 10.5,
+          homeChargingSpeed: 7,
+          publicChargingSpeed: 50,
+          rapidChargingSpeed: 92,
+          chargingTime10to80: 47,
+          electricMotorPower: 130,
+          electricMotorTorque: 280,
+          chargingPortType: 'Type 2 / CCS',
+          fastChargingCapability: 'CCS Rapid Charging up to 92kW',
+          batteryType: 'Lithium-ion',
+          batteryWarranty: '7 years / 80,000 miles',
+          energyConsumption: 3.8,
+          chargingCurve: 'Standard charging curve',
+          preconditioning: 'Basic battery management',
+          regenerativeBraking: 'Regenerative braking with adjustable levels'
+        }
+      },
+      'MG4': {
+        'default': {
+          electricRange: 218,
+          batteryCapacity: 51,
+          chargingTime: 8.5,
+          homeChargingSpeed: 7,
+          publicChargingSpeed: 50,
+          rapidChargingSpeed: 87,
+          chargingTime10to80: 35,
+          electricMotorPower: 125,
+          electricMotorTorque: 250,
+          chargingPortType: 'Type 2 / CCS',
+          fastChargingCapability: 'CCS Rapid Charging up to 87kW',
+          batteryType: 'Lithium-ion',
+          batteryWarranty: '7 years / 80,000 miles',
+          energyConsumption: 4.3,
+          chargingCurve: 'Optimized charging curve',
+          preconditioning: 'Battery preconditioning available',
+          regenerativeBraking: 'Regenerative braking with paddle control'
+        },
+        'Long Range': {
+          electricRange: 281,
+          batteryCapacity: 64,
+          chargingTime: 9.5,
+          homeChargingSpeed: 7,
+          publicChargingSpeed: 50,
+          rapidChargingSpeed: 135,
+          chargingTime10to80: 35,
+          electricMotorPower: 150,
+          electricMotorTorque: 250,
+          chargingPortType: 'Type 2 / CCS',
+          fastChargingCapability: 'CCS Rapid Charging up to 135kW',
+          batteryType: 'Lithium-ion',
+          batteryWarranty: '7 years / 80,000 miles',
+          energyConsumption: 4.4,
+          chargingCurve: 'Optimized charging curve',
+          preconditioning: 'Battery preconditioning available',
+          regenerativeBraking: 'Regenerative braking with paddle control'
+        }
+      },
+      'MG5': {
+        'default': {
+          electricRange: 214,
+          batteryCapacity: 61.1,
+          chargingTime: 9.5,
+          homeChargingSpeed: 7,
+          publicChargingSpeed: 50,
+          rapidChargingSpeed: 87,
+          chargingTime10to80: 43,
+          electricMotorPower: 115,
+          electricMotorTorque: 280,
+          chargingPortType: 'Type 2 / CCS',
+          fastChargingCapability: 'CCS Rapid Charging up to 87kW',
+          batteryType: 'Lithium-ion',
+          batteryWarranty: '7 years / 80,000 miles',
+          energyConsumption: 3.5,
+          chargingCurve: 'Standard charging curve',
+          preconditioning: 'Basic battery management',
+          regenerativeBraking: 'Regenerative braking with adjustable levels'
+        }
+      }
     }
   };
 

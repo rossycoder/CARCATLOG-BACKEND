@@ -2,6 +2,8 @@ const { v4: uuidv4 } = require('uuid');
 const Car = require('../models/Car');
 const CarDataNormalizer = require('../utils/carDataNormalizer'); // Add this import
 const DataProtection = require('../utils/dataProtection'); // Add data protection
+const ElectricVehicleEnhancementService = require('../services/electricVehicleEnhancementService');
+const AutoDataPopulationService = require('../services/autoDataPopulationService');
 
 /**
  * Create a new advert - SIMPLIFIED VERSION
@@ -56,31 +58,61 @@ const createAdvert = async (req, res) => {
     // Normalize vehicle data before creating car
     const normalizedVehicleData = CarDataNormalizer.normalizeCarData(vehicleData);
     
+    // CRITICAL: Enhance electric vehicle data BEFORE creating car
+    let carDataToSave = normalizedVehicleData;
+    if (normalizedVehicleData.fuelType === 'Electric') {
+      console.log(`🔋 Electric vehicle detected - enhancing with EV data`);
+      
+      // Enhance with comprehensive electric vehicle data
+      carDataToSave = ElectricVehicleEnhancementService.enhanceWithEVData(normalizedVehicleData);
+      
+      // Also use auto data population for additional defaults
+      carDataToSave = AutoDataPopulationService.populateMissingData(carDataToSave);
+      
+      console.log(`✅ Enhanced electric vehicle data:`);
+      console.log(`   - Range: ${carDataToSave.electricRange} miles`);
+      console.log(`   - Battery: ${carDataToSave.batteryCapacity} kWh`);
+      console.log(`   - Rapid charging: ${carDataToSave.rapidChargingSpeed}kW`);
+    }
+    
     // Create car with enhanced variant handling
     const car = new Car({
       advertId,
-      make: normalizedVehicleData.make || 'Unknown',
-      model: normalizedVehicleData.model || 'Unknown',
-      variant: normalizedVehicleData.variant || null, // Will be auto-fetched in pre-save hook if missing
-      year: parseInt(normalizedVehicleData.year) || new Date().getFullYear(),
-      mileage: parseInt(normalizedVehicleData.mileage) || 0,
-      color: normalizedVehicleData.color || null, // Leave null so API can populate it, frontend will handle display
-      fuelType: normalizedVehicleData.fuelType || 'Petrol',
+      make: carDataToSave.make || 'Unknown',
+      model: carDataToSave.model || 'Unknown',
+      variant: carDataToSave.variant || null, // Will be auto-fetched in pre-save hook if missing
+      year: parseInt(carDataToSave.year) || new Date().getFullYear(),
+      mileage: parseInt(carDataToSave.mileage) || 0,
+      color: carDataToSave.color || null, // Leave null so API can populate it, frontend will handle display
+      fuelType: carDataToSave.fuelType || 'Petrol',
       transmission: normalizedTransmission,
       price: estimatedPrice,
       estimatedValue: estimatedPrice,
       description: '',
       images: [],
-      registrationNumber: normalizedVehicleData.registration || normalizedVehicleData.registrationNumber || null,
-      engineSize: parseFloat(normalizedVehicleData.engineSize) || undefined,
-      bodyType: normalizedVehicleData.bodyType || undefined,
-      doors: parseInt(normalizedVehicleData.doors) || undefined,
-      seats: parseInt(normalizedVehicleData.seats) || undefined,
-      dataSource: normalizedVehicleData.registration ? 'DVLA' : 'manual',
+      registrationNumber: carDataToSave.registration || carDataToSave.registrationNumber || null,
+      engineSize: parseFloat(carDataToSave.engineSize) || undefined,
+      bodyType: carDataToSave.bodyType || undefined,
+      doors: parseInt(carDataToSave.doors) || undefined,
+      seats: parseInt(carDataToSave.seats) || undefined,
+      dataSource: carDataToSave.registration ? 'DVLA' : 'manual',
       advertStatus: 'active',
       publishedAt: new Date(),
       condition: 'used',
-      postcode: normalizedVehicleData.postcode || undefined
+      postcode: carDataToSave.postcode || undefined,
+      // Electric vehicle fields (if applicable)
+      electricRange: carDataToSave.electricRange || undefined,
+      batteryCapacity: carDataToSave.batteryCapacity || undefined,
+      chargingTime: carDataToSave.chargingTime || undefined,
+      homeChargingSpeed: carDataToSave.homeChargingSpeed || undefined,
+      publicChargingSpeed: carDataToSave.publicChargingSpeed || undefined,
+      rapidChargingSpeed: carDataToSave.rapidChargingSpeed || undefined,
+      chargingTime10to80: carDataToSave.chargingTime10to80 || undefined,
+      electricMotorPower: carDataToSave.electricMotorPower || undefined,
+      electricMotorTorque: carDataToSave.electricMotorTorque || undefined,
+      chargingPortType: carDataToSave.chargingPortType || undefined,
+      fastChargingCapability: carDataToSave.fastChargingCapability || undefined,
+      runningCosts: carDataToSave.runningCosts || undefined
     });
     
     console.log(`🚗 Creating car with registration: ${car.registrationNumber}`);

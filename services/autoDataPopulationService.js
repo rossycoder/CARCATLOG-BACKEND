@@ -185,6 +185,74 @@ class AutoDataPopulationService {
       };
     }
     
+    // MG electric vehicle defaults
+    else if (makeLower.includes('mg')) {
+      // MG ZS EV defaults (most common)
+      if (modelLower.includes('zs')) {
+        defaults = {
+          electricRange: 273, // Long Range version
+          batteryCapacity: 72.6,
+          chargingTime: 10.5,
+          homeChargingSpeed: 7,
+          publicChargingSpeed: 50,
+          rapidChargingSpeed: 92,
+          chargingTime10to80: 47,
+          electricMotorPower: 130,
+          electricMotorTorque: 280,
+          chargingPortType: 'Type 2 / CCS',
+          fastChargingCapability: 'CCS Rapid Charging up to 92kW'
+        };
+      }
+      // MG4 defaults
+      else if (modelLower.includes('mg4') || modelLower.includes('4')) {
+        defaults = {
+          electricRange: 281,
+          batteryCapacity: 64,
+          chargingTime: 9.5,
+          homeChargingSpeed: 7,
+          publicChargingSpeed: 50,
+          rapidChargingSpeed: 135,
+          chargingTime10to80: 35,
+          electricMotorPower: 150,
+          electricMotorTorque: 250,
+          chargingPortType: 'Type 2 / CCS',
+          fastChargingCapability: 'CCS Rapid Charging up to 135kW'
+        };
+      }
+      // MG5 defaults
+      else if (modelLower.includes('mg5') || modelLower.includes('5')) {
+        defaults = {
+          electricRange: 214,
+          batteryCapacity: 61.1,
+          chargingTime: 9.5,
+          homeChargingSpeed: 7,
+          publicChargingSpeed: 50,
+          rapidChargingSpeed: 87,
+          chargingTime10to80: 43,
+          electricMotorPower: 115,
+          electricMotorTorque: 280,
+          chargingPortType: 'Type 2 / CCS',
+          fastChargingCapability: 'CCS Rapid Charging up to 87kW'
+        };
+      }
+      // Generic MG EV defaults
+      else {
+        defaults = {
+          electricRange: 220,
+          batteryCapacity: 61,
+          chargingTime: 9,
+          homeChargingSpeed: 7,
+          publicChargingSpeed: 50,
+          rapidChargingSpeed: 87,
+          chargingTime10to80: 40,
+          electricMotorPower: 120,
+          electricMotorTorque: 280,
+          chargingPortType: 'Type 2 / CCS',
+          fastChargingCapability: 'CCS Rapid Charging up to 87kW'
+        };
+      }
+    }
+    
     // Generic electric vehicle defaults for unknown makes/models
     
     return defaults;
