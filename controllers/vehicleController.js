@@ -828,6 +828,13 @@ class VehicleController {
       }
 
       // Return car data with dealer info
+      // CRITICAL: Add cache-control headers to prevent stale data
+      res.set({
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      });
+      
       return res.json({
         success: true,
         data: carData

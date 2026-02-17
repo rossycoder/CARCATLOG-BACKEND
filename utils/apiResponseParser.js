@@ -138,8 +138,11 @@ function parseCheckCarDetailsResponse(data) {
 
   return {
     make: vehicleId.DvlaMake || modelData.Make || null,
-    model: vehicleId.DvlaModel || modelData.Model || null,
-    variant: modelData.Range || modelData.ModelVariant || smmtDetails.Range || null,
+    // CRITICAL FIX: Swap model and variant - DVLA has them backwards
+    // DvlaModel contains full variant (e.g., "500 POP RHD")
+    // ModelVariant contains base model (e.g., "500")
+    model: modelData.ModelVariant || modelData.Model || vehicleId.DvlaModel || null,
+    variant: vehicleId.DvlaModel || modelData.Range || smmtDetails.Range || null,
     year: extractNumber(vehicleId.YearOfManufacture),
     fuelType: normalizeFuelType(modelData.FuelType || vehicleId.DvlaFuelType),
     transmission: normalizeTransmission(transmission.TransmissionType || smmtDetails.Transmission),
