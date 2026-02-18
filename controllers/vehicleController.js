@@ -977,7 +977,10 @@ class VehicleController {
    */
   async searchCars(req, res, next) {
     try {
-      console.log('[Vehicle Controller] Search request received with params:', req.query);
+      console.log('🔴 [Vehicle Controller] ========================================');
+      console.log('🔴 [Vehicle Controller] SEARCH ENDPOINT CALLED');
+      console.log('🔴 [Vehicle Controller] Full req.query:', req.query);
+      console.log('🔴 [Vehicle Controller] ========================================');
       
       const { 
         make, 
@@ -1002,6 +1005,15 @@ class VehicleController {
         limit = 50,
         skip = 0 
       } = req.query;
+
+      console.log('🔴 [Vehicle Controller] Search params received:', { 
+        sellerType, 
+        writeOffStatus, 
+        make, 
+        model,
+        engineSize,
+        fuelType
+      });
 
       // Build query - show active cars (and draft in test mode)
       const query = {};
@@ -1090,16 +1102,36 @@ class VehicleController {
         console.log('[Vehicle Controller] Engine size filter applied:', engineSize, '→', query.engineCapacity);
       }
       
-      // Seller type filter
+      // Seller type filter - MUTUALLY EXCLUSIVE
       if (sellerType) {
         if (sellerType === 'private') {
-          // Private sellers: userId exists (not null)
-          query.userId = { $ne: null, $exists: true };
-          query.tradeDealerId = null; // Ensure no trade dealer
+          // Private sellers: exclude trade sellers
+          // Must NOT have dealerId, isDealerListing=true, or sellerContact.type='trade'
+          query.$and = query.$and || [];
+          query.$and.push(
+            { $or: [{ dealerId: { $exists: false } }, { dealerId: null }] },
+            { $or: [{ isDealerListing: { $exists: false } }, { isDealerListing: false }, { isDealerListing: null }] },
+            { $or: [{ 'sellerContact.type': { $exists: false } }, { 'sellerContact.type': { $ne: 'trade' } }] }
+          );
           console.log('[Vehicle Controller] Seller type filter: Private sellers only');
         } else if (sellerType === 'trade') {
-          // Trade sellers: tradeDealerId exists (not null)
-          query.tradeDealerId = { $ne: null, $exists: true };
+          // Trade sellers: dealerId exists OR isDealerListing is true OR sellerContact.type is 'trade'
+          if (query.$and) {
+            // If $and already exists, add the $or condition to it
+            query.$and.push({
+              $or: [
+                { dealerId: { $ne: null, $exists: true } },
+                { isDealerListing: true },
+                { 'sellerContact.type': 'trade' }
+              ]
+            });
+          } else {
+            query.$or = [
+              { dealerId: { $ne: null, $exists: true } },
+              { isDealerListing: true },
+              { 'sellerContact.type': 'trade' }
+            ];
+          }
           console.log('[Vehicle Controller] Seller type filter: Trade sellers only');
         }
       }
@@ -1108,20 +1140,63 @@ class VehicleController {
       if (writeOffStatus) {
         if (writeOffStatus === 'exclude') {
           // Exclude written off vehicles
-          // Check both the car's direct field and the populated historyCheckId
-          query.$or = [
-            { historyCheckId: null }, // No history check
-            { 'historyCheckId.writeOffCategory': { $in: ['none', 'unknown', null] } } // Not written off
-          ];
-          console.log('[Vehicle Controller] Write-off filter: Excluding written off vehicles');
+          // We need to find VehicleHistory records with write-offs, then exclude those cars
+          const VehicleHistory = require('../models/VehicleHistory');
+          const writtenOffVRMs = await VehicleHistory.find({
+            writeOffCategory: { $nin: ['none', 'unknown', null], $exists: true }
+          }).distinct('vrm');
+          
+          // Exclude cars with these VRMs, but include cars without registrationNumber
+          if (writtenOffVRMs.length > 0) {
+            // Use $or to include cars that either don't have the VRM or don't have a registrationNumber
+            if (query.$or) {
+              // If $or already exists (from seller type filter), wrap both in $and
+              const existingOr = query.$or;
+              delete query.$or;
+              query.$and = [
+                { $or: existingOr },
+                {
+                  $or: [
+                    { registrationNumber: { $nin: writtenOffVRMs } },
+                    { registrationNumber: { $exists: false } },
+                    { registrationNumber: null }
+                  ]
+                }
+              ];
+            } else {
+              query.$or = [
+                { registrationNumber: { $nin: writtenOffVRMs } },
+                { registrationNumber: { $exists: false } },
+                { registrationNumber: null }
+              ];
+            }
+          }
+          console.log('[Vehicle Controller] Write-off filter: Excluding', writtenOffVRMs.length, 'written off vehicles');
         } else if (writeOffStatus === 'only') {
           // Show only written off vehicles
-          query.historyCheckId = { $ne: null, $exists: true };
-          query['historyCheckId.writeOffCategory'] = { 
-            $nin: ['none', 'unknown', null],
-            $exists: true 
-          };
-          console.log('[Vehicle Controller] Write-off filter: Only written off vehicles');
+          const VehicleHistory = require('../models/VehicleHistory');
+          const writtenOffVRMs = await VehicleHistory.find({
+            writeOffCategory: { $nin: ['none', 'unknown', null], $exists: true }
+          }).distinct('vrm');
+          
+          // Only show cars with these VRMs
+          if (writtenOffVRMs.length > 0) {
+            if (query.$or) {
+              // If $or already exists (from seller type filter), wrap both in $and
+              const existingOr = query.$or;
+              delete query.$or;
+              query.$and = [
+                { $or: existingOr },
+                { registrationNumber: { $in: writtenOffVRMs } }
+              ];
+            } else {
+              query.registrationNumber = { $in: writtenOffVRMs };
+            }
+          } else {
+            // No written off vehicles found, return empty result
+            query._id = null; // This will match nothing
+          }
+          console.log('[Vehicle Controller] Write-off filter: Only showing', writtenOffVRMs.length, 'written off vehicles');
         }
       }
       
@@ -1389,48 +1464,46 @@ class VehicleController {
       
       const yearRange = years.length > 0 ? years[0] : { minYear: 2000, maxYear: new Date().getFullYear() };
 
-      // Get seller type counts
-      const privateSellerCount = await Car.countDocuments({
-        ...baseQuery,
-        userId: { $ne: null, $exists: true },
-        tradeDealerId: null
-      });
-      
+      // Get seller type counts - MUTUALLY EXCLUSIVE
+      // Trade sellers: identified by dealerId, isDealerListing, or sellerContact.type='trade'
       const tradeSellerCount = await Car.countDocuments({
         ...baseQuery,
-        tradeDealerId: { $ne: null, $exists: true }
+        $or: [
+          { dealerId: { $ne: null, $exists: true } },
+          { isDealerListing: true },
+          { 'sellerContact.type': 'trade' }
+        ]
+      });
+      
+      // Private sellers: exclude trade sellers
+      const privateSellerCount = await Car.countDocuments({
+        ...baseQuery,
+        dealerId: { $exists: false },
+        isDealerListing: { $ne: true },
+        'sellerContact.type': { $ne: 'trade' }
       });
       
       console.log('[Vehicle Controller] Seller counts - Private:', privateSellerCount, 'Trade:', tradeSellerCount);
       
       // Get write-off status counts
-      // First, get all cars with history check populated
-      const carsWithHistory = await Car.find({
+      // Query VehicleHistory for written off vehicles
+      const VehicleHistory = require('../models/VehicleHistory');
+      const writtenOffVRMs = await VehicleHistory.find({
+        writeOffCategory: { $nin: ['none', 'unknown', null], $exists: true }
+      }).distinct('vrm');
+      
+      const writtenOffCount = await Car.countDocuments({
         ...baseQuery,
-        historyCheckId: { $ne: null, $exists: true }
-      }).populate('historyCheckId', 'writeOffCategory isWrittenOff');
-      
-      let writtenOffCount = 0;
-      let cleanCount = 0;
-      
-      carsWithHistory.forEach(car => {
-        if (car.historyCheckId && 
-            car.historyCheckId.writeOffCategory && 
-            car.historyCheckId.writeOffCategory !== 'none' && 
-            car.historyCheckId.writeOffCategory !== 'unknown') {
-          writtenOffCount++;
-        } else {
-          cleanCount++;
-        }
+        registrationNumber: { $in: writtenOffVRMs }
       });
       
-      // Add cars without history check to clean count
-      const carsWithoutHistory = await Car.countDocuments({
+      const cleanCount = await Car.countDocuments({
         ...baseQuery,
-        historyCheckId: null
+        $or: [
+          { registrationNumber: { $nin: writtenOffVRMs } },
+          { registrationNumber: null }
+        ]
       });
-      
-      cleanCount += carsWithoutHistory;
       
       const totalCars = await Car.countDocuments(baseQuery);
       

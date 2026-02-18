@@ -93,7 +93,7 @@ const subscriptionPlanSchema = new mongoose.Schema({
 });
 
 // Indexes
-subscriptionPlanSchema.index({ slug: 1 });
+// Note: slug already has unique: true which creates an index automatically
 subscriptionPlanSchema.index({ isActive: 1, displayOrder: 1 });
 
 // Virtual for formatted price

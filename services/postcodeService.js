@@ -153,8 +153,10 @@ async function searchCarsByLocation(latitude, longitude, radius = 25, vehicleTyp
       query.vehicleType = vehicleType;
     }
 
-    // Fetch vehicles from database
-    const cars = await Car.find(query).lean();
+    // Fetch vehicles from database with populated history data
+    const cars = await Car.find(query)
+      .populate('historyCheckId', 'writeOffCategory writeOffDetails')
+      .lean();
 
     // Calculate distance for each car and filter by radius
     const carsWithDistance = cars
