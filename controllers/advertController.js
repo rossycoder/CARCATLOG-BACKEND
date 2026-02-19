@@ -457,6 +457,21 @@ const updateAdvert = async (req, res) => {
         // Update advert data
         if (advertData) {
           console.log('📝 [updateAdvert] Updating advert data');
+          console.log('📝 [updateAdvert] advertData received:', {
+            hasPrice: !!advertData.price,
+            hasDescription: !!advertData.description,
+            hasPhotos: !!advertData.photos,
+            hasFeatures: !!advertData.features,
+            hasVideoUrl: !!advertData.videoUrl,
+            hasServiceHistory: !!advertData.serviceHistory,
+            hasBusinessName: !!advertData.businessName,
+            hasBusinessLogo: !!advertData.businessLogo,
+            hasBusinessWebsite: !!advertData.businessWebsite,
+            businessName: advertData.businessName,
+            businessLogo: advertData.businessLogo,
+            businessWebsite: advertData.businessWebsite
+          });
+          
           if (advertData.price) {
             const priceValue = parseFloat(advertData.price);
             if (!isNaN(priceValue) && priceValue > 0) {
@@ -470,18 +485,27 @@ const updateAdvert = async (req, res) => {
             // CRITICAL FIX: Handle description based on dataSource
             let description = advertData.description || '';
             
-            // Check if description is required (non-DVLA cars require description)
-            const isDescriptionRequired = car.dataSource !== 'DVLA';
-            
-            if (!description.trim() && isDescriptionRequired) {
-              // For non-DVLA cars, description is required - use default
-              description = 'No description provided.';
-              console.log('📝 [updateAdvert] Empty description for non-DVLA car, using default');
-            } else if (!description.trim() && !isDescriptionRequired) {
-              // For DVLA cars, description is optional - but Mongoose validation might fail with empty string
-              // So we use a minimal description instead
-              description = 'Contact seller for more details.';
-              console.log('📝 [updateAdvert] Empty description for DVLA car, using minimal default');
+            // NEVER allow empty description - always use existing or default
+            if (!description.trim()) {
+              // Use existing description if available
+              if (car.description && car.description.trim()) {
+                description = car.description;
+                console.log('📝 [updateAdvert] Empty description provided, keeping existing');
+              } else {
+                // Check if description is required (non-DVLA cars require description)
+                const isDescriptionRequired = car.dataSource !== 'DVLA';
+                
+                if (isDescriptionRequired) {
+                  // For non-DVLA cars, description is required - use default
+                  description = 'No description provided.';
+                  console.log('📝 [updateAdvert] Empty description for non-DVLA car, using default');
+                } else {
+                  // For DVLA cars, description is optional - but Mongoose validation might fail with empty string
+                  // So we use a minimal description instead
+                  description = 'Contact seller for more details.';
+                  console.log('📝 [updateAdvert] Empty description for DVLA car, using minimal default');
+                }
+              }
             }
             
             updateObj.description = description;
@@ -500,17 +524,78 @@ const updateAdvert = async (req, res) => {
             updateObj.serviceHistory = advertData.serviceHistory;
             console.log('📝 [updateAdvert] Updating serviceHistory:', advertData.serviceHistory);
           }
+          
+          // CRITICAL: Save business info even when contactDetails is not provided
+          if (advertData.businessName || advertData.businessLogo || advertData.businessWebsite) {
+            console.log('📝 [updateAdvert] Updating business info from advertData');
+            
+            const hasLogo = advertData?.businessLogo && advertData.businessLogo.trim() !== '';
+            const hasWebsite = advertData?.businessWebsite && advertData.businessWebsite.trim() !== '';
+            const detectedSellerType = (hasLogo || hasWebsite) ? 'trade' : 'private';
+            
+            console.log(`🔍 Auto-detected seller type: ${detectedSellerType}`);
+            console.log(`   Has logo: ${hasLogo} (value: "${advertData?.businessLogo}")`);
+            console.log(`   Has website: ${hasWebsite} (value: "${advertData?.businessWebsite}")`);
+            
+            // Update or create sellerContact using dot notation for proper MongoDB update
+            if (!updateObj.sellerContact) updateObj.sellerContact = {};
+            updateObj.sellerContact.type = detectedSellerType;
+            if (advertData.businessName) {
+              updateObj.sellerContact.businessName = advertData.businessName;
+            }
+            if (advertData.businessLogo) {
+              updateObj.sellerContact.businessLogo = advertData.businessLogo;
+            }
+            if (advertData.businessWebsite) {
+              updateObj.sellerContact.businessWebsite = advertData.businessWebsite;
+            }
+            
+            console.log('📝 [updateAdvert] Business info added to updateObj:', {
+              type: updateObj.sellerContact.type,
+              businessName: updateObj.sellerContact.businessName,
+              businessLogo: updateObj.sellerContact.businessLogo,
+              businessWebsite: updateObj.sellerContact.businessWebsite
+            });
+          }
         }
         
         // Update contact details
         if (contactDetails) {
           console.log('📝 [updateAdvert] Updating contact details');
-          updateObj.sellerContact = {
-            phoneNumber: contactDetails.phoneNumber,
-            email: contactDetails.email,
-            postcode: contactDetails.postcode,
-            allowEmailContact: contactDetails.allowEmailContact
-          };
+          console.log('📝 [updateAdvert] advertData business info:', {
+            businessName: advertData?.businessName,
+            businessLogo: advertData?.businessLogo,
+            businessWebsite: advertData?.businessWebsite
+          });
+          
+          // Auto-detect seller type based on business info
+          const hasLogo = advertData?.businessLogo && advertData.businessLogo.trim() !== '';
+          const hasWebsite = advertData?.businessWebsite && advertData.businessWebsite.trim() !== '';
+          const detectedSellerType = (hasLogo || hasWebsite) ? 'trade' : 'private';
+          
+          console.log(`🔍 Auto-detected seller type: ${detectedSellerType}`);
+          console.log(`   Has logo: ${hasLogo} (value: "${advertData?.businessLogo}")`);
+          console.log(`   Has website: ${hasWebsite} (value: "${advertData?.businessWebsite}")`);
+          
+          // Build sellerContact object preserving existing fields
+          if (!updateObj.sellerContact) updateObj.sellerContact = {};
+          updateObj.sellerContact.type = detectedSellerType;
+          updateObj.sellerContact.phoneNumber = contactDetails.phoneNumber;
+          updateObj.sellerContact.email = contactDetails.email;
+          updateObj.sellerContact.postcode = contactDetails.postcode;
+          updateObj.sellerContact.allowEmailContact = contactDetails.allowEmailContact;
+          
+          // Add business info if provided
+          if (advertData?.businessName) {
+            updateObj.sellerContact.businessName = advertData.businessName;
+          }
+          if (advertData?.businessLogo) {
+            updateObj.sellerContact.businessLogo = advertData.businessLogo;
+          }
+          if (advertData?.businessWebsite) {
+            updateObj.sellerContact.businessWebsite = advertData.businessWebsite;
+          }
+          
           if (contactDetails.postcode) updateObj.postcode = contactDetails.postcode;
         }
         
@@ -537,7 +622,24 @@ const updateAdvert = async (req, res) => {
         });
         
         console.log('💾 [updateAdvert] Update object keys:', Object.keys(updateObj));
+        console.log('💾 [updateAdvert] sellerContact in updateObj:', updateObj.sellerContact);
         console.log('💾 [updateAdvert] Query:', { _id: car._id, __v: car.__v });
+        
+        // CRITICAL FIX: Convert nested sellerContact object to dot notation for MongoDB $set
+        // This preserves existing fields instead of replacing the entire object
+        const setUpdate = { ...updateObj };
+        if (updateObj.sellerContact) {
+          const sellerContact = updateObj.sellerContact;
+          delete setUpdate.sellerContact;
+          
+          // Add each sellerContact field with dot notation
+          Object.keys(sellerContact).forEach(key => {
+            setUpdate[`sellerContact.${key}`] = sellerContact[key];
+          });
+          
+          console.log('💾 [updateAdvert] Converted sellerContact to dot notation:', 
+            Object.keys(setUpdate).filter(k => k.startsWith('sellerContact.')));
+        }
         
         // Use findOneAndUpdate with the current version to handle concurrency
         const updatedCar = await Car.findOneAndUpdate(
@@ -546,12 +648,12 @@ const updateAdvert = async (req, res) => {
             __v: car.__v  // Include version in query to handle optimistic concurrency
           },
           { 
-            $set: updateObj,
+            $set: setUpdate,
             $inc: { __v: 1 }  // Increment version
           },
           { 
             new: true,  // Return updated document
-            runValidators: true,  // Run schema validators
+            runValidators: false,  // Disable validators for dot notation updates
             context: 'query'  // Set validation context to 'query' for proper 'this' binding
           }
         );

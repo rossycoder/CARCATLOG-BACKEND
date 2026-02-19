@@ -192,10 +192,21 @@ initializeCronJobs();
 
 // Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🌐 API URL: http://localhost:${PORT}`);
+  
+  // AUTO-FIX: Automatically fix all PHEVs with missing electric data
+  try {
+    const autoFixAllPHEVs = require('./scripts/auto-fix-all-phevs-on-startup');
+    // Run after 5 seconds to allow database connection to stabilize
+    setTimeout(async () => {
+      await autoFixAllPHEVs();
+    }, 5000);
+  } catch (error) {
+    console.error('⚠️ [AUTO-FIX] Failed to run PHEV auto-fix:', error.message);
+  }
 });
 
 module.exports = app;

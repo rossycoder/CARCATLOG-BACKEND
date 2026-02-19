@@ -133,9 +133,14 @@ class UniversalAutoCompleteService {
           }
         }
         
-        // Step 6: Electric vehicle enhancement (if applicable)
-        if (updatedVehicle.fuelType === 'Electric') {
-          console.log('🔋 Applying electric vehicle enhancements...');
+        // Step 6: Electric vehicle enhancement (if applicable) - includes PHEVs
+        const isElectricOrPluginHybrid = updatedVehicle.fuelType === 'Electric' || 
+                                          updatedVehicle.fuelType === 'Plug-in Hybrid' ||
+                                          updatedVehicle.fuelType === 'Petrol Plug-in Hybrid' ||
+                                          updatedVehicle.fuelType === 'Diesel Plug-in Hybrid';
+        
+        if (isElectricOrPluginHybrid) {
+          console.log(`🔋 Applying electric vehicle enhancements for ${updatedVehicle.fuelType}...`);
           const enhancedEVData = ElectricVehicleEnhancementService.enhanceWithEVData(updatedVehicle.toObject());
           Object.assign(updatedVehicle, enhancedEVData);
         }
@@ -944,10 +949,11 @@ class UniversalAutoCompleteService {
                       null;
       parsed.year = specs.VehicleIdentification?.YearOfManufacture;
       
-      // Simple approach: Use API fuel type, but check DVLA as fallback for hybrids
+      // Simple approach: Use API fuel type with Vehicle Specs for accurate detection
       parsed.fuelType = this.normalizeFuelType(
         specs.ModelData?.FuelType,
-        specs.VehicleIdentification?.DvlaFuelType
+        specs.VehicleIdentification?.DvlaFuelType,
+        specs // Pass full specs for PowerSource.VehicleType detection
       );
       
       // CRITICAL FIX: Prioritize SmmtDetails for transmission
@@ -1033,6 +1039,13 @@ class UniversalAutoCompleteService {
       // Electric vehicle data
       if (specs.PowerSource?.ElectricDetails) {
         const ev = specs.PowerSource.ElectricDetails;
+        
+        console.log('🔋 [API Parser] Electric Details found in API response:');
+        console.log('   RangeFigures:', JSON.stringify(ev.RangeFigures, null, 2));
+        console.log('   BatteryDetailsList:', JSON.stringify(ev.BatteryDetailsList, null, 2));
+        console.log('   ChargePortDetailsList:', JSON.stringify(ev.ChargePortDetailsList, null, 2));
+        console.log('   MotorDetailsList:', JSON.stringify(ev.MotorDetailsList, null, 2));
+        
         parsed.electricRange = ev.RangeFigures?.RangeTestCycles?.[0]?.CombinedRangeMiles;
         parsed.batteryCapacity = ev.BatteryDetailsList?.[0]?.CapacityKwh;
         parsed.homeChargingSpeed = ev.ChargePortDetailsList?.find(p => p.PortType === 'Type 2')?.MaxChargePowerKw;
@@ -1041,12 +1054,21 @@ class UniversalAutoCompleteService {
         parsed.electricMotorTorque = ev.MotorDetailsList?.[0]?.MaxTorqueNm;
         parsed.chargingPortType = ev.ChargePortDetailsList?.map(p => p.PortType).join(' / ');
         
+        console.log('🔋 [API Parser] Parsed electric data:');
+        console.log('   electricRange:', parsed.electricRange);
+        console.log('   batteryCapacity:', parsed.batteryCapacity);
+        console.log('   homeChargingSpeed:', parsed.homeChargingSpeed);
+        console.log('   rapidChargingSpeed:', parsed.rapidChargingSpeed);
+        
         // Calculate charging time (10-80%)
         const chargingTimes = ev.ChargePortDetailsList?.[0]?.ChargeTimes?.AverageChargeTimes10To80Percent;
         if (chargingTimes) {
           const fastCharging = chargingTimes.find(c => c.ChargePortKw >= 40);
           parsed.chargingTime = fastCharging ? fastCharging.TimeInMinutes / 60 : null;
         }
+      } else {
+        console.log('⚠️  [API Parser] No ElectricDetails found in PowerSource');
+        console.log('   PowerSource:', JSON.stringify(specs.PowerSource, null, 2));
       }
     }
 
@@ -1211,8 +1233,20 @@ class UniversalAutoCompleteService {
     vehicle.acceleration = parsedData.acceleration || vehicle.acceleration;
     vehicle.topSpeed = parsedData.topSpeed || vehicle.topSpeed;
     
-    // Electric vehicle data (ONLY for pure electric vehicles, NOT hybrids)
-    if (vehicle.fuelType === 'Electric') {
+    // Electric vehicle data (for pure electric AND plug-in hybrids)
+    const isElectricOrPluginHybrid = vehicle.fuelType === 'Electric' || 
+                                      vehicle.fuelType === 'Plug-in Hybrid' ||
+                                      vehicle.fuelType === 'Petrol Plug-in Hybrid' ||
+                                      vehicle.fuelType === 'Diesel Plug-in Hybrid';
+    
+    console.log('🔋 [UniversalService] Checking electric data for:', vehicle.fuelType);
+    console.log('   isElectricOrPluginHybrid:', isElectricOrPluginHybrid);
+    console.log('   parsedData.electricRange:', parsedData.electricRange);
+    console.log('   parsedData.batteryCapacity:', parsedData.batteryCapacity);
+    
+    if (isElectricOrPluginHybrid && (parsedData.electricRange || parsedData.batteryCapacity)) {
+      // Save electric data for EVs and PHEVs
+      console.log('✅ [UniversalService] Saving electric data to vehicle...');
       if (parsedData.electricRange) vehicle.electricRange = parsedData.electricRange;
       if (parsedData.batteryCapacity) vehicle.batteryCapacity = parsedData.batteryCapacity;
       if (parsedData.chargingTime) vehicle.chargingTime = parsedData.chargingTime;
@@ -1221,8 +1255,13 @@ class UniversalAutoCompleteService {
       if (parsedData.electricMotorPower) vehicle.electricMotorPower = parsedData.electricMotorPower;
       if (parsedData.electricMotorTorque) vehicle.electricMotorTorque = parsedData.electricMotorTorque;
       if (parsedData.chargingPortType) vehicle.chargingPortType = parsedData.chargingPortType;
+      
+      console.log(`⚡ [UniversalService] Electric data saved: ${vehicle.batteryCapacity}kWh battery, ${vehicle.electricRange} miles range`);
+    } else if (isElectricOrPluginHybrid) {
+      console.log('⚠️  [UniversalService] PHEV/EV detected but NO electric data in parsedData!');
+      console.log('   This means API did not return ElectricDetails');
     } else {
-      // For non-electric vehicles (including hybrids), ensure EV fields are null
+      // For pure petrol/diesel vehicles (NOT hybrids), ensure EV fields are null
       vehicle.electricRange = null;
       vehicle.batteryCapacity = null;
       vehicle.chargingTime = null;
@@ -1630,12 +1669,46 @@ class UniversalAutoCompleteService {
    * Normalize fuel type (simple approach with DVLA fallback)
    * @param {string} apiFuelType - Fuel type from CheckCarDetails API
    * @param {string} dvlaFuelType - Fuel type from DVLA (optional fallback)
+   * @param {object} vehicleSpecs - Full vehicle specs for PowerSource detection
    */
-  normalizeFuelType(apiFuelType, dvlaFuelType = null) {
+  normalizeFuelType(apiFuelType, dvlaFuelType = null, vehicleSpecs = null) {
     if (!apiFuelType) return null;
     
     const apiNormalized = apiFuelType.toLowerCase().trim();
     const dvlaNormalized = dvlaFuelType ? dvlaFuelType.toLowerCase().trim() : '';
+    
+    // CRITICAL: Check PowerSource.VehicleType for accurate detection
+    const vehicleType = vehicleSpecs?.PowerSource?.VehicleType;
+    const batteryCapacity = vehicleSpecs?.PowerSource?.ElectricDetails?.BatteryDetailsList?.[0]?.CapacityKwh;
+    
+    // BEV = Battery Electric Vehicle (Pure Electric)
+    if (vehicleType === 'BEV' || (apiNormalized === 'electric' && !apiNormalized.includes('/'))) {
+      return 'Electric';
+    }
+    
+    // PHEV = Plug-in Hybrid Electric Vehicle
+    if (vehicleType === 'PHEV' || (batteryCapacity && batteryCapacity > 8)) {
+      // Check if diesel or petrol based
+      if (apiNormalized.includes('diesel') || dvlaNormalized.includes('diesel')) {
+        return 'Diesel Plug-in Hybrid';
+      }
+      if (apiNormalized.includes('petrol') || apiNormalized.includes('gasoline')) {
+        return 'Petrol Plug-in Hybrid';
+      }
+      // Default to generic if can't determine base fuel
+      return 'Plug-in Hybrid';
+    }
+    
+    // HEV/MHEV = Hybrid Electric Vehicle (non-plug-in)
+    if (vehicleType === 'HEV' || vehicleType === 'MHEV') {
+      if (apiNormalized.includes('diesel') || dvlaNormalized.includes('diesel')) {
+        return 'Diesel Hybrid';
+      }
+      if (apiNormalized.includes('petrol') || apiNormalized.includes('gasoline')) {
+        return 'Petrol Hybrid';
+      }
+      return 'Hybrid';
+    }
     
     // SPECIAL CASE: If API says "Diesel" but DVLA says "HYBRID ELECTRIC"
     // This indicates a Diesel Hybrid (MHEV) that API didn't detect
@@ -1760,8 +1833,14 @@ class UniversalAutoCompleteService {
       }
     }
     
-    // Apply electric vehicle enhancements
-    if (vehicle.fuelType === 'Electric') {
+    // Apply electric vehicle enhancements - includes PHEVs
+    const isElectricOrPluginHybrid = vehicle.fuelType === 'Electric' || 
+                                      vehicle.fuelType === 'Plug-in Hybrid' ||
+                                      vehicle.fuelType === 'Petrol Plug-in Hybrid' ||
+                                      vehicle.fuelType === 'Diesel Plug-in Hybrid';
+    
+    if (isElectricOrPluginHybrid) {
+      console.log(`🔋 Applying electric vehicle enhancements for ${vehicle.fuelType}...`);
       const enhancedData = ElectricVehicleEnhancementService.enhanceWithEVData(vehicle.toObject());
       Object.assign(vehicle, enhancedData);
     }

@@ -772,39 +772,6 @@ carSchema.pre('save', async function(next) {
     this.fuelType.includes('Hybrid')
   );
   
-  if (isHybrid) {
-    // Hybrids should NOT have electric range or EV-specific fields
-    if (this.electricRange || this.batteryCapacity || this.chargingTime) {
-      console.log(`⚠️  HYBRID VEHICLE DETECTED (${this.fuelType}) - Removing electric-only fields for ${this.registrationNumber}`);
-      this.electricRange = null;
-      this.batteryCapacity = null;
-      this.chargingTime = null;
-      this.homeChargingSpeed = null;
-      this.publicChargingSpeed = null;
-      this.rapidChargingSpeed = null;
-      this.chargingTime10to80 = null;
-      this.electricMotorPower = null;
-      this.electricMotorTorque = null;
-      this.chargingPortType = null;
-      this.fastChargingCapability = null;
-      
-      // Also clear from runningCosts
-      if (this.runningCosts) {
-        this.runningCosts.electricRange = null;
-        this.runningCosts.batteryCapacity = null;
-        this.runningCosts.chargingTime = null;
-        this.runningCosts.homeChargingSpeed = null;
-        this.runningCosts.publicChargingSpeed = null;
-        this.runningCosts.rapidChargingSpeed = null;
-        this.runningCosts.chargingTime10to80 = null;
-        this.runningCosts.electricMotorPower = null;
-        this.runningCosts.electricMotorTorque = null;
-        this.runningCosts.chargingPortType = null;
-        this.runningCosts.fastChargingCapability = null;
-      }
-      console.log(`✅ Electric-only fields removed from hybrid vehicle`);
-    }
-  }
   
   // Auto-generate displayTitle if missing (AutoTrader format: "EngineSize Variant BodyStyle")
   if (!this.displayTitle && this.make && this.model) {

@@ -511,6 +511,13 @@ async function handlePaymentSuccess(paymentIntent) {
             const contactDetails = JSON.parse(purchase.metadata.get('contactDetails') || '{}');
             const userId = purchase.metadata.get('userId');
             
+            // DEBUG: Log business info from advertData
+            console.log('🔍 DEBUG: Business info in advertData:');
+            console.log('   businessName:', advertData.businessName);
+            console.log('   businessLogo:', advertData.businessLogo);
+            console.log('   businessWebsite:', advertData.businessWebsite);
+            console.log('   advertData keys:', Object.keys(advertData));
+            
             // Handle BIKE payments
             if (vehicleType === 'bike') {
               console.log(`📦 Creating BIKE from purchase data:`);
@@ -909,13 +916,42 @@ async function handlePaymentSuccess(paymentIntent) {
                 };
               }
               
-              car.sellerContact = {
-                type: purchase.sellerType || 'private', // Set seller type from purchase (trade or private)
-                phoneNumber: contactDetails.phoneNumber || car.sellerContact?.phoneNumber,
-                email: contactDetails.email || car.sellerContact?.email,
-                allowEmailContact: contactDetails.allowEmailContact || car.sellerContact?.allowEmailContact || false,
-                postcode: contactDetails.postcode || car.sellerContact?.postcode
-              };
+              // Auto-detect seller type based on business info
+              const hasLogo = advertData?.businessLogo && advertData.businessLogo.trim() !== '';
+              const hasWebsite = advertData?.businessWebsite && advertData.businessWebsite.trim() !== '';
+              const detectedSellerType = (hasLogo || hasWebsite) ? 'trade' : 'private';
+              
+              console.log(`🔍 Auto-detected seller type: ${detectedSellerType}`);
+              console.log(`   Has logo: ${hasLogo} (value: "${advertData?.businessLogo}")`);
+              console.log(`   Has website: ${hasWebsite} (value: "${advertData?.businessWebsite}")`);
+              console.log(`   Business name: "${advertData?.businessName}"`);
+              
+              // CRITICAL: Preserve existing business info if new data is empty
+              const finalBusinessName = advertData?.businessName || car.sellerContact?.businessName;
+              const finalBusinessLogo = advertData?.businessLogo || car.sellerContact?.businessLogo;
+              const finalBusinessWebsite = advertData?.businessWebsite || car.sellerContact?.businessWebsite;
+              
+              console.log(`📝 Final business info to save:`);
+              console.log(`   Business Name: "${finalBusinessName}"`);
+              console.log(`   Business Logo: "${finalBusinessLogo}"`);
+              console.log(`   Business Website: "${finalBusinessWebsite}"`);
+              
+              // Build sellerContact preserving existing nested fields
+              if (!car.sellerContact) car.sellerContact = {};
+              car.sellerContact.type = detectedSellerType;
+              car.sellerContact.phoneNumber = contactDetails.phoneNumber || car.sellerContact.phoneNumber;
+              car.sellerContact.email = contactDetails.email || car.sellerContact.email;
+              car.sellerContact.allowEmailContact = contactDetails.allowEmailContact || car.sellerContact.allowEmailContact || false;
+              car.sellerContact.postcode = contactDetails.postcode || car.sellerContact.postcode;
+              
+              if (finalBusinessName) car.sellerContact.businessName = finalBusinessName;
+              if (finalBusinessLogo) car.sellerContact.businessLogo = finalBusinessLogo;
+              if (finalBusinessWebsite) car.sellerContact.businessWebsite = finalBusinessWebsite;
+              
+              // Mark as modified for Mongoose
+              car.markModified('sellerContact');
+              
+              console.log('📝 sellerContact after update:', JSON.stringify(car.sellerContact, null, 2));
               
               car.advertisingPackage = {
                 packageId: purchase.packageId,
@@ -931,30 +967,32 @@ async function handlePaymentSuccess(paymentIntent) {
               car.advertStatus = 'active';
               car.publishedAt = new Date();
               
+              // CRITICAL: Call Universal Service to get correct PHEV detection and electric data
+              // This is needed because the car was created in "pending" status without full data
+              if (car.registrationNumber) {
+                try {
+                  console.log(`🔍 Fetching FRESH vehicle data from Universal Service for UPDATE: ${car.registrationNumber}`);
+                  
+                  // Set flag to skip API calls in pre-save hooks
+                  car._skipAPICallsInHooks = true;
+                  
+                  // CRITICAL: Force fresh API call to get correct PHEV detection (don't use stale cache)
+                  await universalService.completeCarData(car, true); // forceRefresh = true
+                  
+                  console.log(`✅ Universal Service data fetched successfully`);
+                  console.log(`   Detected fuel type: ${car.fuelType}`);
+                  console.log(`   Battery capacity: ${car.batteryCapacity || 'N/A'} kWh`);
+                  console.log(`   Electric range: ${car.electricRange || 'N/A'} miles`);
+                  
+                } catch (error) {
+                  console.error(`⚠️ Universal Service fetch failed: ${error.message}`);
+                  // Continue with save even if Universal Service fails
+                }
+              }
+              
               await car.save();
               console.log(`✅ Car advert UPDATED and published!`);
               
-              // CRITICAL: Use Universal Auto Complete Service for comprehensive vehicle data after payment
-              // Universal Service handles all data fetching with proper caching and race condition prevention
-              if (car.registrationNumber) {
-                try {
-                  console.log(`🔍 Using Universal Service for comprehensive vehicle data: ${car.registrationNumber}`);
-                  
-                  // Use Universal Service to complete all vehicle data (Vehicle History + MOT + Valuation)
-                  const completeVehicle = await universalService.completeCarData(car, false); // Use cache if available
-                  
-                  console.log(`✅ Universal Service comprehensive data completed successfully`);
-                  console.log(`   Vehicle data fully populated and saved to database`);
-                  console.log(`   Running costs, MOT history, and valuations included`);
-                  
-                  // The Universal Service automatically saves the updated vehicle data
-                  // and handles historyCheckId linking internally
-                  
-                } catch (error) {
-                  console.error(`⚠️ Universal Service comprehensive data failed: ${error.message}`);
-                  // Don't fail the payment - car is still published
-                }
-              }
             } else {
               // Check if a car with this payment intent already exists (prevent duplicates)
               const existingCarWithPayment = await Car.findOne({
@@ -1171,12 +1209,49 @@ async function handlePaymentSuccess(paymentIntent) {
                 }
               }
               
+              // CRITICAL: Use Universal Auto Complete Service BEFORE creating car
+              // This ensures we have the correct fuel type (including PHEV detection) and electric data
+              if (cleanedCarData.registrationNumber) {
+                try {
+                  console.log(`🔍 Fetching FRESH vehicle data from Universal Service BEFORE car creation: ${cleanedCarData.registrationNumber}`);
+                  
+                  // Create a temporary car object to pass to Universal Service
+                  const tempCar = new Car(cleanedCarData);
+                  tempCar._skipAPICallsInHooks = true;
+                  
+                  // CRITICAL: Force fresh API call to get correct PHEV detection (don't use stale cache)
+                  const completeVehicle = await universalService.completeCarData(tempCar, true); // forceRefresh = true
+                  
+                  console.log(`✅ Universal Service data fetched successfully`);
+                  console.log(`   Detected fuel type: ${tempCar.fuelType}`);
+                  console.log(`   Battery capacity: ${tempCar.batteryCapacity || 'N/A'} kWh`);
+                  console.log(`   Electric range: ${tempCar.electricRange || 'N/A'} miles`);
+                  
+                  // Update cleanedCarData with correct fuel type and electric data from Universal Service
+                  cleanedCarData.fuelType = tempCar.fuelType;
+                  if (tempCar.batteryCapacity) cleanedCarData.batteryCapacity = tempCar.batteryCapacity;
+                  if (tempCar.electricRange) cleanedCarData.electricRange = tempCar.electricRange;
+                  if (tempCar.homeChargingSpeed) cleanedCarData.homeChargingSpeed = tempCar.homeChargingSpeed;
+                  if (tempCar.rapidChargingSpeed) cleanedCarData.rapidChargingSpeed = tempCar.rapidChargingSpeed;
+                  if (tempCar.electricMotorPower) cleanedCarData.electricMotorPower = tempCar.electricMotorPower;
+                  if (tempCar.electricMotorTorque) cleanedCarData.electricMotorTorque = tempCar.electricMotorTorque;
+                  if (tempCar.chargingPortType) cleanedCarData.chargingPortType = tempCar.chargingPortType;
+                  if (tempCar.chargingTime) cleanedCarData.chargingTime = tempCar.chargingTime;
+                  
+                  console.log(`✅ Car data updated with correct fuel type and electric details`);
+                  
+                } catch (error) {
+                  console.error(`⚠️ Universal Service pre-fetch failed: ${error.message}`);
+                  // Continue with original data if Universal Service fails
+                }
+              }
+              
               if (existingCar) {
                 // Update existing pending car - SMART MERGE
                 // Preserve correct data from first attempt, only update missing/empty fields
                 console.log(`🔄 Smart merging data from 2nd attempt with existing car data`);
                 
-                // Set flag to skip API calls in pre-save hooks (we'll call Universal Service manually)
+                // Set flag to skip API calls in pre-save hooks (we already called Universal Service)
                 existingCar._skipAPICallsInHooks = true;
                 
                 // Fields that should ALWAYS be updated (payment/advert related)
@@ -1195,14 +1270,24 @@ async function handlePaymentSuccess(paymentIntent) {
                 existingCar.publishedAt = new Date();
                 existingCar.userId = cleanedCarData.userId;
                 
-                // Fields that should only be updated if missing in existing car
-                // This preserves correct data from 1st attempt
-                if (!existingCar.fuelType || existingCar.fuelType === 'Unknown') {
-                  existingCar.fuelType = cleanedCarData.fuelType;
-                } else {
-                  console.log(`   Preserving existing fuel type: ${existingCar.fuelType} (not overwriting with ${cleanedCarData.fuelType})`);
+                // CRITICAL: Always update fuel type from Universal Service (it has proper PHEV detection)
+                existingCar.fuelType = cleanedCarData.fuelType;
+                console.log(`   Updated fuel type to: ${existingCar.fuelType}`);
+                
+                // Update electric data if present (for PHEVs and EVs)
+                if (cleanedCarData.batteryCapacity) {
+                  existingCar.batteryCapacity = cleanedCarData.batteryCapacity;
+                  existingCar.electricRange = cleanedCarData.electricRange;
+                  existingCar.homeChargingSpeed = cleanedCarData.homeChargingSpeed;
+                  existingCar.rapidChargingSpeed = cleanedCarData.rapidChargingSpeed;
+                  existingCar.electricMotorPower = cleanedCarData.electricMotorPower;
+                  existingCar.electricMotorTorque = cleanedCarData.electricMotorTorque;
+                  existingCar.chargingPortType = cleanedCarData.chargingPortType;
+                  existingCar.chargingTime = cleanedCarData.chargingTime;
+                  console.log(`   Updated electric data: ${existingCar.batteryCapacity}kWh, ${existingCar.electricRange} miles`);
                 }
                 
+                // Fields that should only be updated if missing in existing car
                 if (!existingCar.engineSize || existingCar.engineSize === 0) {
                   existingCar.engineSize = cleanedCarData.engineSize;
                 } else {
@@ -1254,34 +1339,15 @@ async function handlePaymentSuccess(paymentIntent) {
                 console.log(`   Final engine size: ${car.engineSize}`);
                 console.log(`   Car now belongs to user: ${car.userId || 'N/A'}`);
               } else {
-                // Create new car
-                // Set flag to skip API calls in pre-save hooks (we'll call Universal Service manually)
+                // Create new car with correct fuel type and electric data
+                // Set flag to skip API calls in pre-save hooks (we already called Universal Service)
                 cleanedCarData._skipAPICallsInHooks = true;
                 car = new Car(cleanedCarData);
                 await car.save();
                 console.log(`✅ New car advert CREATED and published in database!`);
-              }
-            
-              // CRITICAL: Use Universal Auto Complete Service for comprehensive vehicle data after payment
-              // Universal Service handles all data fetching with proper caching and race condition prevention
-              if (car.registrationNumber) {
-                try {
-                  console.log(`🔍 Using Universal Service for comprehensive vehicle data: ${car.registrationNumber}`);
-                  
-                  // Use Universal Service to complete all vehicle data (Vehicle History + MOT + Valuation)
-                  const completeVehicle = await universalService.completeCarData(car, false); // Use cache if available
-                  
-                  console.log(`✅ Universal Service comprehensive data completed successfully`);
-                  console.log(`   Vehicle data fully populated and saved to database`);
-                  console.log(`   Running costs, MOT history, and valuations included`);
-                  
-                  // The Universal Service automatically saves the updated vehicle data
-                  // and handles historyCheckId linking internally
-                  
-                } catch (error) {
-                  console.error(`⚠️ Universal Service comprehensive data failed: ${error.message}`);
-                  // Don't fail the payment - car is still published
-                }
+                console.log(`   Fuel type: ${car.fuelType}`);
+                console.log(`   Battery: ${car.batteryCapacity || 'N/A'} kWh`);
+                console.log(`   Electric range: ${car.electricRange || 'N/A'} miles`);
               }
             }
             
