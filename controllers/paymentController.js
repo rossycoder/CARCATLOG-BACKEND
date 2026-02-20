@@ -3,6 +3,7 @@
  * Handles HTTP requests for payment processing
  */
 
+const mongoose = require('mongoose');
 const StripeService = require('../services/stripeService');
 const HistoryService = require('../services/historyService');
 const EmailService = require('../services/emailService');
@@ -517,6 +518,7 @@ async function handlePaymentSuccess(paymentIntent) {
             console.log('   businessLogo:', advertData.businessLogo);
             console.log('   businessWebsite:', advertData.businessWebsite);
             console.log('   advertData keys:', Object.keys(advertData));
+            console.log('🔍 DEBUG: Full advertData:', JSON.stringify(advertData, null, 2));
             
             // Handle BIKE payments
             if (vehicleType === 'bike') {
@@ -925,6 +927,7 @@ async function handlePaymentSuccess(paymentIntent) {
               console.log(`   Has logo: ${hasLogo} (value: "${advertData?.businessLogo}")`);
               console.log(`   Has website: ${hasWebsite} (value: "${advertData?.businessWebsite}")`);
               console.log(`   Business name: "${advertData?.businessName}"`);
+              console.log(`🔍 FULL advertData received:`, JSON.stringify(advertData, null, 2));
               
               // CRITICAL: Preserve existing business info if new data is empty
               const finalBusinessName = advertData?.businessName || car.sellerContact?.businessName;
@@ -944,14 +947,14 @@ async function handlePaymentSuccess(paymentIntent) {
               car.sellerContact.allowEmailContact = contactDetails.allowEmailContact || car.sellerContact.allowEmailContact || false;
               car.sellerContact.postcode = contactDetails.postcode || car.sellerContact.postcode;
               
+              // CRITICAL: Don't set on car object - Mongoose Mixed type doesn't track changes
+              // We'll add directly to updateFields later
               if (finalBusinessName) car.sellerContact.businessName = finalBusinessName;
-              if (finalBusinessLogo) car.sellerContact.businessLogo = finalBusinessLogo;
-              if (finalBusinessWebsite) car.sellerContact.businessWebsite = finalBusinessWebsite;
               
               // Mark as modified for Mongoose
               car.markModified('sellerContact');
               
-              console.log('📝 sellerContact after update:', JSON.stringify(car.sellerContact, null, 2));
+              console.log('📝 sellerContact after update (before save):', JSON.stringify(car.sellerContact, null, 2));
               
               car.advertisingPackage = {
                 packageId: purchase.packageId,
@@ -990,8 +993,77 @@ async function handlePaymentSuccess(paymentIntent) {
                 }
               }
               
-              await car.save();
+              // CRITICAL: Use findOneAndUpdate with $set to properly save Mixed type fields (sellerContact)
+              // This ensures business logo and website are saved correctly
+              const updateFields = {
+                advertisingPackage: car.advertisingPackage,
+                advertStatus: car.advertStatus,
+                publishedAt: car.publishedAt,
+                // Use dot notation for sellerContact to preserve existing fields
+                'sellerContact.type': car.sellerContact.type,
+                'sellerContact.phoneNumber': car.sellerContact.phoneNumber,
+                'sellerContact.email': car.sellerContact.email,
+                'sellerContact.allowEmailContact': car.sellerContact.allowEmailContact,
+                'sellerContact.postcode': car.sellerContact.postcode
+              };
+              
+              // Add business info if present
+              if (finalBusinessName) updateFields['sellerContact.businessName'] = finalBusinessName;
+              if (finalBusinessLogo) updateFields['sellerContact.businessLogo'] = finalBusinessLogo;
+              if (finalBusinessWebsite) updateFields['sellerContact.businessWebsite'] = finalBusinessWebsite;
+              
+              console.log(`🔍 Business info in updateFields:`, {
+                businessName: updateFields['sellerContact.businessName'],
+                businessLogo: updateFields['sellerContact.businessLogo'],
+                businessWebsite: updateFields['sellerContact.businessWebsite']
+              });
+              
+              // CRITICAL: Normalize BMW series models (318d → 3 Series)
+              if (car.make && car.make.toUpperCase() === 'BMW' && car.model) {
+                const seriesMatch = car.model.match(/^([1-8])(\d{2})[a-z]*/i);
+                if (seriesMatch) {
+                  const seriesNumber = seriesMatch[1];
+                  const seriesModel = `${seriesNumber} Series`;
+                  const fullVariant = car.model;
+                  
+                  console.log(`🔄 Normalizing BMW model: "${car.model}" → "${seriesModel}"`);
+                  updateFields.model = seriesModel;
+                  
+                  // Update variant if it's empty or same as model
+                  if (!car.variant || car.variant === car.model) {
+                    updateFields.variant = fullVariant;
+                    console.log(`🔄 Setting variant to: "${fullVariant}"`);
+                  }
+                }
+              }
+              
+              // Update all other modified fields from universalService
+              if (car.isModified('fuelType')) updateFields.fuelType = car.fuelType;
+              if (car.isModified('batteryCapacity')) updateFields.batteryCapacity = car.batteryCapacity;
+              if (car.isModified('electricRange')) updateFields.electricRange = car.electricRange;
+              if (car.isModified('runningCosts')) updateFields.runningCosts = car.runningCosts;
+              if (car.isModified('variant') && !updateFields.variant) updateFields.variant = car.variant;
+              if (car.isModified('model') && !updateFields.model) updateFields.model = car.model;
+              
+              console.log(`🔍 Update fields to save:`, JSON.stringify(updateFields, null, 2));
+              
+              // CRITICAL FIX: Use MongoDB driver directly for Mixed type fields (sellerContact)
+              // Mongoose's findByIdAndUpdate doesn't properly handle Mixed type with dot notation
+              await mongoose.connection.db.collection('cars').updateOne(
+                { _id: car._id },
+                { $set: updateFields }
+              );
+              
               console.log(`✅ Car advert UPDATED and published!`);
+              
+              // Verify what was actually saved
+              const savedCar = await Car.findById(car._id).lean();
+              console.log(`🔍 Verification - Business info in saved car:`, {
+                businessName: savedCar.sellerContact?.businessName,
+                businessLogo: savedCar.sellerContact?.businessLogo,
+                businessWebsite: savedCar.sellerContact?.businessWebsite,
+                sellerType: savedCar.sellerContact?.type
+              });
               
             } else {
               // Check if a car with this payment intent already exists (prevent duplicates)
@@ -1333,6 +1405,8 @@ async function handlePaymentSuccess(paymentIntent) {
                 if (!existingCar.color) existingCar.color = cleanedCarData.color;
                 
                 car = existingCar;
+                // CRITICAL: Skip API calls in pre-save hooks
+                car._skipAPICallsInHooks = true;
                 await car.save();
                 console.log(`✅ Existing car UPDATED and published with smart merge!`);
                 console.log(`   Final fuel type: ${car.fuelType}`);

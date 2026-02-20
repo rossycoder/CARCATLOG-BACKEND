@@ -655,9 +655,10 @@ class VehicleController {
       let car;
       
       // Try to find by MongoDB _id first, then by advertId if that fails
+      // CRITICAL FIX: Use .lean() to get Mixed type fields like businessLogo/businessWebsite
       try {
         if (mongoose.Types.ObjectId.isValid(id)) {
-          car = await Car.findById(id).populate('historyCheckId');
+          car = await Car.findById(id).populate('historyCheckId').lean();
         }
       } catch (castError) {
         // Ignore cast errors and try advertId lookup
@@ -665,7 +666,7 @@ class VehicleController {
       
       // If not found by _id or not a valid ObjectId, try advertId (UUID)
       if (!car) {
-        car = await Car.findOne({ advertId: id }).populate('historyCheckId');
+        car = await Car.findOne({ advertId: id }).populate('historyCheckId').lean();
       }
 
       if (!car) {
@@ -678,11 +679,32 @@ class VehicleController {
         });
       }
 
-      // Convert to plain object to add dealer info
-      const carData = car.toObject();
+      // car is already a plain object from .lean(), no need for toObject()
+      const carData = car;
 
       // Clean up "null" string values
       this.cleanNullStrings(carData);
+      
+      // CRITICAL FIX: Ensure runningCosts is properly structured for frontend
+      // Frontend expects: runningCosts.fuelEconomy.urban/extraUrban/combined
+      // But database might have legacy fields: fuelEconomyUrban, fuelEconomyExtraUrban, fuelEconomyCombined
+      if (!carData.runningCosts || !carData.runningCosts.fuelEconomy) {
+        carData.runningCosts = {
+          fuelEconomy: {
+            urban: carData.fuelEconomyUrban || carData.urbanMpg || '',
+            extraUrban: carData.fuelEconomyExtraUrban || carData.extraUrbanMpg || '',
+            combined: carData.fuelEconomyCombined || carData.combinedMpg || ''
+          },
+          co2Emissions: carData.co2Emissions || '',
+          insuranceGroup: carData.insuranceGroup || '',
+          annualTax: carData.annualTax || ''
+        };
+        console.log('🔧 [getCarById] Structured runningCosts from legacy fields:', {
+          urban: carData.runningCosts.fuelEconomy.urban,
+          extraUrban: carData.runningCosts.fuelEconomy.extraUrban,
+          combined: carData.runningCosts.fuelEconomy.combined
+        });
+      }
       
       // CRITICAL FIX: Auto-sync running costs from VehicleHistory if missing
       // This ensures running costs are ALWAYS displayed on frontend
@@ -716,16 +738,20 @@ class VehicleController {
             carData.annualTax = history.annualTax;
             
             // Save to database for future requests (async, don't wait)
+            // CRITICAL FIX: Since we used .lean(), car is a plain object, need to use findByIdAndUpdate
             setImmediate(async () => {
               try {
-                car.runningCosts = carData.runningCosts;
-                car.urbanMpg = history.urbanMpg;
-                car.extraUrbanMpg = history.extraUrbanMpg;
-                car.combinedMpg = history.combinedMpg;
-                car.co2Emissions = history.co2Emissions;
-                car.insuranceGroup = history.insuranceGroup;
-                car.annualTax = history.annualTax;
-                await car.save();
+                await Car.findByIdAndUpdate(car._id, {
+                  $set: {
+                    runningCosts: carData.runningCosts,
+                    urbanMpg: history.urbanMpg,
+                    extraUrbanMpg: history.extraUrbanMpg,
+                    combinedMpg: history.combinedMpg,
+                    co2Emissions: history.co2Emissions,
+                    insuranceGroup: history.insuranceGroup,
+                    annualTax: history.annualTax
+                  }
+                });
                 console.log(`✅ Running costs saved to Car document for ${car.registrationNumber}`);
               } catch (saveError) {
                 console.error(`⚠️ Failed to save running costs to Car:`, saveError.message);
@@ -947,7 +973,9 @@ class VehicleController {
       }
 
       // Execute query
+      // CRITICAL FIX: Use .lean() to get Mixed type fields like businessLogo/businessWebsite
       const cars = await Car.find(query)
+        .lean()
         .populate('historyCheckId', 'writeOffCategory writeOffDetails')
         .limit(parseInt(limit))
         .skip(parseInt(skip))
@@ -1229,16 +1257,18 @@ class VehicleController {
       }
 
       // Execute query
+      // CRITICAL FIX: Use .lean() to get Mixed type fields like businessLogo/businessWebsite
       const cars = await Car.find(query)
+        .lean()
         .populate('historyCheckId', 'writeOffCategory writeOffDetails')
         .limit(Math.min(parseInt(limit), 100)) // Cap at 100
         .skip(parseInt(skip))
         .sort(sortOption);
 
       // Clean up "null" strings in all cars
+      // Since we used .lean(), cars are already plain objects
       const cleanedCars = cars.map(car => {
-        const carData = car.toObject();
-        return this.cleanNullStrings(carData);
+        return this.cleanNullStrings(car);
       });
       
       // CRITICAL FIX: Auto-sync running costs from VehicleHistory for cars missing data
@@ -1669,6 +1699,8 @@ class VehicleController {
             doors: bodyDetails.NumberOfDoors,
             seats: bodyDetails.NumberOfSeats || dvlaTech.SeatCountIncludingDriver,
             color: null, // Not in vehicleSpecs API
+            urbanMpg: fuelEconomy.UrbanColdMpg,
+            extraUrbanMpg: fuelEconomy.ExtraUrbanMpg,
             combinedMpg: fuelEconomy.CombinedMpg,
             co2Emissions: emissions.ManufacturerCo2 || vehicleId.DvlaCo2,
             power: performance.Power && performance.Power.Bhp ? performance.Power.Bhp : null,
@@ -1743,6 +1775,8 @@ class VehicleController {
               doors: apiData.doors,
               seats: apiData.seats,
               colour: apiData.color,
+              urbanMpg: apiData.urbanMpg,
+              extraUrbanMpg: apiData.extraUrbanMpg,
               combinedMpg: apiData.combinedMpg,
               co2Emissions: apiData.co2Emissions,
               annualTax: apiData.annualTax,
@@ -1769,6 +1803,8 @@ class VehicleController {
               doors: apiData.doors,
               seats: apiData.seats,
               color: apiData.color,
+              urbanMpg: apiData.urbanMpg,
+              extraUrbanMpg: apiData.extraUrbanMpg,
               combinedMpg: apiData.combinedMpg,
               co2Emissions: apiData.co2Emissions,
               annualTax: apiData.annualTax,
@@ -2175,9 +2211,10 @@ class VehicleController {
       const query = isAdmin ? {} : { userId: userId };
       
       // Find vehicles (cars and bikes)
+      // CRITICAL FIX: Use .lean() to get Mixed type fields like businessLogo/businessWebsite
       const [cars, bikes] = await Promise.all([
-        Car.find(query).populate('userId', 'email name').sort({ createdAt: -1 }),
-        Bike.find(query).populate('userId', 'email name').sort({ createdAt: -1 })
+        Car.find(query).lean().populate('userId', 'email name').sort({ createdAt: -1 }),
+        Bike.find(query).lean().populate('userId', 'email name').sort({ createdAt: -1 })
       ]);
 
       console.log('[Vehicle Controller] Found', cars.length, 'cars and', bikes.length, 'bikes');
@@ -2188,15 +2225,16 @@ class VehicleController {
       }
 
       // Combine and mark vehicle types
+      // CRITICAL FIX: Since we used .lean(), cars and bikes are already plain objects
       const allListings = [
         ...cars.map(car => ({ 
-          ...car.toObject(), 
+          ...car, // Already a plain object from .lean()
           vehicleType: 'car',
           ownerEmail: car.userId?.email || 'Unknown',
           ownerName: car.userId?.name || 'Unknown'
         })),
         ...bikes.map(bike => ({ 
-          ...bike.toObject(), 
+          ...bike, // Already a plain object from .lean()
           vehicleType: 'bike',
           advertStatus: bike.status, // Map bike.status to advertStatus for frontend consistency
           ownerEmail: bike.userId?.email || 'Unknown',

@@ -118,6 +118,10 @@ const createAdvert = async (req, res) => {
     console.log(`🚗 Creating car with registration: ${car.registrationNumber}`);
     console.log(`   Initial variant: ${car.variant || 'NOT SET - will be fetched from API'}`);
     
+    // CRITICAL: Skip API calls in pre-save hooks to avoid duplicate calls
+    // Data is already being fetched by vehicleController or will be fetched later
+    car._skipAPICallsInHooks = true;
+    
     await car.save(); // Pre-save hook will automatically fetch variant if missing
     
     console.log(`✅ Car saved with final variant: "${car.variant}"`);
@@ -451,7 +455,29 @@ const updateAdvert = async (req, res) => {
             if (!updateObj.userEditedFields.includes('color')) updateObj.userEditedFields.push('color');
           }
           
+          // CRITICAL FIX: Don't let Object.assign overwrite sellerContact completely
+          // Extract sellerContact from cleanVehicleData before Object.assign
+          const vehicleDataSellerContact = cleanVehicleData.sellerContact;
+          delete cleanVehicleData.sellerContact;
+          
           Object.assign(updateObj, cleanVehicleData);
+          
+          // CRITICAL FIX: Merge sellerContact carefully to preserve business info
+          if (vehicleDataSellerContact) {
+            if (!updateObj.sellerContact) {
+              updateObj.sellerContact = {};
+            }
+            // Only copy non-business fields from vehicleData
+            if (vehicleDataSellerContact.type) updateObj.sellerContact.type = vehicleDataSellerContact.type;
+            if (vehicleDataSellerContact.phoneNumber) updateObj.sellerContact.phoneNumber = vehicleDataSellerContact.phoneNumber;
+            if (vehicleDataSellerContact.email) updateObj.sellerContact.email = vehicleDataSellerContact.email;
+            if (vehicleDataSellerContact.postcode) updateObj.sellerContact.postcode = vehicleDataSellerContact.postcode;
+            if (vehicleDataSellerContact.allowEmailContact !== undefined) updateObj.sellerContact.allowEmailContact = vehicleDataSellerContact.allowEmailContact;
+            if (vehicleDataSellerContact.stats) updateObj.sellerContact.stats = vehicleDataSellerContact.stats;
+            if (vehicleDataSellerContact.reviewCount !== undefined) updateObj.sellerContact.reviewCount = vehicleDataSellerContact.reviewCount;
+            
+            console.log('✅ [updateAdvert] Merged sellerContact from vehicleData (preserved business info)');
+          }
         }
         
         // Update advert data
