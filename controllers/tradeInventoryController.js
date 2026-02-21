@@ -1,6 +1,8 @@
 const Car = require('../models/Car');
 const TradeSubscription = require('../models/TradeSubscription');
 const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');
+const { normalizeMake } = require('../utils/makeNormalizer');
+const { normalizeModelVariant } = require('../utils/modelVariantNormalizer');
 
 // Initialize services
 const universalService = new UniversalAutoCompleteService();
@@ -188,6 +190,22 @@ exports.createVehicle = async (req, res) => {
     // Normalize transmission to lowercase
     const transmission = req.body.transmission ? req.body.transmission.toLowerCase() : 'manual';
     
+    // CRITICAL: Normalize make to proper capitalization (BMW, Volvo, Mercedes-Benz, etc.)
+    // This prevents filter duplicates like "VOLVO" and "Volvo"
+    const make = normalizeMake(req.body.make);
+    console.log(`[Trade Inventory] Normalized make: "${req.body.make}" → "${make}"`);
+    
+    // CRITICAL: Normalize model and variant (prevent swaps like model="XC90 R-DESIGN..." variant="XC90")
+    const { model: normalizedModel, variant: normalizedVariant, wasSwapped } = normalizeModelVariant(
+      req.body.model,
+      req.body.variant,
+      make
+    );
+    
+    if (wasSwapped) {
+      console.log(`[Trade Inventory] Fixed model/variant swap for ${make}`);
+    }
+    
     // Use dealer's business address postcode if not provided
     const postcode = req.body.postcode || req.dealer.businessAddress?.postcode || 'SW1A 1AA';
     
@@ -287,11 +305,13 @@ exports.createVehicle = async (req, res) => {
     
     const vehicleData = {
       ...req.body,
-      engineSize,    // Use enhanced or request body value
-      variant,       // Auto-generated or from req.body or API
-      displayTitle,  // AutoTrader format title
-      transmission,  // This will override the spread value
-      postcode,      // This will override the spread value
+      make,                    // Use normalized make (BMW, Volvo, Mercedes-Benz, etc.)
+      model: normalizedModel,  // Use normalized model (short name like "XC90", "3 Series")
+      variant: normalizedVariant, // Use normalized variant (detailed specs)
+      engineSize,              // Use enhanced or request body value
+      displayTitle,            // AutoTrader format title
+      transmission,            // This will override the spread value
+      postcode,                // This will override the spread value
       dealerId: req.dealerId,
       isDealerListing: true,
       advertStatus: 'active',
@@ -567,6 +587,35 @@ exports.publishVehicle = async (req, res) => {
       advertStatus: 'active',
       publishedAt: new Date()
     };
+    
+    // CRITICAL: Fetch location data from postcode for radius-based search
+    // Use dealer's business postcode if contactDetails postcode is default/invalid
+    let postcodeToUse = contactDetails.postcode;
+    
+    // If postcode is default hardcoded value, use dealer's business postcode
+    if (postcodeToUse === 'SW1A 1AA' && req.dealer.businessAddress?.postcode) {
+      postcodeToUse = req.dealer.businessAddress.postcode;
+      updateData.postcode = postcodeToUse;
+      console.log(`[Trade Publish] Using dealer's business postcode: ${postcodeToUse}`);
+    }
+    
+    try {
+      console.log(`[Trade Publish] 🔍 Fetching location data for postcode: ${postcodeToUse}`);
+      const postcodeService = require('../services/postcodeService');
+      const locationData = await postcodeService.lookupPostcode(postcodeToUse);
+      
+      if (locationData) {
+        updateData.locationName = locationData.locationName;
+        updateData.latitude = locationData.latitude;
+        updateData.longitude = locationData.longitude;
+        console.log(`[Trade Publish] ✅ Location data fetched: ${locationData.locationName} (${locationData.latitude}, ${locationData.longitude})`);
+      } else {
+        console.log(`[Trade Publish] ⚠️  Location data not available for postcode: ${contactDetails.postcode}`);
+      }
+    } catch (error) {
+      console.error(`[Trade Publish] ❌ Location fetch failed: ${error.message}`);
+      // Continue with publish even if location fetch fails
+    }
 
     // ALWAYS use images from advertData if provided (these are the dealer's uploaded images)
     // Frontend sends photos array, backend needs images array
@@ -596,6 +645,31 @@ exports.publishVehicle = async (req, res) => {
       });
     }
 
+    // CRITICAL: Normalize make to proper capitalization (VOLVO → Volvo, bmw → BMW, etc.)
+    // This prevents filter duplicates in frontend
+    if (car.make) {
+      const normalizedMake = normalizeMake(car.make);
+      if (car.make !== normalizedMake) {
+        console.log(`[Trade Publish] 🔄 Normalizing make: "${car.make}" → "${normalizedMake}"`);
+        updateData.make = normalizedMake;
+      }
+    }
+    
+    // CRITICAL: Normalize model and variant (fix swaps)
+    if (car.model) {
+      const { model: normalizedModel, variant: normalizedVariant, wasSwapped } = normalizeModelVariant(
+        car.model,
+        car.variant,
+        car.make
+      );
+      
+      if (wasSwapped) {
+        console.log(`[Trade Publish] 🔄 Fixed model/variant swap`);
+        updateData.model = normalizedModel;
+        updateData.variant = normalizedVariant;
+      }
+    }
+    
     // CRITICAL: Normalize BMW series models BEFORE publishing (318d → 3 Series)
     if (car.make && car.make.toUpperCase() === 'BMW' && car.model) {
       console.log(`[Trade Publish] Checking BMW normalization for: ${car.model}`);

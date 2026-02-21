@@ -326,6 +326,12 @@ exports.login = async (req, res) => {
     // Get subscription info
     const TradeSubscription = require('../models/TradeSubscription');
     const subscription = await TradeSubscription.findActiveForDealer(dealer._id);
+    
+    // CRITICAL: Sync listingsUsed with actual active cars count
+    if (subscription) {
+      await subscription.syncUsage();
+      console.log(`[Trade Login] Synced subscription usage: ${subscription.listingsUsed} active listings`);
+    }
 
     res.json({
       success: true,
@@ -387,6 +393,12 @@ exports.getMe = async (req, res) => {
     // Get subscription info
     const TradeSubscription = require('../models/TradeSubscription');
     const subscription = await TradeSubscription.findActiveForDealer(dealer._id);
+    
+    // CRITICAL: Sync listingsUsed with actual active cars count
+    if (subscription) {
+      await subscription.syncUsage();
+      console.log(`[Trade GetMe] Synced subscription usage: ${subscription.listingsUsed} active listings`);
+    }
 
     res.json({
       success: true,
