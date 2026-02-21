@@ -827,7 +827,7 @@ class VehicleController {
       // If this is a trade dealer listing, fetch dealer information
       if (car.dealerId) {
         const TradeDealer = require('../models/TradeDealer');
-        const dealer = await TradeDealer.findById(car.dealerId).select('businessName logo phone email businessAddress');
+        const dealer = await TradeDealer.findById(car.dealerId).select('businessName tradingName logo website phone email businessAddress');
         
         if (dealer) {
           // Add dealer logo to car data
@@ -843,6 +843,18 @@ class VehicleController {
             carData.sellerContact = {};
           }
           carData.sellerContact.businessName = dealer.businessName;
+          carData.sellerContact.tradingName = dealer.tradingName; // CRITICAL: Add trading name
+          
+          // Only add logo if it exists
+          if (dealer.logo) {
+            carData.sellerContact.businessLogo = dealer.logo; // CRITICAL: Add logo to sellerContact
+          }
+          
+          // Only add website if it exists
+          if (dealer.website) {
+            carData.sellerContact.businessWebsite = dealer.website; // CRITICAL: Add website to sellerContact
+          }
+          
           carData.sellerContact.type = 'trade';
           carData.sellerContact.phoneNumber = carData.sellerContact.phoneNumber || dealer.phone;
           
@@ -850,6 +862,14 @@ class VehicleController {
           if (dealer.businessAddress) {
             carData.sellerContact.businessAddress = dealer.businessAddress;
           }
+          
+          console.log('[getCarById] Added TradeDealer info to response:', {
+            businessName: dealer.businessName,
+            tradingName: dealer.tradingName,
+            logo: dealer.logo,
+            website: dealer.website,
+            address: dealer.businessAddress
+          });
         }
       }
 

@@ -300,6 +300,9 @@ exports.createVehicle = async (req, res) => {
         type: 'trade',
         ...req.dealer.businessAddress,
         businessName: req.dealer.businessName,
+        tradingName: req.dealer.tradingName,
+        businessLogo: req.dealer.logo, // Add dealer logo
+        businessWebsite: req.dealer.website, // Add dealer website
         email: req.dealer.email,
         phoneNumber: req.dealer.phone
       }
@@ -557,12 +560,6 @@ exports.publishVehicle = async (req, res) => {
 
     // Prepare update data
     const updateData = {
-      'sellerContact.phoneNumber': contactDetails.phoneNumber,
-      'sellerContact.email': contactDetails.email,
-      'sellerContact.allowEmailContact': contactDetails.allowEmailContact || false,
-      'sellerContact.postcode': contactDetails.postcode,
-      'sellerContact.type': 'trade',
-      'sellerContact.businessName': req.dealer.businessName,
       postcode: contactDetails.postcode,
       dealerId: req.dealerId,
       isDealerListing: true,
@@ -599,6 +596,134 @@ exports.publishVehicle = async (req, res) => {
       });
     }
 
+    // CRITICAL: Normalize BMW series models BEFORE publishing (318d → 3 Series)
+    if (car.make && car.make.toUpperCase() === 'BMW' && car.model) {
+      console.log(`[Trade Publish] Checking BMW normalization for: ${car.model}`);
+      
+      // Skip electric models (i4, i8, iX, iX3, etc.)
+      const isElectricModel = /^i[X0-9]/i.test(car.model);
+      
+      if (!isElectricModel) {
+        // Match: "320d", "520i", "118i M", "320d M Sport", "M135", etc.
+        // Pattern: first digit (1-8) + two digits + anything else
+        const seriesMatch = car.model.match(/^([1-8])(\d{2})(.*)$/i);
+        
+        if (seriesMatch) {
+          const seriesNumber = seriesMatch[1]; // First digit (1, 2, 3, 4, 5, 6, 7, 8)
+          const seriesModel = `${seriesNumber} Series`;
+          const fullVariant = car.model.trim(); // Full variant like "320d" or "118i M"
+          
+          console.log(`[Trade Publish] 🔄 Normalizing BMW model: "${car.model}" → "${seriesModel}"`);
+          updateData.model = seriesModel;
+          
+          // Update variant if it's empty, same as model, or is a fuel type (fallback variant)
+          const isFuelTypeVariant = car.variant && ['Petrol', 'Diesel', 'Electric', 'Hybrid'].includes(car.variant);
+          if (!car.variant || car.variant === car.model || car.variant === 'null' || car.variant === 'undefined' || isFuelTypeVariant) {
+            updateData.variant = fullVariant;
+            console.log(`[Trade Publish] 🔄 Setting variant to: "${fullVariant}"`);
+          }
+        } else {
+          console.log(`[Trade Publish] ℹ️  BMW model "${car.model}" doesn't match series pattern, keeping as-is`);
+        }
+      } else {
+        console.log(`[Trade Publish] ⚡ Electric BMW model detected, skipping normalization: ${car.model}`);
+      }
+    }
+    
+    // CRITICAL: Fetch vehicle history and MOT history for trade dealers
+    if (car.registrationNumber) {
+      try {
+        console.log(`[Trade Publish] 🔍 Fetching vehicle history for: ${car.registrationNumber}`);
+        const HistoryService = require('../services/historyService');
+        const historyService = new HistoryService();
+        
+        // Fetch vehicle history (this will save to VehicleHistory model)
+        const historyResult = await historyService.checkVehicleHistory(car.registrationNumber, false);
+        
+        if (historyResult && historyResult._id) {
+          updateData.historyCheckId = historyResult._id; // CRITICAL: Use _id, not historyCheckId
+          updateData.historyCheckStatus = 'completed';
+          console.log(`[Trade Publish] ✅ Vehicle history fetched: ${historyResult._id}`);
+        } else {
+          console.log(`[Trade Publish] ⚠️  Vehicle history not available`);
+        }
+      } catch (error) {
+        console.error(`[Trade Publish] ❌ Vehicle history fetch failed: ${error.message}`);
+        // Continue with publish even if history fetch fails
+      }
+      
+      try {
+        console.log(`[Trade Publish] 🔍 Fetching MOT history for: ${car.registrationNumber}`);
+        const motHistoryService = require('../services/motHistoryService');
+        
+        // Fetch MOT history from CheckCarDetails API
+        const motHistory = await motHistoryService.fetchMOTHistory(car.registrationNumber);
+        
+        if (motHistory && motHistory.length > 0) {
+          updateData.motHistory = motHistory;
+          
+          // Set MOT due date from latest test
+          const latestTest = motHistory[0];
+          if (latestTest.expiryDate) {
+            updateData.motDue = new Date(latestTest.expiryDate);
+            updateData.motExpiry = new Date(latestTest.expiryDate);
+            updateData.motStatus = latestTest.testResult || 'Valid';
+            console.log(`[Trade Publish] ✅ MOT history fetched: ${motHistory.length} tests`);
+            console.log(`[Trade Publish] ✅ MOT expiry: ${latestTest.expiryDate}`);
+          }
+        } else {
+          console.log(`[Trade Publish] ⚠️  MOT history not available`);
+        }
+      } catch (error) {
+        console.error(`[Trade Publish] ❌ MOT history fetch failed: ${error.message}`);
+        // Continue with publish even if MOT fetch fails
+      }
+    }
+    
+    // CRITICAL: Build complete sellerContact object to avoid dot notation issues
+    const sellerContact = {
+      phoneNumber: contactDetails.phoneNumber,
+      email: contactDetails.email,
+      allowEmailContact: contactDetails.allowEmailContact || false,
+      postcode: contactDetails.postcode,
+      type: 'trade',
+      businessName: req.dealer.businessName,
+      tradingName: req.dealer.tradingName
+    };
+    
+    // Add logo if exists
+    if (req.dealer.logo) {
+      sellerContact.businessLogo = req.dealer.logo;
+      console.log('[Trade Publish] Adding dealer logo:', req.dealer.logo);
+    }
+    
+    // Add website if exists
+    if (req.dealer.website) {
+      sellerContact.businessWebsite = req.dealer.website;
+      console.log('[Trade Publish] Adding dealer website:', req.dealer.website);
+    }
+    
+    // Add business address if exists
+    if (req.dealer.businessAddress) {
+      sellerContact.businessAddress = req.dealer.businessAddress;
+      console.log('[Trade Publish] Adding dealer address:', req.dealer.businessAddress);
+    }
+    
+    // Update with complete sellerContact object
+    updateData.sellerContact = sellerContact;
+    
+    // Remove dot notation fields (they're now in sellerContact object)
+    delete updateData['sellerContact.phoneNumber'];
+    delete updateData['sellerContact.email'];
+    delete updateData['sellerContact.allowEmailContact'];
+    delete updateData['sellerContact.postcode'];
+    delete updateData['sellerContact.type'];
+    delete updateData['sellerContact.businessName'];
+    delete updateData['sellerContact.tradingName'];
+    delete updateData['sellerContact.businessLogo'];
+    delete updateData['sellerContact.businessWebsite'];
+    delete updateData['sellerContact.businessAddress'];
+    
     // SIMPLE UPDATE - Just set the fields we need, PRESERVE existing images
     const updateResult = await Car.updateOne(
       { _id: car._id },

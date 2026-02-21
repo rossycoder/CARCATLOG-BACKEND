@@ -14,7 +14,7 @@ const {
 
 // Apply security middleware to all routes
 router.use(preventInjection);
-router.use(rateLimitCheck(100, 15 * 60 * 1000)); // 100 requests per 15 minutes
+router.use(rateLimitCheck(500, 15 * 60 * 1000)); // 500 requests per 15 minutes (increased for development)
 
 // All routes require authentication
 router.use(authenticateTradeDealer);
