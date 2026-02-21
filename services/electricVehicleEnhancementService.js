@@ -392,25 +392,93 @@ class ElectricVehicleEnhancementService {
   }
 
   /**
+   * Check if vehicle is electric or hybrid
+   * @param {string} fuelType - Vehicle fuel type
+   * @returns {boolean} True if electric or hybrid
+   */
+  static isElectricOrHybrid(fuelType) {
+    const electricTypes = [
+      'Electric',
+      'Petrol Hybrid',
+      'Diesel Hybrid',
+      'Petrol Plug-in Hybrid',
+      'Diesel Plug-in Hybrid',
+      'Hybrid',
+      'Plug-in Hybrid',
+      'PHEV'
+    ];
+    return electricTypes.some(type => 
+      fuelType?.toLowerCase().includes(type.toLowerCase())
+    );
+  }
+
+  /**
    * Enhance vehicle data with electric vehicle information
    * @param {Object} vehicleData - Base vehicle data
    * @returns {Object} Enhanced vehicle data with EV information
    */
   static enhanceWithEVData(vehicleData) {
-    // Only enhance electric vehicles
-    if (vehicleData.fuelType !== 'Electric') {
+    // Enhance electric vehicles and hybrids
+    if (!this.isElectricOrHybrid(vehicleData.fuelType)) {
       return vehicleData;
     }
 
-    console.log(`🔋 Enhancing electric vehicle: ${vehicleData.make} ${vehicleData.model} ${vehicleData.variant}`);
+    const isPureElectric = vehicleData.fuelType === 'Electric';
+    const isPluginHybrid = vehicleData.fuelType?.includes('Plug-in');
+    
+    console.log(`🔋 Enhancing ${isPureElectric ? 'electric' : 'hybrid'} vehicle: ${vehicleData.make} ${vehicleData.model} ${vehicleData.variant}`);
 
     // Get comprehensive EV data
     let evData = this.getComprehensiveEVData(vehicleData.make, vehicleData.model, vehicleData.variant);
     
     if (!evData) {
-      // Fall back to generic defaults
+      // Fall back to generic defaults based on vehicle type
       console.log(`⚠️ No specific EV data found, using generic defaults`);
-      evData = AutoDataPopulationService.getElectricVehicleDefaults(vehicleData.make, vehicleData.model, vehicleData.year);
+      if (isPureElectric) {
+        evData = AutoDataPopulationService.getElectricVehicleDefaults(vehicleData.make, vehicleData.model, vehicleData.year);
+      } else if (isPluginHybrid) {
+        // Plugin hybrid defaults
+        evData = {
+          electricRange: 30, // Typical PHEV range
+          batteryCapacity: 13, // Typical PHEV battery
+          chargingTime: 3,
+          homeChargingSpeed: 3.7,
+          publicChargingSpeed: 7,
+          rapidChargingSpeed: 0, // Most PHEVs don't support rapid charging
+          chargingTime10to80: 0,
+          electricMotorPower: 80,
+          electricMotorTorque: 200,
+          chargingPortType: 'Type 2',
+          fastChargingCapability: 'Home and public charging',
+          batteryType: 'Lithium-ion',
+          batteryWarranty: '8 years / 100,000 miles',
+          energyConsumption: 2.3,
+          chargingCurve: 'Standard charging',
+          preconditioning: 'Not available',
+          regenerativeBraking: 'Regenerative braking available'
+        };
+      } else {
+        // Regular hybrid defaults (no plug-in)
+        evData = {
+          electricRange: 2, // Very limited electric-only range
+          batteryCapacity: 1.3, // Small battery
+          chargingTime: 0, // Self-charging
+          homeChargingSpeed: 0,
+          publicChargingSpeed: 0,
+          rapidChargingSpeed: 0,
+          chargingTime10to80: 0,
+          electricMotorPower: 60,
+          electricMotorTorque: 150,
+          chargingPortType: 'Self-charging (no plug required)',
+          fastChargingCapability: 'Self-charging hybrid',
+          batteryType: 'Lithium-ion',
+          batteryWarranty: '8 years / 100,000 miles',
+          energyConsumption: 0,
+          chargingCurve: 'Self-charging',
+          preconditioning: 'Not available',
+          regenerativeBraking: 'Regenerative braking available'
+        };
+      }
     }
 
     // Enhance running costs object
@@ -431,15 +499,17 @@ class ElectricVehicleEnhancementService {
       electricMotorTorque: evData.electricMotorTorque,
       chargingPortType: evData.chargingPortType,
       fastChargingCapability: evData.fastChargingCapability,
-      co2Emissions: 0, // Electric vehicles have zero emissions
-      annualTax: 0, // Electric vehicles have £0 road tax
+      co2Emissions: isPureElectric ? 0 : (vehicleData.co2Emissions || 50), // Hybrids have some emissions
+      annualTax: isPureElectric ? 0 : (vehicleData.annualTax || 155), // Hybrids may have tax
       // Additional EV-specific fields
       batteryType: evData.batteryType,
       batteryWarranty: evData.batteryWarranty,
       energyConsumption: evData.energyConsumption,
       chargingCurve: evData.chargingCurve,
       preconditioning: evData.preconditioning,
-      regenerativeBraking: evData.regenerativeBraking
+      regenerativeBraking: evData.regenerativeBraking,
+      isHybrid: !isPureElectric,
+      isPluginHybrid: isPluginHybrid
     });
 
     // Add individual EV fields for backward compatibility
@@ -455,8 +525,10 @@ class ElectricVehicleEnhancementService {
       electricMotorTorque: evData.electricMotorTorque,
       chargingPortType: evData.chargingPortType,
       fastChargingCapability: evData.fastChargingCapability,
-      co2Emissions: 0,
-      annualTax: 0
+      co2Emissions: isPureElectric ? 0 : (vehicleData.co2Emissions || 50),
+      annualTax: isPureElectric ? 0 : (vehicleData.annualTax || 155),
+      isHybrid: !isPureElectric,
+      isPluginHybrid: isPluginHybrid
     });
 
     // Add electric vehicle features if not already present
@@ -464,15 +536,38 @@ class ElectricVehicleEnhancementService {
       vehicleData.features = [];
     }
 
-    const evFeatures = [
-      'Electric Vehicle',
-      'Zero Emissions',
-      'Instant Torque',
-      'Regenerative Braking',
-      'Silent Operation',
-      'Home Charging Compatible',
-      'Public Charging Compatible'
-    ];
+    const evFeatures = [];
+    
+    if (isPureElectric) {
+      evFeatures.push(
+        'Electric Vehicle',
+        'Zero Emissions',
+        'Instant Torque',
+        'Regenerative Braking',
+        'Silent Operation',
+        'Home Charging Compatible',
+        'Public Charging Compatible'
+      );
+    } else if (isPluginHybrid) {
+      evFeatures.push(
+        'Plug-in Hybrid',
+        'Electric + Petrol/Diesel',
+        'Reduced Emissions',
+        'Regenerative Braking',
+        'Electric-only Mode',
+        'Home Charging Compatible',
+        'Public Charging Compatible'
+      );
+    } else {
+      evFeatures.push(
+        'Hybrid Vehicle',
+        'Self-charging',
+        'Reduced Emissions',
+        'Regenerative Braking',
+        'Improved Fuel Economy',
+        'No Plug Required'
+      );
+    }
 
     // Add rapid charging feature if supported
     if (evData.rapidChargingSpeed >= 100) {
@@ -492,7 +587,7 @@ class ElectricVehicleEnhancementService {
     // Merge features without duplicates
     vehicleData.features = [...new Set([...vehicleData.features, ...evFeatures])];
 
-    console.log(`✅ Enhanced EV data: ${evData.electricRange}mi range, ${evData.batteryCapacity}kWh battery, ${evData.rapidChargingSpeed}kW rapid charging`);
+    console.log(`✅ Enhanced ${isPureElectric ? 'EV' : 'hybrid'} data: ${evData.electricRange}mi range, ${evData.batteryCapacity}kWh battery`);
 
     return vehicleData;
   }

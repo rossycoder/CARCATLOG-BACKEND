@@ -1733,13 +1733,28 @@ class UniversalAutoCompleteService {
       return 'Plug-in Hybrid';
     }
     
-    // Check for regular hybrids (including "Petrol/Electric" format)
-    if (apiNormalized.includes('hybrid') || apiNormalized.includes('/')) {
+    // CRITICAL: Check for "Diesel/Electric" or "Petrol/Electric" format
+    // These are typically plug-in hybrids (e.g., Mercedes E 300 de)
+    if (apiNormalized.includes('/')) {
       // "Petrol/Electric" or "Petrol Hybrid Electric"
+      if (apiNormalized.includes('petrol') || apiNormalized.includes('gasoline')) {
+        return 'Petrol Plug-in Hybrid';
+      }
+      // "Diesel/Electric" or "Diesel Hybrid"
+      if (apiNormalized.includes('diesel')) {
+        return 'Diesel Plug-in Hybrid';
+      }
+      // Generic hybrid (when subtype not specified)
+      return 'Plug-in Hybrid';
+    }
+    
+    // Check for regular hybrids (without slash)
+    if (apiNormalized.includes('hybrid')) {
+      // "Petrol Hybrid Electric"
       if (apiNormalized.includes('petrol') || apiNormalized.includes('gasoline')) {
         return 'Petrol Hybrid';
       }
-      // "Diesel/Electric" or "Diesel Hybrid"
+      // "Diesel Hybrid"
       if (apiNormalized.includes('diesel')) {
         return 'Diesel Hybrid';
       }

@@ -1369,9 +1369,16 @@ class VehicleController {
     try {
       console.log('[Vehicle Controller] Fetching filter options...');
       
-      // Get filter parameters from query string
-      const { make, model, submodel } = req.query;
-      console.log('[Vehicle Controller] Filter params:', { make, model, submodel });
+      // Get ALL filter parameters from query string for dynamic filtering
+      const { 
+        make, model, submodel,
+        fuelType, transmission, bodyType, colour,
+        doors: doorsFilter, seats: seatsFilter,
+        yearFrom, yearTo, priceFrom, priceTo, mileageFrom, mileageTo,
+        sellerType
+      } = req.query;
+      
+      console.log('[Vehicle Controller] Filter params:', req.query);
       
       // Build base query for active cars (and draft in test mode)
       const baseQuery = {};
@@ -1383,23 +1390,103 @@ class VehicleController {
         baseQuery.advertStatus = 'active';
       }
       
-      // Build filtered query based on selected filters
+      // Build comprehensive filtered query based on ALL selected filters
       const filteredQuery = { ...baseQuery };
       if (make) filteredQuery.make = make;
       if (model) filteredQuery.model = model;
-      // The frontend sends "submodel" but we store it in "variant" field
-      if (submodel) filteredQuery.variant = submodel;
+      if (submodel) filteredQuery.variant = submodel; // Frontend sends "submodel" but we store it in "variant"
+      if (fuelType) filteredQuery.fuelType = fuelType;
+      if (transmission) filteredQuery.transmission = transmission;
+      if (bodyType) filteredQuery.bodyType = bodyType;
+      if (colour) filteredQuery.color = colour;
+      if (doorsFilter) filteredQuery.doors = parseInt(doorsFilter);
+      if (seatsFilter) filteredQuery.seats = parseInt(seatsFilter);
+      if (sellerType) {
+        if (sellerType === 'private') {
+          filteredQuery.dealerId = { $exists: false };
+          filteredQuery.isDealerListing = { $ne: true };
+          filteredQuery['sellerContact.type'] = { $ne: 'trade' };
+        } else if (sellerType === 'trade') {
+          filteredQuery.$or = [
+            { dealerId: { $ne: null, $exists: true } },
+            { isDealerListing: true },
+            { 'sellerContact.type': 'trade' }
+          ];
+        }
+      }
       
-      // Get unique makes (from active cars only)
+      // Year range
+      if (yearFrom || yearTo) {
+        filteredQuery.year = {};
+        if (yearFrom) filteredQuery.year.$gte = parseInt(yearFrom);
+        if (yearTo) filteredQuery.year.$lte = parseInt(yearTo);
+      }
+      
+      // Price range
+      if (priceFrom || priceTo) {
+        filteredQuery.price = {};
+        if (priceFrom) filteredQuery.price.$gte = parseFloat(priceFrom);
+        if (priceTo) filteredQuery.price.$lte = parseFloat(priceTo);
+      }
+      
+      // Mileage range
+      if (mileageFrom || mileageTo) {
+        filteredQuery.mileage = {};
+        if (mileageFrom) filteredQuery.mileage.$gte = parseInt(mileageFrom);
+        if (mileageTo) filteredQuery.mileage.$lte = parseInt(mileageTo);
+      }
+      
+      console.log('[Vehicle Controller] Comprehensive filtered query:', filteredQuery);
+      
+      // Get unique makes with counts (from base query, not filtered)
       const makes = await Car.distinct('make', baseQuery);
       console.log('[Vehicle Controller] Found makes:', makes.length);
       
-      // Get unique models
-      const statusQuery = process.env.SHOW_DRAFT_CARS === 'true' 
-        ? { advertStatus: { $in: ['active', 'draft'] } }
-        : { advertStatus: 'active' };
-      const models = await Car.distinct('model', statusQuery);
+      // Calculate counts for each make
+      // For selected make: use filteredQuery (includes make filter)
+      // For other makes: use makeQuery (excludes make filter)
+      const makeCounts = {};
+      const makeQuery = { ...filteredQuery };
+      delete makeQuery.make; // Exclude make filter for non-selected makes
+      console.log('[Vehicle Controller] Calculating make counts...');
+      for (const makeName of makes) {
+        if (makeName) {
+          // If this is the currently selected make, show count with make filter
+          // Otherwise show count without make filter (to show "what if I select this")
+          if (make && makeName === make) {
+            const count = await Car.countDocuments(filteredQuery);
+            makeCounts[makeName] = count;
+          } else {
+            const count = await Car.countDocuments({ ...makeQuery, make: makeName });
+            makeCounts[makeName] = count;
+          }
+        }
+      }
+      console.log('[Vehicle Controller] Make counts:', makeCounts);
+      
+      // Get unique models (filtered by baseQuery to respect current filters)
+      const models = await Car.distinct('model', baseQuery);
       console.log('[Vehicle Controller] Found models:', models.length);
+      
+      // Calculate counts for each model
+      // For selected model: use filteredQuery (includes model filter)
+      // For other models: use modelQuery (excludes model filter)
+      const modelCounts = {};
+      const modelQuery = { ...filteredQuery };
+      delete modelQuery.model; // Exclude model filter for non-selected models
+      for (const modelName of models) {
+        if (modelName) {
+          // If this is the currently selected model, show count with model filter
+          // Otherwise show count without model filter
+          if (model && modelName === model) {
+            const count = await Car.countDocuments(filteredQuery);
+            modelCounts[modelName] = count;
+          } else {
+            const count = await Car.countDocuments({ ...modelQuery, model: modelName });
+            modelCounts[modelName] = count;
+          }
+        }
+      }
       
       // Get hierarchical model and submodel data
       const statusMatch = process.env.SHOW_DRAFT_CARS === 'true'
@@ -1464,9 +1551,27 @@ class VehicleController {
         modelsByMake[make].sort();
       });
       
-      // Get unique fuel types (filtered based on selection)
-      let fuelTypes = await Car.distinct('fuelType', filteredQuery);
+      // Get unique fuel types with counts (filtered based on selection)
+      let fuelTypes = await Car.distinct('fuelType', baseQuery);
       console.log('[Vehicle Controller] Found fuelTypes:', fuelTypes.length);
+      
+      // Calculate counts for each fuel type
+      // For selected fuel type: use filteredQuery
+      // For other fuel types: use fuelTypeQuery (excludes fuelType filter)
+      const fuelTypeCounts = {};
+      const fuelTypeQuery = { ...filteredQuery };
+      delete fuelTypeQuery.fuelType;
+      for (const fuelTypeValue of fuelTypes) {
+        if (fuelTypeValue) {
+          if (fuelType && fuelTypeValue === fuelType) {
+            const count = await Car.countDocuments(filteredQuery);
+            fuelTypeCounts[fuelTypeValue] = count;
+          } else {
+            const count = await Car.countDocuments({ ...fuelTypeQuery, fuelType: fuelTypeValue });
+            fuelTypeCounts[fuelTypeValue] = count;
+          }
+        }
+      }
       
       // Expand "Hybrid" into "Petrol Hybrid" and "Diesel Hybrid" for better filtering
       if (fuelTypes.includes('Hybrid')) {
@@ -1494,17 +1599,103 @@ class VehicleController {
         return indexA - indexB;
       });
       
-      // Get unique transmissions (filtered based on selection)
-      const transmissions = await Car.distinct('transmission', filteredQuery);
+      // Get unique transmissions with counts (filtered based on selection)
+      const transmissions = await Car.distinct('transmission', baseQuery);
       console.log('[Vehicle Controller] Found transmissions:', transmissions.length);
       
-      // Get unique body types (filtered based on selection)
-      const bodyTypes = await Car.distinct('bodyType', filteredQuery);
+      // Calculate counts for each transmission
+      const transmissionCounts = {};
+      const transmissionQuery = { ...filteredQuery };
+      delete transmissionQuery.transmission;
+      for (const trans of transmissions) {
+        if (trans) {
+          if (transmission && trans === transmission) {
+            const count = await Car.countDocuments(filteredQuery);
+            transmissionCounts[trans] = count;
+          } else {
+            const count = await Car.countDocuments({ ...transmissionQuery, transmission: trans });
+            transmissionCounts[trans] = count;
+          }
+        }
+      }
+      
+      // Get unique body types with counts (filtered based on selection)
+      const bodyTypes = await Car.distinct('bodyType', baseQuery);
       console.log('[Vehicle Controller] Found bodyTypes:', bodyTypes.length);
       
-      // Get unique colours (filtered based on selection) - THIS IS THE KEY FIX
-      const colours = await Car.distinct('color', filteredQuery);
-      console.log('[Vehicle Controller] Found colours:', colours.length, 'for query:', filteredQuery);
+      // Calculate counts for each body type
+      const bodyTypeCounts = {};
+      const bodyTypeQuery = { ...filteredQuery };
+      delete bodyTypeQuery.bodyType;
+      for (const bt of bodyTypes) {
+        if (bt) {
+          if (bodyType && bt === bodyType) {
+            const count = await Car.countDocuments(filteredQuery);
+            bodyTypeCounts[bt] = count;
+          } else {
+            const count = await Car.countDocuments({ ...bodyTypeQuery, bodyType: bt });
+            bodyTypeCounts[bt] = count;
+          }
+        }
+      }
+      
+      // Get unique colours with counts (filtered based on selection)
+      const colours = await Car.distinct('color', baseQuery);
+      console.log('[Vehicle Controller] Found colours:', colours.length);
+      
+      // Calculate counts for each colour
+      const colourCounts = {};
+      const colourQuery = { ...filteredQuery };
+      delete colourQuery.color;
+      for (const col of colours) {
+        if (col) {
+          if (colour && col === colour) {
+            const count = await Car.countDocuments(filteredQuery);
+            colourCounts[col] = count;
+          } else {
+            const count = await Car.countDocuments({ ...colourQuery, color: col });
+            colourCounts[col] = count;
+          }
+        }
+      }
+      
+      // Get unique doors with counts
+      const doors = await Car.distinct('doors', baseQuery);
+      
+      // Calculate counts for each door option
+      const doorCounts = {};
+      const doorQuery = { ...filteredQuery };
+      delete doorQuery.doors;
+      for (const door of doors) {
+        if (door) {
+          if (doorsFilter && door === parseInt(doorsFilter)) {
+            const count = await Car.countDocuments(filteredQuery);
+            doorCounts[door] = count;
+          } else {
+            const count = await Car.countDocuments({ ...doorQuery, doors: door });
+            doorCounts[door] = count;
+          }
+        }
+      }
+      
+      // Get unique seats with counts
+      const seats = await Car.distinct('seats', baseQuery);
+      
+      // Calculate counts for each seat option
+      const seatCounts = {};
+      const seatQuery = { ...filteredQuery };
+      delete seatQuery.seats;
+      for (const seat of seats) {
+        if (seat) {
+          if (seatsFilter && seat === parseInt(seatsFilter)) {
+            const count = await Car.countDocuments(filteredQuery);
+            seatCounts[seat] = count;
+          } else {
+            const count = await Car.countDocuments({ ...seatQuery, seats: seat });
+            seatCounts[seat] = count;
+          }
+        }
+      }
       
       // Get year range (filtered based on selection)
       const years = await Car.aggregate([
@@ -1516,8 +1707,9 @@ class VehicleController {
 
       // Get seller type counts - MUTUALLY EXCLUSIVE
       // Trade sellers: identified by dealerId, isDealerListing, or sellerContact.type='trade'
+      // Use filteredQuery to respect current filters (make, model, fuelType, etc.)
       const tradeSellerCount = await Car.countDocuments({
-        ...baseQuery,
+        ...filteredQuery,
         $or: [
           { dealerId: { $ne: null, $exists: true } },
           { isDealerListing: true },
@@ -1526,8 +1718,9 @@ class VehicleController {
       });
       
       // Private sellers: exclude trade sellers
+      // Use filteredQuery to respect current filters
       const privateSellerCount = await Car.countDocuments({
-        ...baseQuery,
+        ...filteredQuery,
         dealerId: { $exists: false },
         isDealerListing: { $ne: true },
         'sellerContact.type': { $ne: 'trade' }
@@ -1542,20 +1735,23 @@ class VehicleController {
         writeOffCategory: { $nin: ['none', 'unknown', null], $exists: true }
       }).distinct('vrm');
       
+      // Use filteredQuery to respect current filters
       const writtenOffCount = await Car.countDocuments({
-        ...baseQuery,
+        ...filteredQuery,
         registrationNumber: { $in: writtenOffVRMs }
       });
       
+      // Use filteredQuery to respect current filters
       const cleanCount = await Car.countDocuments({
-        ...baseQuery,
+        ...filteredQuery,
         $or: [
           { registrationNumber: { $nin: writtenOffVRMs } },
           { registrationNumber: null }
         ]
       });
       
-      const totalCars = await Car.countDocuments(baseQuery);
+      // Total cars based on current filters
+      const totalCars = await Car.countDocuments(filteredQuery);
       
       console.log('[Vehicle Controller] Write-off counts - Total:', totalCars, 'Written off:', writtenOffCount, 'Clean:', cleanCount);
 
@@ -1571,6 +1767,8 @@ class VehicleController {
           transmissions: transmissions.filter(Boolean).sort(),
           bodyTypes: bodyTypes.filter(Boolean).sort(),
           colours: colours.filter(Boolean).sort(),
+          doors: doors.filter(Boolean).sort((a, b) => a - b),
+          seats: seats.filter(Boolean).sort((a, b) => a - b),
           yearRange: {
             min: yearRange.minYear,
             max: yearRange.maxYear
@@ -1580,7 +1778,16 @@ class VehicleController {
             privateSellers: privateSellerCount,
             tradeSellers: tradeSellerCount,
             writtenOff: writtenOffCount,
-            clean: cleanCount
+            clean: cleanCount,
+            // Individual filter counts (dynamic based on other selected filters)
+            makes: makeCounts,
+            models: modelCounts,
+            fuelTypes: fuelTypeCounts,
+            transmissions: transmissionCounts,
+            bodyTypes: bodyTypeCounts,
+            colours: colourCounts,
+            doors: doorCounts,
+            seats: seatCounts
           }
         }
       };

@@ -55,6 +55,18 @@ const createAdvert = async (req, res) => {
       }
     }
     
+    // CRITICAL: Normalize fuel type (e.g., "Diesel/Electric" → "Diesel Plug-in Hybrid")
+    let normalizedFuelType = vehicleData.fuelType || 'Petrol';
+    if (normalizedFuelType) {
+      const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');
+      const universalService = new UniversalAutoCompleteService();
+      normalizedFuelType = universalService.normalizeFuelType(normalizedFuelType, null);
+      
+      if (normalizedFuelType !== vehicleData.fuelType) {
+        console.log(`🔄 [createAdvert] Normalized fuelType: "${vehicleData.fuelType}" → "${normalizedFuelType}"`);
+      }
+    }
+    
     // Normalize vehicle data before creating car
     const normalizedVehicleData = CarDataNormalizer.normalizeCarData(vehicleData);
     
@@ -84,7 +96,7 @@ const createAdvert = async (req, res) => {
       year: parseInt(carDataToSave.year) || new Date().getFullYear(),
       mileage: parseInt(carDataToSave.mileage) || 0,
       color: carDataToSave.color || null, // Leave null so API can populate it, frontend will handle display
-      fuelType: carDataToSave.fuelType || 'Petrol',
+      fuelType: normalizedFuelType,
       transmission: normalizedTransmission,
       price: estimatedPrice,
       estimatedValue: estimatedPrice,
@@ -433,10 +445,21 @@ const updateAdvert = async (req, res) => {
             if (!updateObj.userEditedFields.includes('serviceHistory')) updateObj.userEditedFields.push('serviceHistory');
           }
           
-          // Handle fuel type updates
+          // Handle fuel type updates - CRITICAL: Normalize fuel type
           if (cleanVehicleData.fuelType) {
-            updateObj.fuelType = cleanVehicleData.fuelType;
-            console.log('📝 [updateAdvert] Updating fuelType:', cleanVehicleData.fuelType);
+            // Import Universal Service for fuel type normalization
+            const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');
+            const universalService = new UniversalAutoCompleteService();
+            
+            // Normalize fuel type (e.g., "Diesel/Electric" → "Diesel Hybrid")
+            const normalizedFuelType = universalService.normalizeFuelType(cleanVehicleData.fuelType, null);
+            updateObj.fuelType = normalizedFuelType;
+            
+            if (normalizedFuelType !== cleanVehicleData.fuelType) {
+              console.log(`📝 [updateAdvert] Normalized fuelType: "${cleanVehicleData.fuelType}" → "${normalizedFuelType}"`);
+            } else {
+              console.log('📝 [updateAdvert] Updating fuelType:', cleanVehicleData.fuelType);
+            }
             
             // Mark as user-edited
             DataProtection.markAsUserEdited(car, 'fuelType');

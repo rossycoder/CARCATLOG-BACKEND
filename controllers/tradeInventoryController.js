@@ -1,6 +1,7 @@
 const Car = require('../models/Car');
 const TradeSubscription = require('../models/TradeSubscription');
 const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');
+const ElectricVehicleEnhancementService = require('../services/electricVehicleEnhancementService');
 const { normalizeMake } = require('../utils/makeNormalizer');
 const { normalizeModelVariant } = require('../utils/modelVariantNormalizer');
 
@@ -330,7 +331,12 @@ exports.createVehicle = async (req, res) => {
 
     console.log('[Trade Inventory] Processed vehicle data:', JSON.stringify(vehicleData, null, 2));
 
-    const vehicle = new Car(vehicleData);
+    // CRITICAL: Enhance with electric vehicle data if it's an EV or hybrid
+    console.log('[Trade Inventory] Checking if vehicle needs EV enhancement...');
+    const enhancedVehicleData = ElectricVehicleEnhancementService.enhanceWithEVData(vehicleData);
+    console.log('[Trade Inventory] EV enhancement complete');
+
+    const vehicle = new Car(enhancedVehicleData);
     console.log('[Trade Inventory] Saving vehicle to database...');
     await vehicle.save();
     console.log('[Trade Inventory] Vehicle saved successfully:', vehicle._id);
@@ -797,6 +803,58 @@ exports.publishVehicle = async (req, res) => {
     delete updateData['sellerContact.businessLogo'];
     delete updateData['sellerContact.businessWebsite'];
     delete updateData['sellerContact.businessAddress'];
+    
+    // CRITICAL: Normalize fuel type using Universal Service (handles "Diesel/Electric" → "Diesel Hybrid")
+    console.log('[Trade Publish] Checking fuel type normalization...');
+    console.log('[Trade Publish] Current fuel type:', car.fuelType);
+    
+    if (car.fuelType) {
+      const normalizedFuelType = universalService.normalizeFuelType(car.fuelType, null);
+      if (normalizedFuelType !== car.fuelType) {
+        console.log(`[Trade Publish] 🔄 Normalizing fuel type: "${car.fuelType}" → "${normalizedFuelType}"`);
+        updateData.fuelType = normalizedFuelType;
+      }
+    }
+    
+    // CRITICAL: Enhance with electric vehicle data if it's an EV or hybrid
+    console.log('[Trade Publish] Checking if vehicle needs EV enhancement...');
+    
+    // Merge car data with updateData to get complete vehicle data
+    const completeVehicleData = {
+      ...car.toObject(),
+      ...updateData
+    };
+    
+    // Apply EV enhancement
+    const enhancedVehicleData = ElectricVehicleEnhancementService.enhanceWithEVData(completeVehicleData);
+    
+    // Extract only the EV-related fields to update
+    if (enhancedVehicleData.electricRange || enhancedVehicleData.batteryCapacity) {
+      console.log('[Trade Publish] ✅ EV enhancement applied');
+      updateData.electricRange = enhancedVehicleData.electricRange;
+      updateData.batteryCapacity = enhancedVehicleData.batteryCapacity;
+      updateData.chargingTime = enhancedVehicleData.chargingTime;
+      updateData.homeChargingSpeed = enhancedVehicleData.homeChargingSpeed;
+      updateData.publicChargingSpeed = enhancedVehicleData.publicChargingSpeed;
+      updateData.rapidChargingSpeed = enhancedVehicleData.rapidChargingSpeed;
+      updateData.chargingTime10to80 = enhancedVehicleData.chargingTime10to80;
+      updateData.electricMotorPower = enhancedVehicleData.electricMotorPower;
+      updateData.electricMotorTorque = enhancedVehicleData.electricMotorTorque;
+      updateData.chargingPortType = enhancedVehicleData.chargingPortType;
+      updateData.fastChargingCapability = enhancedVehicleData.fastChargingCapability;
+      updateData.isHybrid = enhancedVehicleData.isHybrid;
+      updateData.isPluginHybrid = enhancedVehicleData.isPluginHybrid;
+      updateData.runningCosts = enhancedVehicleData.runningCosts;
+      updateData.features = enhancedVehicleData.features;
+      
+      console.log('[Trade Publish] EV data added:', {
+        electricRange: updateData.electricRange,
+        batteryCapacity: updateData.batteryCapacity,
+        chargingPortType: updateData.chargingPortType
+      });
+    } else {
+      console.log('[Trade Publish] ℹ️  No EV enhancement needed (not an EV/hybrid)');
+    }
     
     // SIMPLE UPDATE - Just set the fields we need, PRESERVE existing images
     const updateResult = await Car.updateOne(
