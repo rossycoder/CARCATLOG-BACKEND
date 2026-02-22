@@ -434,6 +434,28 @@ const updateAdvert = async (req, res) => {
             if (!updateObj.userEditedFields.includes('seats')) updateObj.userEditedFields.push('seats');
           }
           
+          // Handle model updates
+          if (cleanVehicleData.model) {
+            updateObj.model = cleanVehicleData.model.trim();
+            console.log('📝 [updateAdvert] Updating model:', cleanVehicleData.model);
+            
+            // Mark as user-edited
+            DataProtection.markAsUserEdited(car, 'model');
+            if (!updateObj.userEditedFields) updateObj.userEditedFields = car.userEditedFields || [];
+            if (!updateObj.userEditedFields.includes('model')) updateObj.userEditedFields.push('model');
+          }
+          
+          // Handle variant updates
+          if (cleanVehicleData.hasOwnProperty('variant')) {
+            updateObj.variant = cleanVehicleData.variant ? cleanVehicleData.variant.trim() : '';
+            console.log('📝 [updateAdvert] Updating variant:', cleanVehicleData.variant);
+            
+            // Mark as user-edited
+            DataProtection.markAsUserEdited(car, 'variant');
+            if (!updateObj.userEditedFields) updateObj.userEditedFields = car.userEditedFields || [];
+            if (!updateObj.userEditedFields.includes('variant')) updateObj.userEditedFields.push('variant');
+          }
+          
           // Handle service history updates
           if (cleanVehicleData.serviceHistory) {
             updateObj.serviceHistory = cleanVehicleData.serviceHistory;

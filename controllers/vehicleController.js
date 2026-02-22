@@ -1106,14 +1106,36 @@ class VehicleController {
       if (bodyType) query.bodyType = bodyType;
       if (colour) query.color = colour; // Map 'colour' param to 'color' field
       
-      // Fuel type filter - handle "Petrol Hybrid" and "Diesel Hybrid"
+      // Fuel type filter - handle hybrid variants properly
       if (fuelType) {
-        if (fuelType === 'Petrol Hybrid' || fuelType === 'Diesel Hybrid') {
-          // Both map to "Hybrid" in database
-          query.fuelType = 'Hybrid';
-          console.log('[Vehicle Controller] Fuel type filter: Searching for Hybrid vehicles');
+        if (fuelType === 'Hybrid') {
+          // If user selects "Hybrid", match all hybrid types
+          query.fuelType = { 
+            $in: ['Hybrid', 'Petrol Hybrid', 'Diesel Hybrid', 'Plug-in Hybrid', 'Petrol Plug-in Hybrid', 'Diesel Plug-in Hybrid'] 
+          };
+          console.log('[Vehicle Controller] Fuel type filter: Searching for all Hybrid variants');
+        } else if (fuelType === 'Petrol Hybrid') {
+          // Match both "Petrol Hybrid" and "Hybrid" (for backwards compatibility)
+          query.fuelType = { $in: ['Petrol Hybrid', 'Hybrid'] };
+          console.log('[Vehicle Controller] Fuel type filter: Searching for Petrol Hybrid vehicles');
+        } else if (fuelType === 'Diesel Hybrid') {
+          // Match both "Diesel Hybrid" and "Hybrid" (for backwards compatibility)
+          query.fuelType = { $in: ['Diesel Hybrid', 'Hybrid'] };
+          console.log('[Vehicle Controller] Fuel type filter: Searching for Diesel Hybrid vehicles');
+        } else if (fuelType === 'Plug-in Hybrid') {
+          // Match all plug-in hybrid types
+          query.fuelType = { $in: ['Plug-in Hybrid', 'Petrol Plug-in Hybrid', 'Diesel Plug-in Hybrid'] };
+          console.log('[Vehicle Controller] Fuel type filter: Searching for Plug-in Hybrid vehicles');
+        } else if (fuelType === 'Petrol Plug-in Hybrid') {
+          query.fuelType = { $in: ['Petrol Plug-in Hybrid', 'Plug-in Hybrid'] };
+          console.log('[Vehicle Controller] Fuel type filter: Searching for Petrol Plug-in Hybrid vehicles');
+        } else if (fuelType === 'Diesel Plug-in Hybrid') {
+          query.fuelType = { $in: ['Diesel Plug-in Hybrid', 'Plug-in Hybrid'] };
+          console.log('[Vehicle Controller] Fuel type filter: Searching for Diesel Plug-in Hybrid vehicles');
         } else {
+          // Exact match for Petrol, Diesel, Electric
           query.fuelType = fuelType;
+          console.log('[Vehicle Controller] Fuel type filter: Searching for', fuelType, 'vehicles');
         }
       }
       
@@ -1124,30 +1146,30 @@ class VehicleController {
       // Engine size filter
       if (engineSize) {
         // Frontend sends values like: "1.0", "1.5", "2.0", "2.5", "3.0", "3.0+"
-        // We need to convert engineCapacity (in cc) to liters and filter accordingly
+        // Database stores engineSize in liters (e.g., 2.0, 1.6, 3.0)
         const engineSizeValue = parseFloat(engineSize);
         
         if (engineSize === '1.0') {
-          // Up to 1.0L = up to 1000cc
-          query.engineCapacity = { $lte: 1000 };
+          // Up to 1.0L
+          query.engineSize = { $lte: 1.0 };
         } else if (engineSize === '1.5') {
-          // 1.0L - 1.5L = 1001cc to 1500cc
-          query.engineCapacity = { $gt: 1000, $lte: 1500 };
+          // 1.0L - 1.5L
+          query.engineSize = { $gt: 1.0, $lte: 1.5 };
         } else if (engineSize === '2.0') {
-          // 1.5L - 2.0L = 1501cc to 2000cc
-          query.engineCapacity = { $gt: 1500, $lte: 2000 };
+          // 1.5L - 2.0L
+          query.engineSize = { $gt: 1.5, $lte: 2.0 };
         } else if (engineSize === '2.5') {
-          // 2.0L - 2.5L = 2001cc to 2500cc
-          query.engineCapacity = { $gt: 2000, $lte: 2500 };
+          // 2.0L - 2.5L
+          query.engineSize = { $gt: 2.0, $lte: 2.5 };
         } else if (engineSize === '3.0') {
-          // 2.5L - 3.0L = 2501cc to 3000cc
-          query.engineCapacity = { $gt: 2500, $lte: 3000 };
+          // 2.5L - 3.0L
+          query.engineSize = { $gt: 2.5, $lte: 3.0 };
         } else if (engineSize === '3.0+') {
-          // 3.0L+ = 3001cc and above
-          query.engineCapacity = { $gt: 3000 };
+          // 3.0L+ = 3.0L and above
+          query.engineSize = { $gt: 3.0 };
         }
         
-        console.log('[Vehicle Controller] Engine size filter applied:', engineSize, '→', query.engineCapacity);
+        console.log('[Vehicle Controller] Engine size filter applied:', engineSize, '→', query.engineSize);
       }
       
       // Seller type filter - MUTUALLY EXCLUSIVE
