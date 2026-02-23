@@ -4,6 +4,7 @@ const CarDataNormalizer = require('../utils/carDataNormalizer'); // Add this imp
 const DataProtection = require('../utils/dataProtection'); // Add data protection
 const ElectricVehicleEnhancementService = require('../services/electricVehicleEnhancementService');
 const AutoDataPopulationService = require('../services/autoDataPopulationService');
+const { normalizeMake } = require('../utils/makeNormalizer');
 
 /**
  * Create a new advert - SIMPLIFIED VERSION
@@ -90,7 +91,7 @@ const createAdvert = async (req, res) => {
     // Create car with enhanced variant handling
     const car = new Car({
       advertId,
-      make: carDataToSave.make || 'Unknown',
+      make: normalizeMake(carDataToSave.make) || 'Unknown',
       model: carDataToSave.model || 'Unknown',
       variant: carDataToSave.variant || null, // Will be auto-fetched in pre-save hook if missing
       year: parseInt(carDataToSave.year) || new Date().getFullYear(),

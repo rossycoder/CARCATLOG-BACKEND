@@ -20,6 +20,9 @@ const MODEL_PATTERNS = {
   // VW: Golf, Polo, Passat, Tiguan, etc.
   volkswagen: /\b(Golf|Polo|Passat|Tiguan|Touareg|Arteon|T-Roc|Up)\b/i,
   
+  // Aston Martin: DB9, DB11, DBS, Vantage, etc.
+  'aston martin': /\b(DB\d+|DBS|Vantage|Rapide|Vanquish|Virage)\b/i,
+  
   // Generic pattern for most cars (captures first word/code)
   generic: /^([A-Z0-9-]+(?:\s+[A-Z0-9-]+)?)\b/i
 };
@@ -58,13 +61,27 @@ function extractShortModel(str, make) {
  * Check if model and variant might be swapped
  * @param {string} model - Current model value
  * @param {string} variant - Current variant value
+ * @param {string} make - Car make/brand
  * @returns {boolean} True if likely swapped
  */
-function isLikelySwapped(model, variant) {
+function isLikelySwapped(model, variant, make) {
   if (!model) return false;
   
   const modelLength = model.length;
   const variantLength = variant ? variant.length : 0;
+  
+  // BRAND-SPECIFIC CHECKS
+  const makeLower = make ? make.toLowerCase() : '';
+  
+  // Aston Martin: If model contains engine designation (V8, V12) or trim, it's likely swapped
+  if (makeLower === 'aston martin' || makeLower === 'aston-martin') {
+    // Check if model contains more than just the base model name
+    const astonBaseModels = /^(DB\d+|DBS|Vantage|Rapide|Vanquish|Virage)$/i;
+    if (!astonBaseModels.test(model)) {
+      // Model contains extra info (V8, V12, Superleggera, etc.) - likely swapped
+      return true;
+    }
+  }
   
   // Model is suspiciously long (> 30 chars) - definitely swapped
   if (modelLength > 30) return true;
@@ -89,7 +106,7 @@ function normalizeModelVariant(model, variant, make) {
   }
   
   // Check if likely swapped
-  if (isLikelySwapped(model, variant)) {
+  if (isLikelySwapped(model, variant, make)) {
     // Try to extract short model from the long model string
     const shortModel = extractShortModel(model, make);
     

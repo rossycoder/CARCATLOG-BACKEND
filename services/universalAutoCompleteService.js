@@ -29,6 +29,7 @@ const axios = require('axios');
 const mongoose = require('mongoose');
 const VehicleHistory = require('../models/VehicleHistory');
 const ElectricVehicleEnhancementService = require('./electricVehicleEnhancementService');
+const { normalizeMake } = require('../utils/makeNormalizer');
 
 class UniversalAutoCompleteService {
   constructor() {
@@ -899,7 +900,9 @@ class UniversalAutoCompleteService {
       const specs = apiData.vehicleSpecs;
       
       // ONLY use CheckCarDetails API response (no DVLA)
-      parsed.make = specs.ModelData?.Make;
+      // CRITICAL: Normalize make to AutoTrader format
+      const rawMake = specs.ModelData?.Make;
+      parsed.make = rawMake ? normalizeMake(rawMake) : null;
       let rawModel = specs.ModelData?.Model;
       
       // CRITICAL: Get raw model/variant BEFORE cleaning for MHEV detection
@@ -910,34 +913,51 @@ class UniversalAutoCompleteService {
       // "CIVIC TYPE S I-VTEC" → "Civic"
       // "530d xDrive M Sport Edition MHEV Auto" → "530d"
       // "C30 R-DESIGN D AUTO" → "C30"
+      // "DB9 V12 Auto" → "DB9" (Aston Martin fix)
       if (rawModel) {
-        // Common patterns to remove from model name
-        const trimPatterns = [
-          /\s+(TYPE\s+[A-Z]|Type\s+[A-Z])/gi, // "TYPE S", "Type R"
-          /\s+I-VTEC/gi, // "I-VTEC"
-          /\s+R-DESIGN/gi, // "R-DESIGN" ← NEW
-          /\s+D\s+AUTO/gi, // "D AUTO" ← NEW
-          /\s+XDRIVE/gi, // "xDrive"
-          /\s+SDRIVE/gi, // "sDrive"
-          /\s+M\s+SPORT/gi, // "M Sport"
-          /\s+EDITION/gi, // "Edition"
-          /\s+MHEV/gi, // "MHEV"
-          /\s+(AUTO|MANUAL|AUTOMATIC|SEMI-AUTO)/gi, // Transmission
-          /\s+TOURING/gi, // Body style
-          /\s+SALOON/gi,
-          /\s+HATCHBACK/gi,
-          /\s+ESTATE/gi
-        ];
-        
-        let cleanModel = rawModel;
-        trimPatterns.forEach(pattern => {
-          cleanModel = cleanModel.replace(pattern, '');
-        });
-        
-        parsed.model = cleanModel.trim();
-        
-        if (cleanModel !== rawModel) {
-          console.log(`🧹 Cleaned model: "${rawModel}" → "${parsed.model}"`);
+        // SPECIAL CASE: Aston Martin - extract base model name only
+        const makeLower = parsed.make ? parsed.make.toLowerCase() : '';
+        if (makeLower === 'aston martin' || makeLower === 'aston-martin') {
+          // Aston Martin models: DB9, DB11, DBS, Vantage, Rapide, Vanquish, etc.
+          const astonModelMatch = rawModel.match(/^(DB\d+|DBS|Vantage|Rapide|Vanquish|Virage|V\d+)/i);
+          if (astonModelMatch) {
+            parsed.model = astonModelMatch[1];
+            console.log(`🏎️ Aston Martin model extracted: "${rawModel}" → "${parsed.model}"`);
+          } else {
+            // Fallback: take first word
+            parsed.model = rawModel.split(/\s+/)[0];
+            console.log(`🏎️ Aston Martin model (fallback): "${rawModel}" → "${parsed.model}"`);
+          }
+        } else {
+          // Common patterns to remove from model name
+          const trimPatterns = [
+            /\s+(TYPE\s+[A-Z]|Type\s+[A-Z])/gi, // "TYPE S", "Type R"
+            /\s+I-VTEC/gi, // "I-VTEC"
+            /\s+R-DESIGN/gi, // "R-DESIGN"
+            /\s+D\s+AUTO/gi, // "D AUTO"
+            /\s+XDRIVE/gi, // "xDrive"
+            /\s+SDRIVE/gi, // "sDrive"
+            /\s+M\s+SPORT/gi, // "M Sport"
+            /\s+EDITION/gi, // "Edition"
+            /\s+MHEV/gi, // "MHEV"
+            /\s+(AUTO|MANUAL|AUTOMATIC|SEMI-AUTO)/gi, // Transmission
+            /\s+TOURING/gi, // Body style
+            /\s+SALOON/gi,
+            /\s+HATCHBACK/gi,
+            /\s+ESTATE/gi,
+            /\s+V\d+/gi // Remove V6, V8, V12 engine designations (but not for Aston Martin)
+          ];
+          
+          let cleanModel = rawModel;
+          trimPatterns.forEach(pattern => {
+            cleanModel = cleanModel.replace(pattern, '');
+          });
+          
+          parsed.model = cleanModel.trim();
+          
+          if (cleanModel !== rawModel) {
+            console.log(`🧹 Cleaned model: "${rawModel}" → "${parsed.model}"`);
+          }
         }
       } else {
         parsed.model = rawModel;

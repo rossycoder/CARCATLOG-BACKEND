@@ -7,6 +7,7 @@ const { createErrorFromCode, logError } = require('../utils/dvlaErrorHandler');
 const ElectricVehicleEnhancementService = require('../services/electricVehicleEnhancementService');
 const AutoDataPopulationService = require('../services/autoDataPopulationService');
 const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');
+const { normalizeMake } = require('../utils/makeNormalizer');
 
 // Initialize services
 const historyService = new HistoryService();
@@ -304,6 +305,8 @@ class VehicleController {
       }
 
       // Step 5: Create Car record
+      // CRITICAL: Normalize make to AutoTrader format
+      carData.make = normalizeMake(carData.make);
       const car = new Car(carData);
 
       // CRITICAL: Normalize model/variant BEFORE saving
