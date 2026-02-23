@@ -337,6 +337,67 @@ exports.createVehicle = async (req, res) => {
     console.log('[Trade Inventory] EV enhancement complete');
 
     const vehicle = new Car(enhancedVehicleData);
+    
+    // CRITICAL: Normalize model/variant BEFORE saving
+    // This ensures proper organization in filter sidebar
+    const makeUpper = vehicle.make ? vehicle.make.toUpperCase() : '';
+    const modelStr = vehicle.model ? vehicle.model.trim() : '';
+    const variantStr = vehicle.variant ? vehicle.variant.trim() : '';
+    
+    // Volkswagen: Golf GTE → Golf, Polo Match → Polo
+    if (makeUpper === 'VOLKSWAGEN') {
+      if (modelStr.startsWith('Golf ') && modelStr !== 'Golf') {
+        const variantPart = modelStr.replace('Golf ', '').trim();
+        console.log(`🔄 [Normalization] VW Golf: "${modelStr}" → "Golf", variant: "${variantPart}"`);
+        vehicle.model = 'Golf';
+        vehicle.variant = variantPart || variantStr;
+      } else if (modelStr.startsWith('Polo ') && modelStr !== 'Polo') {
+        const variantPart = modelStr.replace('Polo ', '').trim();
+        console.log(`🔄 [Normalization] VW Polo: "${modelStr}" → "Polo", variant: "${variantPart}"`);
+        vehicle.model = 'Polo';
+        vehicle.variant = variantPart || variantStr;
+      }
+    }
+    
+    // Audi: A3 Black 35 TFSI → A3
+    if (makeUpper === 'AUDI') {
+      const audiModelPattern = /^(A[1-8]|Q[2-8]|TT|R8)\s+(.+)$/i;
+      const match = modelStr.match(audiModelPattern);
+      if (match) {
+        const baseModel = match[1];
+        const variantPart = match[2];
+        console.log(`🔄 [Normalization] Audi: "${modelStr}" → "${baseModel}", variant: "${variantPart}"`);
+        vehicle.model = baseModel;
+        vehicle.variant = variantPart || variantStr;
+      }
+    }
+    
+    // Mercedes-Benz: C 300 AMG → C-Class, E 300 → E-Class
+    if (makeUpper === 'MERCEDES-BENZ' || makeUpper === 'MERCEDES') {
+      if (!modelStr.includes('-Class')) {
+        const mercedesPattern = /^([ABCEGMS])\s*(\d{3})/i;
+        const match = modelStr.match(mercedesPattern);
+        if (match) {
+          const classLetter = match[1].toUpperCase();
+          const baseModel = `${classLetter}-Class`;
+          console.log(`🔄 [Normalization] Mercedes: "${modelStr}" → "${baseModel}"`);
+          vehicle.model = baseModel;
+          if (!variantStr || variantStr === modelStr) {
+            vehicle.variant = modelStr;
+          }
+        }
+      }
+    }
+    
+    // Body Type Capitalization: HATCHBACK → Hatchback
+    if (vehicle.bodyType) {
+      const normalized = vehicle.bodyType.charAt(0).toUpperCase() + vehicle.bodyType.slice(1).toLowerCase();
+      if (vehicle.bodyType !== normalized) {
+        console.log(`🔄 [Normalization] Body type: "${vehicle.bodyType}" → "${normalized}"`);
+        vehicle.bodyType = normalized;
+      }
+    }
+    
     console.log('[Trade Inventory] Saving vehicle to database...');
     await vehicle.save();
     console.log('[Trade Inventory] Vehicle saved successfully:', vehicle._id);

@@ -306,6 +306,66 @@ class VehicleController {
       // Step 5: Create Car record
       const car = new Car(carData);
 
+      // CRITICAL: Normalize model/variant BEFORE saving
+      // This ensures proper organization in filter sidebar
+      const makeUpper = car.make ? car.make.toUpperCase() : '';
+      const modelStr = car.model ? car.model.trim() : '';
+      const variantStr = car.variant ? car.variant.trim() : '';
+      
+      // Volkswagen: Golf GTE → Golf, Polo Match → Polo
+      if (makeUpper === 'VOLKSWAGEN') {
+        if (modelStr.startsWith('Golf ') && modelStr !== 'Golf') {
+          const variantPart = modelStr.replace('Golf ', '').trim();
+          console.log(`🔄 [Normalization] VW Golf: "${modelStr}" → "Golf", variant: "${variantPart}"`);
+          car.model = 'Golf';
+          car.variant = variantPart || variantStr;
+        } else if (modelStr.startsWith('Polo ') && modelStr !== 'Polo') {
+          const variantPart = modelStr.replace('Polo ', '').trim();
+          console.log(`🔄 [Normalization] VW Polo: "${modelStr}" → "Polo", variant: "${variantPart}"`);
+          car.model = 'Polo';
+          car.variant = variantPart || variantStr;
+        }
+      }
+      
+      // Audi: A3 Black 35 TFSI → A3
+      if (makeUpper === 'AUDI') {
+        const audiModelPattern = /^(A[1-8]|Q[2-8]|TT|R8)\s+(.+)$/i;
+        const match = modelStr.match(audiModelPattern);
+        if (match) {
+          const baseModel = match[1];
+          const variantPart = match[2];
+          console.log(`🔄 [Normalization] Audi: "${modelStr}" → "${baseModel}", variant: "${variantPart}"`);
+          car.model = baseModel;
+          car.variant = variantPart || variantStr;
+        }
+      }
+      
+      // Mercedes-Benz: C 300 AMG → C-Class, E 300 → E-Class
+      if (makeUpper === 'MERCEDES-BENZ' || makeUpper === 'MERCEDES') {
+        if (!modelStr.includes('-Class')) {
+          const mercedesPattern = /^([ABCEGMS])\s*(\d{3})/i;
+          const match = modelStr.match(mercedesPattern);
+          if (match) {
+            const classLetter = match[1].toUpperCase();
+            const baseModel = `${classLetter}-Class`;
+            console.log(`🔄 [Normalization] Mercedes: "${modelStr}" → "${baseModel}"`);
+            car.model = baseModel;
+            if (!variantStr || variantStr === modelStr) {
+              car.variant = modelStr;
+            }
+          }
+        }
+      }
+      
+      // Body Type Capitalization: HATCHBACK → Hatchback
+      if (car.bodyType) {
+        const normalized = car.bodyType.charAt(0).toUpperCase() + car.bodyType.slice(1).toLowerCase();
+        if (car.bodyType !== normalized) {
+          console.log(`🔄 [Normalization] Body type: "${car.bodyType}" → "${normalized}"`);
+          car.bodyType = normalized;
+        }
+      }
+
       await car.save();
 
       // REMOVED: Second Universal Service call - data already fetched above (line 203)
