@@ -285,64 +285,17 @@ const carSchema = new mongoose.Schema({
     ref: 'VehicleHistory'
   },
   // Seller contact details
+  // CRITICAL FIX: Mongoose interprets {type: {type: String}} incorrectly
+  // We need to use Schema.Types.Mixed or define it differently
   sellerContact: {
-    type: {
-      type: String,
-      enum: ['private', 'trade'],
-      default: 'private'
-    },
-    phoneNumber: {
-      type: String,
-      trim: true
-    },
-    email: {
-      type: String,
-      trim: true,
-      lowercase: true
-    },
-    allowEmailContact: {
-      type: Boolean,
-      default: false
-    },
-    postcode: {
-      type: String,
-      trim: true,
-      uppercase: true
-    },
-    // Trade seller specific fields
-    businessName: {
-      type: String,
-      trim: true
-    },
-    tradingName: {
-      type: String,
-      trim: true
-    },
-    city: {
-      type: String,
-      trim: true
-    },
-    logo: {
-      type: String,
-      trim: true
-    },
-    rating: {
-      type: Number,
-      min: 0,
-      max: 5
-    },
-    reviewCount: {
-      type: Number,
-      default: 0
-    },
-    stats: {
-      carsInStock: {
-        type: Number,
-        default: 0
-      },
-      yearsInBusiness: {
-        type: Number,
-        default: 0
+    type: mongoose.Schema.Types.Mixed,
+    default: {
+      type: 'private',
+      allowEmailContact: false,
+      reviewCount: 0,
+      stats: {
+        carsInStock: 0,
+        yearsInBusiness: 0
       }
     }
   },
@@ -503,7 +456,7 @@ const carSchema = new mongoose.Schema({
   advertStatus: {
     type: String,
     enum: ['draft', 'incomplete', 'pending_payment', 'active', 'sold', 'expired', 'removed'],
-    default: 'active' // Changed from 'draft' to 'active' - all new cars are active by default
+    default: 'draft' // Cars start as draft, become active after publish
   },
   advertId: {
     type: String,
@@ -552,6 +505,8 @@ carSchema.index({ vehicleType: 1, condition: 1 });
 
 // Pre-save hook for validation and normalization
 carSchema.pre('save', async function(next) {
+  console.log(`🔧 [Pre-Save Hook] Starting for ${this.make} ${this.model} (${this.registrationNumber})`);
+  
   // CRITICAL: Normalize model and variant for BMW i-series cars
   // BMW i3, i4, i8 etc. should have model="i3/i4/i8" and variant="trim level"
   // Sometimes API returns them reversed: model="I4 M50", variant="i4"
@@ -573,6 +528,74 @@ carSchema.pre('save', async function(next) {
       // Swap: variant becomes model, model becomes variant
       this.model = tempVariant;
       this.variant = tempModel;
+      
+      console.log(`✅ [Car Model] Normalized to: model="${this.model}", variant="${this.variant}"`);
+    }
+    
+    // CRITICAL: Normalize BMW series models (3 Series, 4 Series, 5 Series, etc.)
+    // API returns model as variant number (e.g., "320d", "520i", "428i", "118i M", "M135")
+    // We need to extract series from first digit and set proper model name
+    // IMPORTANT: Skip electric models like "i4", "i8", "iX", "iX3"
+    console.log(`🔍 [BMW Series Check] make="${this.make}", model="${this.model}", variant="${this.variant}"`);
+    const modelStr = this.model || '';
+    const variantStr = this.variant || '';
+    
+    // Skip electric models (i4, i8, iX, iX3, etc.)
+    const isElectricModel = /^i[X0-9]/i.test(modelStr) || /^i[X0-9]/i.test(variantStr);
+    if (isElectricModel) {
+      console.log(`⚡ [BMW Series Check] Electric model detected, skipping normalization: ${modelStr || variantStr}`);
+    } else {
+      // Check model OR variant for series pattern
+      // Matches: "320d", "520i", "118i M", "320d M Sport", "M135", etc.
+      // Pattern: first digit (1-8) + two digits + anything else (letters, spaces, etc.)
+      const modelMatch = modelStr.match(/^([1-8])(\d{2})(.*)$/i);
+      const variantMatch = variantStr.match(/^([1-8])(\d{2})(.*)$/i);
+      
+      const seriesMatch = modelMatch || variantMatch;
+      console.log(`🔍 [BMW Series Check] seriesMatch:`, seriesMatch);
+      
+      if (seriesMatch) {
+        const seriesNumber = seriesMatch[1]; // First digit (1, 2, 3, 4, 5, 6, 7, 8)
+        const fullVariant = (modelMatch ? modelStr : variantStr).trim(); // Full variant like "320d" or "118i M" or "M135"
+        
+        // Set model to "X Series" format
+        const seriesModel = `${seriesNumber} Series`;
+        
+        console.log(`🔄 [Car Model] Normalizing BMW series: model="${this.model}" → "${seriesModel}", variant="${fullVariant}"`);
+        
+        this.model = seriesModel;
+        // Keep the full variant (320d, 520i, 118i M, M135, etc.) as variant
+        if (!this.variant || this.variant === modelStr || this.variant === 'null' || this.variant === 'undefined') {
+          this.variant = fullVariant;
+        }
+        
+        console.log(`✅ [Car Model] BMW normalized to: model="${this.model}", variant="${this.variant}"`);
+      }
+    }
+  }
+  
+  // CRITICAL: Normalize model and variant for FIAT cars
+  // FIAT 500, 500X, 500L etc. should have model="500" and variant="POP RHD/LOUNGE/SPORT"
+  // Sometimes API returns them reversed: model="500 POP RHD", variant="500"
+  if (this.make && this.make.toUpperCase() === 'FIAT') {
+    const modelStr = this.model ? this.model.trim() : '';
+    const variantStr = this.variant ? this.variant.trim() : '';
+    
+    // Check if model contains variant info (e.g., "500 POP RHD", "500X CROSS")
+    // and variant is just the model number (e.g., "500", "500X")
+    const fiatModelPattern = /^(500X?L?)\s+(.+)$/i; // Matches "500 POP", "500X CROSS", etc.
+    const match = modelStr.match(fiatModelPattern);
+    
+    if (match && variantStr && variantStr.match(/^500X?L?$/i)) {
+      // Model and variant are swapped - fix them
+      console.log(`🔄 [Car Model] Normalizing FIAT: model="${this.model}", variant="${this.variant}"`);
+      
+      const actualModel = match[1]; // "500" or "500X" or "500L"
+      const actualVariant = match[2]; // "POP RHD" or "CROSS" etc.
+      
+      // Swap: set correct model and variant
+      this.model = actualModel;
+      this.variant = actualVariant;
       
       console.log(`✅ [Car Model] Normalized to: model="${this.model}", variant="${this.variant}"`);
     }
@@ -762,16 +785,60 @@ carSchema.pre('save', async function(next) {
   }
   
   // CRITICAL: Validate hybrid vehicles don't have electric-only fields
-  const isHybrid = this.fuelType && (
+  // BUT: Plug-in hybrids SHOULD have electric fields!
+  const isRegularHybrid = this.fuelType && (
     this.fuelType === 'Hybrid' || 
     this.fuelType === 'Petrol Hybrid' || 
-    this.fuelType === 'Diesel Hybrid' ||
+    this.fuelType === 'Diesel Hybrid'
+  );
+  
+  // Plug-in hybrids are NOT regular hybrids - they need electric fields
+  const isPluginHybrid = this.fuelType && (
     this.fuelType === 'Plug-in Hybrid' ||
     this.fuelType === 'Petrol Plug-in Hybrid' ||
     this.fuelType === 'Diesel Plug-in Hybrid' ||
-    this.fuelType.includes('Hybrid')
+    this.fuelType.toLowerCase().includes('plug-in') || 
+    this.fuelType.toLowerCase().includes('phev') ||
+    this.model?.toUpperCase().includes('PHEV')
   );
   
+  // ONLY remove electric fields from REGULAR hybrids (not plug-in hybrids)
+  if (isRegularHybrid && !isPluginHybrid) {
+    // Regular hybrids (non-plugin) should NOT have electric range or charging fields
+    if (this.electricRange || this.batteryCapacity || this.chargingTime) {
+      console.log(`⚠️  REGULAR HYBRID DETECTED (${this.fuelType}) - Removing electric-only fields for ${this.registrationNumber}`);
+      this.electricRange = null;
+      this.batteryCapacity = null;
+      this.chargingTime = null;
+      this.homeChargingSpeed = null;
+      this.publicChargingSpeed = null;
+      this.rapidChargingSpeed = null;
+      this.chargingTime10to80 = null;
+      this.electricMotorPower = null;
+      this.electricMotorTorque = null;
+      this.chargingPortType = null;
+      this.fastChargingCapability = null;
+      
+      // Also clear from runningCosts
+      if (this.runningCosts) {
+        this.runningCosts.electricRange = null;
+        this.runningCosts.batteryCapacity = null;
+        this.runningCosts.chargingTime = null;
+        this.runningCosts.homeChargingSpeed = null;
+        this.runningCosts.publicChargingSpeed = null;
+        this.runningCosts.rapidChargingSpeed = null;
+        this.runningCosts.chargingTime10to80 = null;
+        this.runningCosts.electricMotorPower = null;
+        this.runningCosts.electricMotorTorque = null;
+        this.runningCosts.chargingPortType = null;
+        this.runningCosts.fastChargingCapability = null;
+      }
+      console.log(`✅ Electric-only fields removed from regular hybrid vehicle`);
+    }
+  } else if (isPluginHybrid) {
+    console.log(`🔌 PLUG-IN HYBRID DETECTED (${this.fuelType}) - Keeping charging fields for ${this.registrationNumber}`);
+    // Plugin hybrids SHOULD have charging info - don't remove it!
+  }
   
   // Auto-generate displayTitle if missing (AutoTrader format: "EngineSize Variant BodyStyle")
   if (!this.displayTitle && this.make && this.model) {
@@ -1080,14 +1147,90 @@ carSchema.pre('save', async function(next) {
     }
   }
   
+  // CRITICAL: Comprehensive Model/Variant Normalization
+  // Automatically fix model/variant organization for all makes
+  // This runs AFTER variant has been set from API or generated
+  console.log(`🔍 [Normalization Check] make="${this.make}", model="${this.model}", variant="${this.variant}", bodyType="${this.bodyType}"`);
+  
+  if (this.make && this.model) {
+    const makeUpper = this.make.toUpperCase();
+    const modelStr = this.model.trim();
+    const variantStr = this.variant ? this.variant.trim() : '';
+    
+    console.log(`🔍 [Normalization] Checking ${makeUpper} - modelStr="${modelStr}"`);
+    
+    // Volkswagen: Golf GTE → Golf, Polo Match → Polo
+    if (makeUpper === 'VOLKSWAGEN') {
+      if (modelStr.startsWith('Golf ') && modelStr !== 'Golf') {
+        const variantPart = modelStr.replace('Golf ', '').trim();
+        console.log(`🔄 [Car Model] Normalizing VW Golf: "${modelStr}" → "Golf", variant: "${variantPart}"`);
+        this.model = 'Golf';
+        this.variant = variantPart || variantStr;
+      } else if (modelStr.startsWith('Polo ') && modelStr !== 'Polo') {
+        const variantPart = modelStr.replace('Polo ', '').trim();
+        console.log(`🔄 [Car Model] Normalizing VW Polo: "${modelStr}" → "Polo", variant: "${variantPart}"`);
+        this.model = 'Polo';
+        this.variant = variantPart || variantStr;
+      }
+    }
+    
+    // Audi: A3 Black 35 TFSI → A3
+    if (makeUpper === 'AUDI') {
+      const audiModelPattern = /^(A[1-8]|Q[2-8]|TT|R8)\s+(.+)$/i;
+      const match = modelStr.match(audiModelPattern);
+      if (match) {
+        const baseModel = match[1];
+        const variantPart = match[2];
+        console.log(`🔄 [Car Model] Normalizing Audi: "${modelStr}" → "${baseModel}", variant: "${variantPart}"`);
+        this.model = baseModel;
+        this.variant = variantPart || variantStr;
+      }
+    }
+    
+    // Mercedes-Benz: C 300 AMG → C-Class, E 300 → E-Class
+    if (makeUpper === 'MERCEDES-BENZ' || makeUpper === 'MERCEDES') {
+      // Match C 300, E 300, etc. (not already C-Class or E-Class)
+      if (!modelStr.includes('-Class')) {
+        const mercedesPattern = /^([ABCEGMS])\s*(\d{3})/i;
+        const match = modelStr.match(mercedesPattern);
+        if (match) {
+          const classLetter = match[1].toUpperCase();
+          const baseModel = `${classLetter}-Class`;
+          console.log(`🔄 [Car Model] Normalizing Mercedes: "${modelStr}" → "${baseModel}"`);
+          this.model = baseModel;
+          // Keep existing variant or use full model string as variant
+          if (!variantStr || variantStr === modelStr) {
+            this.variant = modelStr;
+          }
+        }
+      }
+    }
+  }
+  
+  // CRITICAL: Body Type Capitalization Normalization
+  // Ensure consistent capitalization: "Hatchback" not "HATCHBACK" or "hatchback"
+  if (this.bodyType) {
+    const normalized = this.bodyType.charAt(0).toUpperCase() + this.bodyType.slice(1).toLowerCase();
+    if (this.bodyType !== normalized) {
+      console.log(`🔄 [Car Model] Normalizing body type: "${this.bodyType}" → "${normalized}"`);
+      this.bodyType = normalized;
+    }
+  }
+  
   // History check for new listings with registration numbers
   if (this.isNew && this.registrationNumber && this.historyCheckStatus === 'pending') {
-    // Skip API calls if flag is set (payment controller will handle it)
-    if (this._skipAPICallsInHooks) {
+    // Skip API calls if flag is set AND it's NOT a trade dealer listing
+    // Trade dealers need history fetched immediately since they bypass payment controller
+    const shouldSkip = this._skipAPICallsInHooks && !this.isDealerListing;
+    
+    if (shouldSkip) {
       console.log(`⏭️  Skipping history check and MOT fetch in pre-save hook (will be handled by payment controller)`);
       // Don't return early - let other pre-save logic run (coordinates, etc.)
       // Just skip the API calls below
     } else {
+      if (this.isDealerListing) {
+        console.log(`🏢 Trade dealer listing detected - fetching history immediately`);
+      }
       try {
         const HistoryService = require('../services/historyService');
         const historyService = new HistoryService();
@@ -1121,8 +1264,10 @@ carSchema.pre('save', async function(next) {
   }
 
   // MOT History check for new listings with registration numbers
-  // Skip if payment controller will handle it
-  if (this.isNew && this.registrationNumber && (!this.motHistory || this.motHistory.length === 0) && !this._skipAPICallsInHooks) {
+  // Skip if payment controller will handle it (but NOT for trade dealers)
+  const shouldSkipMOT = this._skipAPICallsInHooks && !this.isDealerListing;
+  
+  if (this.isNew && this.registrationNumber && (!this.motHistory || this.motHistory.length === 0) && !shouldSkipMOT) {
     try {
       console.log(`🔍 Triggering MOT history check for new listing: ${this.registrationNumber}`);
       
@@ -1555,12 +1700,19 @@ carSchema.pre('save', function(next) {
   }
 });
 
-// Pre-save hook to automatically enhance electric vehicles
+// Pre-save hook to automatically enhance electric vehicles AND plug-in hybrids
 carSchema.pre('save', async function(next) {
   try {
-    // Only enhance if this is an electric vehicle and it's a new document or fuelType changed
-    if (this.fuelType === 'Electric' && (this.isNew || this.isModified('fuelType'))) {
-      console.log(`🔋 Auto-enhancing electric vehicle: ${this.make} ${this.model} ${this.variant}`);
+    // Check if this is an electric vehicle OR plug-in hybrid
+    const isElectricOrPluginHybrid = this.fuelType === 'Electric' || 
+                                      this.fuelType === 'Plug-in Hybrid' ||
+                                      this.fuelType === 'Petrol Plug-in Hybrid' ||
+                                      this.fuelType === 'Diesel Plug-in Hybrid';
+    
+    // Only enhance if it's electric/PHEV and it's a new document or fuelType changed
+    if (isElectricOrPluginHybrid && (this.isNew || this.isModified('fuelType'))) {
+      console.log(`🔋 Auto-enhancing electric/hybrid vehicle: ${this.make} ${this.model} ${this.variant}`);
+      console.log(`   Fuel Type: ${this.fuelType}`);
       
       // Import services (dynamic import to avoid circular dependencies)
       const ElectricVehicleEnhancementService = require('../services/electricVehicleEnhancementService');
@@ -1580,7 +1732,22 @@ carSchema.pre('save', async function(next) {
         }
       });
       
-      console.log(`✅ Auto-enhanced EV: ${this.electricRange || this.runningCosts?.electricRange}mi range, ${this.batteryCapacity || this.runningCosts?.batteryCapacity}kWh battery`);
+      console.log(`✅ Auto-enhanced EV/PHEV: ${this.electricRange || this.runningCosts?.electricRange}mi range, ${this.batteryCapacity || this.runningCosts?.batteryCapacity}kWh battery`);
+    }
+    
+    // CRITICAL: For plug-in hybrids, DON'T remove electric data
+    // Only remove electric data for pure petrol/diesel (NOT hybrids)
+    const isPureNonElectric = this.fuelType === 'Petrol' || this.fuelType === 'Diesel';
+    
+    if (isPureNonElectric && (this.batteryCapacity || this.electricRange)) {
+      console.log(`⚠️  Removing electric data from pure ${this.fuelType} vehicle`);
+      this.batteryCapacity = null;
+      this.electricRange = null;
+      this.homeChargingSpeed = null;
+      this.rapidChargingSpeed = null;
+      this.chargingPortType = null;
+      this.electricMotorPower = null;
+      this.electricMotorTorque = null;
     }
     
     next();

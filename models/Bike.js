@@ -49,7 +49,7 @@ const bikeSchema = new mongoose.Schema({
   fuelType: {
     type: String,
     required: [true, 'Fuel type is required'],
-    enum: ['Petrol', 'Electric', 'Hybrid', 'Petrol Hybrid', 'Diesel Hybrid', 'Plug-in Hybrid', 'Petrol Plug-in Hybrid', 'Diesel Plug-in Hybrid']
+    enum: ['Petrol', 'PETROL', 'Electric', 'ELECTRIC', 'Hybrid', 'HYBRID', 'Petrol Hybrid', 'PETROL HYBRID', 'Diesel Hybrid', 'DIESEL HYBRID', 'Plug-in Hybrid', 'PLUG-IN HYBRID', 'Petrol Plug-in Hybrid', 'PETROL PLUG-IN HYBRID', 'Diesel Plug-in Hybrid', 'DIESEL PLUG-IN HYBRID']
   },
   description: {
     type: String,
@@ -115,7 +115,7 @@ const bikeSchema = new mongoose.Schema({
   },
   bikeType: {
     type: String,
-    enum: ['Sport', 'Cruiser', 'Adventure', 'Touring', 'Naked', 'Scooter', 'Off-road', 'Classic', 'Commuter', 'Other'],
+    enum: ['Sport', 'Sports', 'Cruiser', 'Adventure', 'Touring', 'Naked', 'Scooter', 'Off-road', 'Classic', 'Commuter', 'Other'],
     required: [true, 'Bike type is required']
   },
   // DVLA-specific fields
@@ -411,6 +411,13 @@ const bikeSchema = new mongoose.Schema({
   },
   soldAt: {
     type: Date
+  },
+  
+  // Track which fields were manually edited by user
+  userEditedFields: {
+    type: Map,
+    of: Boolean,
+    default: {}
   }
 }, {
   timestamps: true

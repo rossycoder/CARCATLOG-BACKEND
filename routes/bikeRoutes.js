@@ -36,6 +36,9 @@ router.post('/', bikeController.createBike);
 // PUT /api/bikes/:id - Update bike
 router.put('/:id', bikeController.updateBike);
 
+// PATCH /api/bikes/:id - Patch bike details (make, model, variant)
+router.patch('/:id', bikeController.patchBikeDetails);
+
 // DELETE /api/bikes/:id - Delete bike
 router.delete('/:id', bikeController.deleteBike);
 

@@ -1210,29 +1210,37 @@ class VehicleController {
       if (engineSize) {
         // Frontend sends values like: "1.0", "1.5", "2.0", "2.5", "3.0", "3.0+"
         // Database stores engineSize in liters (e.g., 2.0, 1.6, 3.0)
-        const engineSizeValue = parseFloat(engineSize);
+        // FIXED: Use inclusive ranges with $gte and $lte to avoid missing boundary values
+        // IMPORTANT: Exclude electric vehicles from engine size filter
         
         if (engineSize === '1.0') {
-          // Up to 1.0L
+          // Up to 1.0L (inclusive)
           query.engineSize = { $lte: 1.0 };
         } else if (engineSize === '1.5') {
-          // 1.0L - 1.5L
-          query.engineSize = { $gt: 1.0, $lte: 1.5 };
+          // 1.0L - 1.5L (inclusive on both ends)
+          query.engineSize = { $gte: 1.0, $lte: 1.5 };
         } else if (engineSize === '2.0') {
-          // 1.5L - 2.0L
-          query.engineSize = { $gt: 1.5, $lte: 2.0 };
+          // 1.5L - 2.0L (inclusive on both ends)
+          query.engineSize = { $gte: 1.5, $lte: 2.0 };
         } else if (engineSize === '2.5') {
-          // 2.0L - 2.5L
-          query.engineSize = { $gt: 2.0, $lte: 2.5 };
+          // 2.0L - 2.5L (inclusive on both ends)
+          query.engineSize = { $gte: 2.0, $lte: 2.5 };
         } else if (engineSize === '3.0') {
-          // 2.5L - 3.0L
-          query.engineSize = { $gt: 2.5, $lte: 3.0 };
+          // 2.5L - 3.0L (inclusive on both ends)
+          query.engineSize = { $gte: 2.5, $lte: 3.0 };
         } else if (engineSize === '3.0+') {
-          // 3.0L+ = 3.0L and above
-          query.engineSize = { $gt: 3.0 };
+          // 3.0L+ = 3.0L and above (inclusive)
+          query.engineSize = { $gte: 3.0 };
         }
         
+        // CRITICAL: Exclude pure electric vehicles from engine size filter
+        // Electric vehicles don't have engines, only electric motors
+        query.fuelType = { 
+          $nin: ['Electric'] // Exclude pure electric vehicles
+        };
+        
         console.log('[Vehicle Controller] Engine size filter applied:', engineSize, '→', query.engineSize);
+        console.log('[Vehicle Controller] Excluding fuel types:', query.fuelType);
       }
       
       // Seller type filter - MUTUALLY EXCLUSIVE

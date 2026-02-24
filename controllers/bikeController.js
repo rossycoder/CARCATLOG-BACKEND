@@ -314,6 +314,60 @@ exports.updateBike = async (req, res) => {
   }
 };
 
+// Patch bike details (make, model, variant only)
+exports.patchBikeDetails = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { make, model, variant, fuelType, bikeType, color, engineSize, engineCC, userEditedFields } = req.body;
+    
+    console.log('🔧 Patching bike details:', { id, make, model, variant, fuelType, bikeType, color, engineSize, engineCC });
+    
+    const bike = await Bike.findById(id);
+    
+    if (!bike) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Bike not found' 
+      });
+    }
+    
+    // Update fields if provided
+    if (make) bike.make = make;
+    if (model) bike.model = model;
+    if (variant !== undefined) bike.variant = variant;
+    if (fuelType) bike.fuelType = fuelType;
+    if (bikeType) bike.bikeType = bikeType;
+    if (color) bike.color = color;
+    if (engineSize) bike.engineSize = engineSize;
+    if (engineCC !== undefined) bike.engineCC = engineCC;
+    
+    // Track user-edited fields
+    if (userEditedFields) {
+      bike.userEditedFields = {
+        ...bike.userEditedFields,
+        ...userEditedFields
+      };
+    }
+    
+    await bike.save();
+    
+    console.log('✅ Bike details updated successfully');
+    
+    res.json({
+      success: true,
+      data: bike,
+      message: 'Bike details updated successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error patching bike details:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
+  }
+};
+
 // Delete bike
 exports.deleteBike = async (req, res) => {
   try {
