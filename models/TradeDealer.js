@@ -6,8 +6,7 @@ const tradeDealerSchema = new mongoose.Schema({
   businessName: {
     type: String,
     required: [true, 'Business name is required'],
-    trim: true,
-    index: true
+    trim: true
   },
   tradingName: {
     type: String,
@@ -38,8 +37,7 @@ const tradeDealerSchema = new mongoose.Schema({
     required: [true, 'Email is required'],
     unique: true,
     lowercase: true,
-    trim: true,
-    index: true
+    trim: true
   },
   phone: {
     type: String,
@@ -159,7 +157,6 @@ const tradeDealerSchema = new mongoose.Schema({
 // Indexes
 tradeDealerSchema.index({ email: 1 });
 tradeDealerSchema.index({ status: 1 });
-tradeDealerSchema.index({ businessName: 1 });
 
 // Hash password before saving
 tradeDealerSchema.pre('save', async function(next) {

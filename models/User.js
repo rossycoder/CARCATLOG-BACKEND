@@ -92,7 +92,6 @@ const userSchema = new mongoose.Schema({
 });
 
 // Index for faster queries
-userSchema.index({ email: 1 });
 userSchema.index({ provider: 1, providerId: 1 });
 
 // Hash password before saving

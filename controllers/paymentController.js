@@ -11,6 +11,7 @@ const UniversalAutoCompleteService = require('../services/universalAutoCompleteS
 const AdvertisingPackagePurchase = require('../models/AdvertisingPackagePurchase');
 const { formatErrorResponse } = require('../utils/errorHandlers');
 const vehicleFormatter = require('../utils/vehicleFormatter');
+const safeAPI = require('../services/safeAPIService');
 
 // Initialize services
 const universalService = new UniversalAutoCompleteService();
@@ -468,9 +469,26 @@ async function handlePaymentSuccess(paymentIntent) {
       // CRITICAL: Only call API during payment processing, not for display
       // Generate vehicle history report only if payment is successful
       if (paymentData.vrm) {
-        const historyService = new HistoryService();
-        await historyService.checkVehicleHistory(paymentData.vrm, true);
-        console.log(`Vehicle history report generated for VRM: ${paymentData.vrm}`);
+        console.log(`🔍 [Payment] Generating vehicle history report for: ${paymentData.vrm}`);
+        
+        // Use safeAPI to ensure proper caching and limits
+        try {
+          const historyService = new HistoryService();
+          
+          // Check if data already exists in cache
+          const summary = await safeAPI.getVehicleSummary(paymentData.vrm);
+          
+          if (summary && summary.hasCachedData) {
+            console.log(`✅ [Payment] Vehicle history already cached for ${paymentData.vrm}`);
+          } else {
+            // Only call API if not cached
+            await historyService.checkVehicleHistory(paymentData.vrm, true);
+            console.log(`✅ [Payment] Vehicle history report generated for VRM: ${paymentData.vrm}`);
+          }
+        } catch (error) {
+          console.error(`❌ [Payment] Error generating vehicle history:`, error.message);
+          // Don't fail payment if history generation fails
+        }
       }
       
       // TODO: Send email with report link
@@ -543,6 +561,16 @@ async function handlePaymentSuccess(paymentIntent) {
                 }
               }
               
+              // Auto-detect seller type based on business info
+              const hasLogo = advertData?.businessLogo && advertData.businessLogo.trim() !== '';
+              const hasWebsite = advertData?.businessWebsite && advertData.businessWebsite.trim() !== '';
+              const detectedSellerType = (hasLogo || hasWebsite) ? 'trade' : 'private';
+              
+              console.log(`🔍 Bike Auto-detected seller type: ${detectedSellerType}`);
+              console.log(`   Has logo: ${hasLogo} (value: "${advertData?.businessLogo}")`);
+              console.log(`   Has website: ${hasWebsite} (value: "${advertData?.businessWebsite}")`);
+              console.log(`   Business name: "${advertData?.businessName}"`);
+              
               // Check if bike already exists
               let bike = await Bike.findOne({ advertId });
               
@@ -555,6 +583,37 @@ async function handlePaymentSuccess(paymentIntent) {
                 
                 // Update existing bike
                 console.log(`📝 Updating existing bike: ${bike._id}`);
+                
+                // CRITICAL FIX: Update registration number and model from vehicleData
+                if (vehicleData.registrationNumber || vehicleData.registration) {
+                  bike.registrationNumber = vehicleData.registrationNumber || vehicleData.registration;
+                  console.log(`✅ Updated registration: ${bike.registrationNumber}`);
+                }
+                
+                if (vehicleData.make) {
+                  bike.make = vehicleData.make;
+                  console.log(`✅ Updated make: ${bike.make}`);
+                }
+                
+                if (vehicleData.model) {
+                  bike.model = vehicleData.model;
+                  console.log(`✅ Updated model: ${bike.model}`);
+                }
+                
+                if (vehicleData.variant) {
+                  bike.variant = vehicleData.variant;
+                  console.log(`✅ Updated variant: ${bike.variant}`);
+                }
+                
+                if (vehicleData.color) {
+                  bike.color = vehicleData.color;
+                  console.log(`✅ Updated color: ${bike.color}`);
+                }
+                
+                if (vehicleData.engineCC || vehicleData.engineSize) {
+                  bike.engineCC = parseInt(vehicleData.engineCC || vehicleData.engineSize || '0') || 0;
+                  console.log(`✅ Updated engineCC: ${bike.engineCC}`);
+                }
                 
                 bike.price = advertData.price || bike.price;
                 bike.description = advertData.description || bike.description;
@@ -571,13 +630,32 @@ async function handlePaymentSuccess(paymentIntent) {
                   };
                 }
                 
+                // Preserve existing business info if new data is empty
+                const finalBusinessName = advertData?.businessName || bike.sellerContact?.businessName;
+                const finalBusinessLogo = advertData?.businessLogo || bike.sellerContact?.businessLogo;
+                const finalBusinessWebsite = advertData?.businessWebsite || bike.sellerContact?.businessWebsite;
+                
+                console.log(`📝 Final bike business info to save:`);
+                console.log(`   Business Name: "${finalBusinessName}"`);
+                console.log(`   Business Logo: "${finalBusinessLogo}"`);
+                console.log(`   Business Website: "${finalBusinessWebsite}"`);
+                
                 bike.sellerContact = {
-                  type: 'private',
+                  type: detectedSellerType,
                   phoneNumber: contactDetails.phoneNumber || bike.sellerContact?.phoneNumber,
                   email: contactDetails.email || bike.sellerContact?.email,
                   allowEmailContact: contactDetails.allowEmailContact || false,
-                  postcode: contactDetails.postcode || bike.sellerContact?.postcode
+                  postcode: contactDetails.postcode || bike.sellerContact?.postcode,
+                  businessName: finalBusinessName,
+                  businessLogo: finalBusinessLogo,
+                  businessWebsite: finalBusinessWebsite
                 };
+                
+                // Save running costs from advertData
+                if (advertData.runningCosts) {
+                  console.log(`💰 Saving running costs from advertData:`, advertData.runningCosts);
+                  bike.runningCosts = advertData.runningCosts;
+                }
                 
                 bike.advertisingPackage = {
                   packageId: purchase.packageId,
@@ -595,13 +673,74 @@ async function handlePaymentSuccess(paymentIntent) {
                 
                 await bike.save();
                 console.log(`✅ Bike advert UPDATED and published!`);
+                
+                // CRITICAL: Only call Vehicle History API after payment (MOT + Previous Owners)
+                // Vehicle Specs API was already called when bike was created
+                if (bike.registrationNumber) {
+                  console.log(`🔍 [Payment] Checking vehicle history for bike: ${bike.registrationNumber}`);
+                  try {
+                    // Check if data already cached
+                    const summary = await safeAPI.getVehicleSummary(bike.registrationNumber);
+                    
+                    if (summary && summary.hasCachedData) {
+                      console.log(`✅ [Payment] Vehicle data already cached for ${bike.registrationNumber}`);
+                      console.log(`   💰 Skipping API calls - using cached data`);
+                    } else {
+                      console.log(`📞 [Payment] Fetching MOT and history data for ${bike.registrationNumber}`);
+                      
+                      const historyService = require('../services/historyService');
+                      const motHistoryService = require('../services/motHistoryService');
+                      
+                      // Fetch MOT history and vehicle history in parallel using safeAPI
+                      const [motResult, historyResult] = await Promise.allSettled([
+                        safeAPI.call('mothistory', bike.registrationNumber, null, async () => {
+                          return await motHistoryService.getMOTHistory(bike.registrationNumber);
+                        }),
+                        safeAPI.call('vehiclehistory', bike.registrationNumber, null, async () => {
+                          return await historyService.getVehicleHistory(bike.registrationNumber);
+                        })
+                      ]);
+                      
+                      // Update MOT data
+                      if (motResult.status === 'fulfilled' && motResult.value?.data) {
+                        const motData = motResult.value.data;
+                        bike.motHistory = motData.motHistory || [];
+                        bike.motDue = motData.mot?.motDueDate || null;
+                        bike.motStatus = motData.mot?.motStatus || null;
+                        bike.motExpiry = motData.mot?.motDueDate || null;
+                        console.log(`✅ [Payment] MOT history fetched: ${bike.motHistory.length} tests`);
+                      }
+                      
+                      // Update history data (previous owners)
+                      if (historyResult.status === 'fulfilled' && historyResult.value?.data) {
+                        const histData = historyResult.value.data;
+                        if (!bike.historyCheckData) bike.historyCheckData = {};
+                        bike.historyCheckData.previousKeepers = histData.previousOwners || null;
+                        bike.historyCheckData.isWrittenOff = histData.writeOffCategory !== 'none';
+                        bike.historyCheckData.writeOffCategory = histData.writeOffCategory || 'none';
+                        console.log(`✅ [Payment] Vehicle history fetched: ${bike.historyCheckData.previousKeepers} previous owners`);
+                      }
+                      
+                      await bike.save();
+                      console.log(`✅ [Payment] Vehicle history data saved to database`);
+                    }
+                  } catch (error) {
+                    console.error(`❌ [Payment] Error fetching vehicle history for bike:`, error.message);
+                    // Don't fail payment if history fetch fails
+                  }
+                }
               } else {
                 // Create new bike
                 console.log(`📝 Creating NEW bike document`);
                 
+                // Preserve business info
+                const finalBusinessName = advertData?.businessName;
+                const finalBusinessLogo = advertData?.businessLogo;
+                const finalBusinessWebsite = advertData?.businessWebsite;
+                
                 bike = new Bike({
                   advertId: advertId,
-                  userId: userId, // Add userId field
+                  userId: userId,
                   make: vehicleData.make || 'Unknown',
                   model: vehicleData.model || 'Unknown',
                   year: vehicleData.year || new Date().getFullYear(),
@@ -625,12 +764,16 @@ async function handlePaymentSuccess(paymentIntent) {
                     coordinates: [longitude, latitude]
                   } : undefined,
                   sellerContact: {
-                    type: 'private',
+                    type: detectedSellerType,
                     phoneNumber: contactDetails.phoneNumber,
                     email: contactDetails.email,
                     allowEmailContact: contactDetails.allowEmailContact || false,
-                    postcode: contactDetails.postcode
+                    postcode: contactDetails.postcode,
+                    businessName: finalBusinessName,
+                    businessLogo: finalBusinessLogo,
+                    businessWebsite: finalBusinessWebsite
                   },
+                  runningCosts: advertData.runningCosts || undefined,
                   advertisingPackage: {
                     packageId: purchase.packageId,
                     packageName: purchase.packageName,
@@ -647,6 +790,19 @@ async function handlePaymentSuccess(paymentIntent) {
                 
                 await bike.save();
                 console.log(`✅ Bike advert CREATED and published!`);
+                
+                // Call UniversalAutoCompleteService to fetch MOT history and vehicle history
+                if (bike.registrationNumber) {
+                  console.log(`🔍 Calling UniversalAutoCompleteService for bike: ${bike.registrationNumber}`);
+                  try {
+                    const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');
+                    const service = new UniversalAutoCompleteService();
+                    await service.completeCarData(bike, false);
+                    console.log(`✅ MOT history and vehicle data fetched and saved for bike`);
+                  } catch (error) {
+                    console.error(`❌ Error fetching MOT history for bike:`, error.message);
+                  }
+                }
               }
               
               console.log(`   Database ID: ${bike._id}`);
@@ -739,6 +895,69 @@ async function handlePaymentSuccess(paymentIntent) {
                 
                 await van.save();
                 console.log(`✅ Van advert UPDATED and published!`);
+                
+                // CRITICAL: Fetch MOT and Vehicle History after payment (like bike)
+                if (van.registrationNumber) {
+                  console.log(`🔍 [Van Payment] Checking for cached data: ${van.registrationNumber}`);
+                  
+                  // Check if data already cached
+                  const summary = await safeAPI.getVehicleSummary(van.registrationNumber);
+                  
+                  if (summary && summary.hasCachedData) {
+                    console.log(`✅ [Van Payment] Using cached data for ${van.registrationNumber}`);
+                    console.log(`   💰 Skipping API calls - using cached data`);
+                  } else {
+                    console.log(`📞 [Van Payment] Fetching MOT and history data for ${van.registrationNumber}`);
+                    
+                    const HistoryService = require('../services/historyService');
+                    const MOTHistoryService = require('../services/motHistoryService');
+                    
+                    // Create service instances
+                    const historyService = new HistoryService();
+                    const motHistoryService = new MOTHistoryService();
+                    
+                    // Fetch MOT history and vehicle history in parallel using safeAPI
+                    const [motResult, historyResult] = await Promise.allSettled([
+                      safeAPI.call('mothistory', van.registrationNumber, null, async () => {
+                        return await motHistoryService.getMOTHistory(van.registrationNumber);
+                      }),
+                      safeAPI.call('vehiclehistory', van.registrationNumber, null, async () => {
+                        return await historyService.checkVehicleHistory(van.registrationNumber);
+                      })
+                    ]);
+                    
+                    // Update MOT data
+                    if (motResult.status === 'fulfilled' && motResult.value?.data) {
+                      const motData = motResult.value.data;
+                      van.motHistory = motData.motHistory || [];
+                      van.motDue = motData.mot?.motDueDate || null;
+                      van.motStatus = motData.mot?.motStatus || null;
+                      van.motExpiry = motData.mot?.motDueDate || null;
+                      console.log(`✅ [Van Payment] MOT history fetched: ${van.motHistory.length} tests`);
+                    }
+                    
+                    // Update vehicle history data
+                    if (historyResult.status === 'fulfilled' && historyResult.value?.data) {
+                      const historyData = historyResult.value.data;
+                      van.historyCheckData = {
+                        previousKeepers: historyData.previousKeepers || 0,
+                        writeOffCategory: historyData.writeOffCategory || null,
+                        stolen: historyData.stolen || false,
+                        scrapped: historyData.scrapped || false,
+                        exported: historyData.exported || false,
+                        colourChanges: historyData.colourChanges || 0,
+                        plateChanges: historyData.plateChanges || 0
+                      };
+                      van.historyCheckStatus = 'completed';
+                      van.historyCheckDate = new Date();
+                      console.log(`✅ [Van Payment] Vehicle history fetched: ${historyData.previousKeepers || 0} previous keepers`);
+                    }
+                    
+                    // Save updated van with MOT and history data
+                    await van.save();
+                    console.log(`✅ [Van Payment] Van updated with MOT and history data`);
+                  }
+                }
               } else {
                 // Create new van
                 console.log(`📝 Creating NEW van document`);
@@ -752,8 +971,8 @@ async function handlePaymentSuccess(paymentIntent) {
                   mileage: vehicleData.mileage || 0,
                   color: vehicleData.color || 'Not specified',
                   fuelType: vehicleData.fuelType || 'Diesel',
-                  transmission: vehicleData.transmission || 'manual',
-                  registrationNumber: vehicleData.registrationNumber || null,
+                  transmission: vehicleData.transmission || 'Manual',
+                  registrationNumber: vehicleData.registration || vehicleData.registrationNumber || null,
                   vanType: vehicleData.vanType || 'Panel Van',
                   payloadCapacity: vehicleData.payloadCapacity || 0,
                   condition: 'used',
@@ -791,6 +1010,59 @@ async function handlePaymentSuccess(paymentIntent) {
                 
                 await van.save();
                 console.log(`✅ Van advert CREATED and published!`);
+                
+                // CRITICAL: Fetch MOT and Vehicle History after creating new van
+                if (van.registrationNumber) {
+                  console.log(`🔍 [Van Payment] Fetching MOT and history for new van: ${van.registrationNumber}`);
+                  
+                  const HistoryService = require('../services/historyService');
+                  const MOTHistoryService = require('../services/motHistoryService');
+                  
+                  // Create service instances
+                  const historyService = new HistoryService();
+                  const motHistoryService = new MOTHistoryService();
+                  
+                  // Fetch MOT history and vehicle history in parallel using safeAPI
+                  const [motResult, historyResult] = await Promise.allSettled([
+                    safeAPI.call('mothistory', van.registrationNumber, null, async () => {
+                      return await motHistoryService.getMOTHistory(van.registrationNumber);
+                    }),
+                    safeAPI.call('vehiclehistory', van.registrationNumber, null, async () => {
+                      return await historyService.checkVehicleHistory(van.registrationNumber);
+                    })
+                  ]);
+                  
+                  // Update MOT data
+                  if (motResult.status === 'fulfilled' && motResult.value?.data) {
+                    const motData = motResult.value.data;
+                    van.motHistory = motData.motHistory || [];
+                    van.motDue = motData.mot?.motDueDate || null;
+                    van.motStatus = motData.mot?.motStatus || null;
+                    van.motExpiry = motData.mot?.motDueDate || null;
+                    console.log(`✅ [Van Payment] MOT history fetched: ${van.motHistory.length} tests`);
+                  }
+                  
+                  // Update vehicle history data
+                  if (historyResult.status === 'fulfilled' && historyResult.value?.data) {
+                    const historyData = historyResult.value.data;
+                    van.historyCheckData = {
+                      previousKeepers: historyData.previousKeepers || 0,
+                      writeOffCategory: historyData.writeOffCategory || null,
+                      stolen: historyData.stolen || false,
+                      scrapped: historyData.scrapped || false,
+                      exported: historyData.exported || false,
+                      colourChanges: historyData.colourChanges || 0,
+                      plateChanges: historyData.plateChanges || 0
+                    };
+                    van.historyCheckStatus = 'completed';
+                    van.historyCheckDate = new Date();
+                    console.log(`✅ [Van Payment] Vehicle history fetched: ${historyData.previousKeepers || 0} previous keepers`);
+                  }
+                  
+                  // Save updated van with MOT and history data
+                  await van.save();
+                  console.log(`✅ [Van Payment] Van updated with MOT and history data`);
+                }
               }
               
               console.log(`   Database ID: ${van._id}`);
@@ -974,22 +1246,33 @@ async function handlePaymentSuccess(paymentIntent) {
               // This is needed because the car was created in "pending" status without full data
               if (car.registrationNumber) {
                 try {
-                  console.log(`🔍 Fetching FRESH vehicle data from Universal Service for UPDATE: ${car.registrationNumber}`);
+                  console.log(`🔍 [Payment] Checking vehicle data for car: ${car.registrationNumber}`);
                   
-                  // Set flag to skip API calls in pre-save hooks
-                  car._skipAPICallsInHooks = true;
+                  // Check if data already cached
+                  const summary = await safeAPI.getVehicleSummary(car.registrationNumber);
                   
-                  // CRITICAL: Force fresh API call to get correct PHEV detection (don't use stale cache)
-                  await universalService.completeCarData(car, true); // forceRefresh = true
-                  
-                  console.log(`✅ Universal Service data fetched successfully`);
-                  console.log(`   Detected fuel type: ${car.fuelType}`);
-                  console.log(`   Battery capacity: ${car.batteryCapacity || 'N/A'} kWh`);
-                  console.log(`   Electric range: ${car.electricRange || 'N/A'} miles`);
-                  
+                  if (summary && summary.hasCachedData) {
+                    console.log(`✅ [Payment] Vehicle data already cached for ${car.registrationNumber}`);
+                    console.log(`   💰 Skipping API calls - using cached data`);
+                  } else {
+                    console.log(`📞 [Payment] Fetching FRESH vehicle data from Universal Service: ${car.registrationNumber}`);
+                    
+                    // Set flag to skip API calls in pre-save hooks
+                    car._skipAPICallsInHooks = true;
+                    
+                    // DISABLED: Universal Service makes unlimited API calls
+                    // Instead, rely on data already fetched during car creation
+                    // await universalService.completeCarData(car, true); // forceRefresh = true
+                    
+                    console.log(`⚠️  [Payment] Universal Service call DISABLED to prevent unlimited API usage`);
+                    console.log(`   Using existing vehicle data from car creation`);
+                    console.log(`   Detected fuel type: ${car.fuelType}`);
+                    console.log(`   Battery capacity: ${car.batteryCapacity || 'N/A'} kWh`);
+                    console.log(`   Electric range: ${car.electricRange || 'N/A'} miles`);
+                  }
                 } catch (error) {
-                  console.error(`⚠️ Universal Service fetch failed: ${error.message}`);
-                  // Continue with save even if Universal Service fails
+                  console.error(`⚠️  [Payment] Vehicle data check failed: ${error.message}`);
+                  // Continue with save even if check fails
                 }
               }
               
@@ -1285,36 +1568,32 @@ async function handlePaymentSuccess(paymentIntent) {
               // This ensures we have the correct fuel type (including PHEV detection) and electric data
               if (cleanedCarData.registrationNumber) {
                 try {
-                  console.log(`🔍 Fetching FRESH vehicle data from Universal Service BEFORE car creation: ${cleanedCarData.registrationNumber}`);
+                  console.log(`🔍 [Payment] Checking vehicle data for new car: ${cleanedCarData.registrationNumber}`);
                   
-                  // Create a temporary car object to pass to Universal Service
-                  const tempCar = new Car(cleanedCarData);
-                  tempCar._skipAPICallsInHooks = true;
+                  // Check if data already cached
+                  const summary = await safeAPI.getVehicleSummary(cleanedCarData.registrationNumber);
                   
-                  // CRITICAL: Force fresh API call to get correct PHEV detection (don't use stale cache)
-                  const completeVehicle = await universalService.completeCarData(tempCar, true); // forceRefresh = true
-                  
-                  console.log(`✅ Universal Service data fetched successfully`);
-                  console.log(`   Detected fuel type: ${tempCar.fuelType}`);
-                  console.log(`   Battery capacity: ${tempCar.batteryCapacity || 'N/A'} kWh`);
-                  console.log(`   Electric range: ${tempCar.electricRange || 'N/A'} miles`);
-                  
-                  // Update cleanedCarData with correct fuel type and electric data from Universal Service
-                  cleanedCarData.fuelType = tempCar.fuelType;
-                  if (tempCar.batteryCapacity) cleanedCarData.batteryCapacity = tempCar.batteryCapacity;
-                  if (tempCar.electricRange) cleanedCarData.electricRange = tempCar.electricRange;
-                  if (tempCar.homeChargingSpeed) cleanedCarData.homeChargingSpeed = tempCar.homeChargingSpeed;
-                  if (tempCar.rapidChargingSpeed) cleanedCarData.rapidChargingSpeed = tempCar.rapidChargingSpeed;
-                  if (tempCar.electricMotorPower) cleanedCarData.electricMotorPower = tempCar.electricMotorPower;
-                  if (tempCar.electricMotorTorque) cleanedCarData.electricMotorTorque = tempCar.electricMotorTorque;
-                  if (tempCar.chargingPortType) cleanedCarData.chargingPortType = tempCar.chargingPortType;
-                  if (tempCar.chargingTime) cleanedCarData.chargingTime = tempCar.chargingTime;
-                  
-                  console.log(`✅ Car data updated with correct fuel type and electric details`);
-                  
+                  if (summary && summary.hasCachedData) {
+                    console.log(`✅ [Payment] Vehicle data already cached for ${cleanedCarData.registrationNumber}`);
+                    console.log(`   💰 Skipping API calls - using cached data`);
+                  } else {
+                    console.log(`📞 [Payment] Fetching FRESH vehicle data from Universal Service: ${cleanedCarData.registrationNumber}`);
+                    
+                    // DISABLED: Universal Service makes unlimited API calls
+                    // Instead, rely on data already provided in vehicleData
+                    // const tempCar = new Car(cleanedCarData);
+                    // tempCar._skipAPICallsInHooks = true;
+                    // const completeVehicle = await universalService.completeCarData(tempCar, true);
+                    
+                    console.log(`⚠️  [Payment] Universal Service call DISABLED to prevent unlimited API usage`);
+                    console.log(`   Using vehicle data provided from frontend`);
+                    console.log(`   Fuel type: ${cleanedCarData.fuelType}`);
+                    console.log(`   Battery capacity: ${cleanedCarData.batteryCapacity || 'N/A'} kWh`);
+                    console.log(`   Electric range: ${cleanedCarData.electricRange || 'N/A'} miles`);
+                  }
                 } catch (error) {
-                  console.error(`⚠️ Universal Service pre-fetch failed: ${error.message}`);
-                  // Continue with original data if Universal Service fails
+                  console.error(`⚠️  [Payment] Vehicle data check failed: ${error.message}`);
+                  // Continue with original data if check fails
                 }
               }
               
@@ -2063,8 +2342,8 @@ async function createVanCheckoutSession(req, res) {
             mileage: vehicleData.mileage || 0,
             color: vehicleData.color || 'Not specified',
             fuelType: vehicleData.fuelType || 'Diesel',
-            transmission: vehicleData.transmission || 'manual',
-            registrationNumber: vehicleData.registrationNumber || null,
+            transmission: vehicleData.transmission || 'Manual',
+            registrationNumber: vehicleData.registration || vehicleData.registrationNumber || null,
             vanType: vehicleData.vanType || 'Panel Van',
             payloadCapacity: vehicleData.payloadCapacity || 0,
             loadLength: vehicleData.loadLength || 0,

@@ -194,56 +194,101 @@ class VehicleController {
       
       // CRITICAL: Use Universal Auto Complete Service instead of direct API calls
       // Universal Service handles all vehicle data fetching with proper caching and race condition prevention
-      console.log(`[Vehicle Controller] Using Universal Auto Complete Service for complete data...`);
+      console.log(`[Vehicle Controller] Checking vehicle data with API limits...`);
       
-      // Create a temporary vehicle object for the Universal Service
-      const tempVehicle = new Car(carData);
+      // Check if data already cached
+      const safeAPI = require('../services/safeAPIService');
+      const summary = await safeAPI.getVehicleSummary(registration);
       
-      try {
-        // Use Universal Service to get complete vehicle data
-        const completeVehicle = await universalService.completeCarData(tempVehicle, false);
+      if (summary && summary.hasCachedData) {
+        console.log(`✅ [Vehicle Controller] Vehicle data already cached for ${registration}`);
+        console.log(`   💰 Skipping API calls - using cached data`);
         
-        // Override carData with complete data from Universal Service - FIXED: Use proper null checking
-        if (completeVehicle.make !== null && completeVehicle.make !== undefined) carData.make = completeVehicle.make;
-        if (completeVehicle.model !== null && completeVehicle.model !== undefined) carData.model = completeVehicle.model;
-        if (completeVehicle.variant !== null && completeVehicle.variant !== undefined) carData.variant = completeVehicle.variant;
-        if (completeVehicle.bodyType !== null && completeVehicle.bodyType !== undefined) carData.bodyType = completeVehicle.bodyType;
-        if (completeVehicle.doors !== null && completeVehicle.doors !== undefined) carData.doors = completeVehicle.doors;
-        if (completeVehicle.seats !== null && completeVehicle.seats !== undefined) carData.seats = completeVehicle.seats;
-        if (completeVehicle.transmission !== null && completeVehicle.transmission !== undefined) carData.transmission = completeVehicle.transmission;
-        if (completeVehicle.engineSize !== null && completeVehicle.engineSize !== undefined) carData.engineSize = completeVehicle.engineSize;
-        if (completeVehicle.emissionClass !== null && completeVehicle.emissionClass !== undefined) carData.emissionClass = completeVehicle.emissionClass;
-        if (completeVehicle.urbanMpg !== null && completeVehicle.urbanMpg !== undefined) carData.fuelEconomyUrban = completeVehicle.urbanMpg;
-        if (completeVehicle.extraUrbanMpg !== null && completeVehicle.extraUrbanMpg !== undefined) carData.fuelEconomyExtraUrban = completeVehicle.extraUrbanMpg;
-        if (completeVehicle.combinedMpg !== null && completeVehicle.combinedMpg !== undefined) carData.fuelEconomyCombined = completeVehicle.combinedMpg;
-        if (completeVehicle.co2Emissions !== null && completeVehicle.co2Emissions !== undefined) carData.co2Emissions = completeVehicle.co2Emissions;
-        if (completeVehicle.annualTax !== null && completeVehicle.annualTax !== undefined) carData.annualTax = completeVehicle.annualTax;
-        if (completeVehicle.insuranceGroup !== null && completeVehicle.insuranceGroup !== undefined) carData.insuranceGroup = completeVehicle.insuranceGroup;
-        if (completeVehicle.color !== null && completeVehicle.color !== undefined) carData.color = completeVehicle.color;
-        if (completeVehicle.estimatedValue !== null && completeVehicle.estimatedValue !== undefined) carData.estimatedValue = completeVehicle.estimatedValue;
-        if (completeVehicle.privatePrice !== null && completeVehicle.privatePrice !== undefined) carData.privatePrice = completeVehicle.privatePrice;
-        if (completeVehicle.dealerPrice !== null && completeVehicle.dealerPrice !== undefined) carData.dealerPrice = completeVehicle.dealerPrice;
-        if (completeVehicle.partExchangePrice !== null && completeVehicle.partExchangePrice !== undefined) carData.partExchangePrice = completeVehicle.partExchangePrice;
-        if (completeVehicle.motStatus !== null && completeVehicle.motStatus !== undefined) carData.motStatus = completeVehicle.motStatus;
-        if (completeVehicle.motDue !== null && completeVehicle.motDue !== undefined) carData.motDue = completeVehicle.motDue;
-        if (completeVehicle.motExpiry !== null && completeVehicle.motExpiry !== undefined) carData.motExpiry = completeVehicle.motExpiry;
-        if (completeVehicle.motHistory !== null && completeVehicle.motHistory !== undefined) carData.motHistory = completeVehicle.motHistory;
-        if (completeVehicle.runningCosts !== null && completeVehicle.runningCosts !== undefined) carData.runningCosts = completeVehicle.runningCosts;
-        if (completeVehicle.historyCheckId !== null && completeVehicle.historyCheckId !== undefined) carData.historyCheckId = completeVehicle.historyCheckId;
-        if (completeVehicle.historyCheckStatus !== null && completeVehicle.historyCheckStatus !== undefined) carData.historyCheckStatus = completeVehicle.historyCheckStatus;
-        if (completeVehicle.historyCheckDate !== null && completeVehicle.historyCheckDate !== undefined) carData.historyCheckDate = completeVehicle.historyCheckDate;
+        // Load cached data from VehicleHistory
+        const VehicleHistory = require('../models/VehicleHistory');
+        const cached = await VehicleHistory.findOne({ vrm: registration.toUpperCase().replace(/\s/g, '') })
+          .sort({ checkDate: -1 })
+          .lean();
         
-        console.log(`✅ Universal Service data applied (consolidated from all sources)`);
-        console.log(`   Transmission: ${carData.transmission}`);
-        console.log(`   Emission Class: ${carData.emissionClass}`);
-        console.log(`   Doors: ${carData.doors}, Seats: ${carData.seats}`);
-        console.log(`   Running Costs: Urban ${carData.fuelEconomyUrban}mpg, Combined ${carData.fuelEconomyCombined}mpg`);
-        console.log(`   Annual Tax: £${carData.annualTax}, Insurance Group: ${carData.insuranceGroup}`);
-        console.log(`   CO2 Emissions: ${carData.co2Emissions}g/km`);
-        console.log('🔍 [CONTROLLER DEBUG] carData.runningCosts:', JSON.stringify(carData.runningCosts, null, 2));
-      } catch (universalError) {
-        console.warn(`⚠️  Universal Service lookup failed, using DVLA data as fallback: ${universalError.message}`);
-        // Continue with DVLA data if Universal Service fails
+        if (cached) {
+          // Apply cached data to carData
+          if (cached.make) carData.make = cached.make;
+          if (cached.model) carData.model = cached.model;
+          if (cached.variant) carData.variant = cached.variant;
+          if (cached.bodyType) carData.bodyType = cached.bodyType;
+          if (cached.doors) carData.doors = cached.doors;
+          if (cached.seats) carData.seats = cached.seats;
+          if (cached.transmission) carData.transmission = cached.transmission;
+          if (cached.engineSize) carData.engineSize = cached.engineSize;
+          if (cached.emissionClass) carData.emissionClass = cached.emissionClass;
+          if (cached.fuelEconomyUrban) carData.fuelEconomyUrban = cached.fuelEconomyUrban;
+          if (cached.fuelEconomyExtraUrban) carData.fuelEconomyExtraUrban = cached.fuelEconomyExtraUrban;
+          if (cached.fuelEconomyCombined) carData.fuelEconomyCombined = cached.fuelEconomyCombined;
+          if (cached.co2Emissions) carData.co2Emissions = cached.co2Emissions;
+          if (cached.annualTax) carData.annualTax = cached.annualTax;
+          if (cached.insuranceGroup) carData.insuranceGroup = cached.insuranceGroup;
+          if (cached.color) carData.color = cached.color;
+          if (cached.estimatedValue) carData.estimatedValue = cached.estimatedValue;
+          if (cached.motStatus) carData.motStatus = cached.motStatus;
+          if (cached.motDue) carData.motDue = cached.motDue;
+          if (cached.motExpiry) carData.motExpiry = cached.motExpiry;
+          if (cached.motHistory) carData.motHistory = cached.motHistory;
+          if (cached.runningCosts) carData.runningCosts = cached.runningCosts;
+          
+          console.log(`✅ Cached data applied to vehicle`);
+        }
+      } else {
+        console.log(`📞 [Vehicle Controller] Fetching vehicle data with Universal Service...`);
+        
+        // Create a temporary vehicle object for the Universal Service
+        const tempVehicle = new Car(carData);
+        
+        try {
+          // Use Universal Service to get complete vehicle data
+          const completeVehicle = await universalService.completeCarData(tempVehicle, false);
+          
+          // Override carData with complete data from Universal Service - FIXED: Use proper null checking
+          if (completeVehicle.make !== null && completeVehicle.make !== undefined) carData.make = completeVehicle.make;
+          if (completeVehicle.model !== null && completeVehicle.model !== undefined) carData.model = completeVehicle.model;
+          if (completeVehicle.variant !== null && completeVehicle.variant !== undefined) carData.variant = completeVehicle.variant;
+          if (completeVehicle.bodyType !== null && completeVehicle.bodyType !== undefined) carData.bodyType = completeVehicle.bodyType;
+          if (completeVehicle.doors !== null && completeVehicle.doors !== undefined) carData.doors = completeVehicle.doors;
+          if (completeVehicle.seats !== null && completeVehicle.seats !== undefined) carData.seats = completeVehicle.seats;
+          if (completeVehicle.transmission !== null && completeVehicle.transmission !== undefined) carData.transmission = completeVehicle.transmission;
+          if (completeVehicle.engineSize !== null && completeVehicle.engineSize !== undefined) carData.engineSize = completeVehicle.engineSize;
+          if (completeVehicle.emissionClass !== null && completeVehicle.emissionClass !== undefined) carData.emissionClass = completeVehicle.emissionClass;
+          if (completeVehicle.urbanMpg !== null && completeVehicle.urbanMpg !== undefined) carData.fuelEconomyUrban = completeVehicle.urbanMpg;
+          if (completeVehicle.extraUrbanMpg !== null && completeVehicle.extraUrbanMpg !== undefined) carData.fuelEconomyExtraUrban = completeVehicle.extraUrbanMpg;
+          if (completeVehicle.combinedMpg !== null && completeVehicle.combinedMpg !== undefined) carData.fuelEconomyCombined = completeVehicle.combinedMpg;
+          if (completeVehicle.co2Emissions !== null && completeVehicle.co2Emissions !== undefined) carData.co2Emissions = completeVehicle.co2Emissions;
+          if (completeVehicle.annualTax !== null && completeVehicle.annualTax !== undefined) carData.annualTax = completeVehicle.annualTax;
+          if (completeVehicle.insuranceGroup !== null && completeVehicle.insuranceGroup !== undefined) carData.insuranceGroup = completeVehicle.insuranceGroup;
+          if (completeVehicle.color !== null && completeVehicle.color !== undefined) carData.color = completeVehicle.color;
+          if (completeVehicle.estimatedValue !== null && completeVehicle.estimatedValue !== undefined) carData.estimatedValue = completeVehicle.estimatedValue;
+          if (completeVehicle.privatePrice !== null && completeVehicle.privatePrice !== undefined) carData.privatePrice = completeVehicle.privatePrice;
+          if (completeVehicle.dealerPrice !== null && completeVehicle.dealerPrice !== undefined) carData.dealerPrice = completeVehicle.dealerPrice;
+          if (completeVehicle.partExchangePrice !== null && completeVehicle.partExchangePrice !== undefined) carData.partExchangePrice = completeVehicle.partExchangePrice;
+          if (completeVehicle.motStatus !== null && completeVehicle.motStatus !== undefined) carData.motStatus = completeVehicle.motStatus;
+          if (completeVehicle.motDue !== null && completeVehicle.motDue !== undefined) carData.motDue = completeVehicle.motDue;
+          if (completeVehicle.motExpiry !== null && completeVehicle.motExpiry !== undefined) carData.motExpiry = completeVehicle.motExpiry;
+          if (completeVehicle.motHistory !== null && completeVehicle.motHistory !== undefined) carData.motHistory = completeVehicle.motHistory;
+          if (completeVehicle.runningCosts !== null && completeVehicle.runningCosts !== undefined) carData.runningCosts = completeVehicle.runningCosts;
+          if (completeVehicle.historyCheckId !== null && completeVehicle.historyCheckId !== undefined) carData.historyCheckId = completeVehicle.historyCheckId;
+          if (completeVehicle.historyCheckStatus !== null && completeVehicle.historyCheckStatus !== undefined) carData.historyCheckStatus = completeVehicle.historyCheckStatus;
+          if (completeVehicle.historyCheckDate !== null && completeVehicle.historyCheckDate !== undefined) carData.historyCheckDate = completeVehicle.historyCheckDate;
+          
+          console.log(`✅ Universal Service data applied (consolidated from all sources)`);
+          console.log(`   Transmission: ${carData.transmission}`);
+          console.log(`   Emission Class: ${carData.emissionClass}`);
+          console.log(`   Doors: ${carData.doors}, Seats: ${carData.seats}`);
+          console.log(`   Running Costs: Urban ${carData.fuelEconomyUrban}mpg, Combined ${carData.fuelEconomyCombined}mpg`);
+          console.log(`   Annual Tax: £${carData.annualTax}, Insurance Group: ${carData.insuranceGroup}`);
+          console.log(`   CO2 Emissions: ${carData.co2Emissions}g/km`);
+          console.log('🔍 [CONTROLLER DEBUG] carData.runningCosts:', JSON.stringify(carData.runningCosts, null, 2));
+        } catch (universalError) {
+          console.warn(`⚠️  Universal Service lookup failed, using DVLA data as fallback: ${universalError.message}`);
+          // Continue with DVLA data if Universal Service fails
+        }
       }
 
       // Step 3: Automatically fetch coordinates and location name from postcode
@@ -2524,20 +2569,22 @@ class VehicleController {
       console.log('[Vehicle Controller] Is Admin:', isAdmin);
       console.log('[Vehicle Controller] User object:', req.user);
 
-      // Import Bike model
+      // Import Bike and Van models
       const Bike = require('../models/Bike');
+      const Van = require('../models/Van');
 
       // If admin, get ALL listings. Otherwise, get only user's listings
       const query = isAdmin ? {} : { userId: userId };
       
-      // Find vehicles (cars and bikes)
+      // Find vehicles (cars, bikes, and vans)
       // CRITICAL FIX: Use .lean() to get Mixed type fields like businessLogo/businessWebsite
-      const [cars, bikes] = await Promise.all([
+      const [cars, bikes, vans] = await Promise.all([
         Car.find(query).lean().populate('userId', 'email name').sort({ createdAt: -1 }),
-        Bike.find(query).lean().populate('userId', 'email name').sort({ createdAt: -1 })
+        Bike.find(query).lean().populate('userId', 'email name').sort({ createdAt: -1 }),
+        Van.find(query).lean().populate('userId', 'email name').sort({ createdAt: -1 })
       ]);
 
-      console.log('[Vehicle Controller] Found', cars.length, 'cars and', bikes.length, 'bikes');
+      console.log('[Vehicle Controller] Found', cars.length, 'cars,', bikes.length, 'bikes, and', vans.length, 'vans');
       if (isAdmin) {
         console.log('[Vehicle Controller] Admin view: Showing ALL listings from all users');
       } else {
@@ -2545,7 +2592,7 @@ class VehicleController {
       }
 
       // Combine and mark vehicle types
-      // CRITICAL FIX: Since we used .lean(), cars and bikes are already plain objects
+      // CRITICAL FIX: Since we used .lean(), cars, bikes, and vans are already plain objects
       const allListings = [
         ...cars.map(car => ({ 
           ...car, // Already a plain object from .lean()
@@ -2559,6 +2606,13 @@ class VehicleController {
           advertStatus: bike.status, // Map bike.status to advertStatus for frontend consistency
           ownerEmail: bike.userId?.email || 'Unknown',
           ownerName: bike.userId?.name || 'Unknown'
+        })),
+        ...vans.map(van => ({ 
+          ...van, // Already a plain object from .lean()
+          vehicleType: 'van',
+          advertStatus: van.status, // Map van.status to advertStatus for frontend consistency
+          ownerEmail: van.userId?.email || 'Unknown',
+          ownerName: van.userId?.name || 'Unknown'
         }))
       ];
 

@@ -56,11 +56,18 @@ class MOTHistoryService {
         hasMotHistory: !!apiResponse?.motHistory,
         hasTests: !!apiResponse?.tests,
         keys: Object.keys(apiResponse || {}),
-        testsCount: apiResponse?.tests?.length || 0
+        testsCount: apiResponse?.tests?.length || apiResponse?.motTests?.length || apiResponse?.motHistory?.length || 0,
+        firstTest: apiResponse?.tests?.[0] || apiResponse?.motTests?.[0] || apiResponse?.motHistory?.[0] || null
       });
       
       // The HistoryAPIClient returns a parsed structure with 'tests' array
-      const motTests = apiResponse?.tests || apiResponse?.motHistory || apiResponse?.motTests;
+      // Try all possible field names
+      const motTests = apiResponse?.tests || apiResponse?.motHistory || apiResponse?.motTests || [];
+      
+      console.log(`[MOTHistoryService] Extracted MOT tests:`, {
+        count: motTests.length,
+        firstTest: motTests[0] || null
+      });
       
       if (!motTests || !Array.isArray(motTests) || motTests.length === 0) {
         console.log(`[MOTHistoryService] No MOT history found in API response for ${vrm}`);
@@ -107,26 +114,31 @@ class MOTHistoryService {
       return [];
     }
 
-    return motTests.map(test => ({
-      testDate: test.testDate ? new Date(test.testDate) : null,
-      expiryDate: test.expiryDate ? new Date(test.expiryDate) : null,
-      testResult: test.result || test.testResult || 'UNKNOWN',
-      odometerValue: parseInt(test.odometerValue) || 0,
-      odometerUnit: test.odometerUnit?.toLowerCase() === 'mi' ? 'mi' : 'km',
-      testNumber: test.testNumber || '',
-      testCertificateNumber: test.testCertificateNumber || '',
-      defects: this.processDefects(test.defects || test.rfrAndComments || []),
-      advisoryText: this.extractAdvisories(test.defects || test.rfrAndComments || test.advisoryNotices || []),
-      testClass: test.testClass || '',
-      testType: test.testType || '',
-      completedDate: test.testDate ? new Date(test.testDate) : null,
-      testStation: {
-        name: test.testStationName || '',
-        number: test.testStationNumber || '',
-        address: test.testStationAddress || '',
-        postcode: test.testStationPostcode || ''
-      }
-    })).filter(test => test.testDate); // Only include tests with valid dates
+    return motTests.map(test => {
+      // API can return either testDate or completedDate
+      const testDate = test.testDate || test.completedDate;
+      
+      return {
+        testDate: testDate ? new Date(testDate) : null,
+        expiryDate: test.expiryDate ? new Date(test.expiryDate) : null,
+        testResult: test.result || test.testResult || 'UNKNOWN',
+        odometerValue: parseInt(test.odometerValue) || 0,
+        odometerUnit: test.odometerUnit?.toLowerCase() === 'mi' ? 'mi' : 'km',
+        testNumber: test.testNumber || '',
+        testCertificateNumber: test.testCertificateNumber || '',
+        defects: this.processDefects(test.defects || test.rfrAndComments || []),
+        advisoryText: this.extractAdvisories(test.defects || test.rfrAndComments || test.advisoryNotices || []),
+        testClass: test.testClass || '',
+        testType: test.testType || '',
+        completedDate: testDate ? new Date(testDate) : null,
+        testStation: {
+          name: test.testStationName || '',
+          number: test.testStationNumber || '',
+          address: test.testStationAddress || '',
+          postcode: test.testStationPostcode || ''
+        }
+      };
+    }).filter(test => test.testDate); // Only include tests with valid dates
   }
 
   /**

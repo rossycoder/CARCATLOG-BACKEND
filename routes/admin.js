@@ -43,4 +43,25 @@ router.put('/listings/:id', adminController.updateListing);
  */
 router.delete('/listings/:id', adminController.deleteListing);
 
+/**
+ * @route   GET /api/admin/api-stats
+ * @desc    Get API usage statistics
+ * @access  Admin only
+ */
+router.get('/api-stats', adminController.getAPIStats);
+
+/**
+ * @route   GET /api/admin/vehicle-api/:vrm
+ * @desc    Get API call summary for specific vehicle
+ * @access  Admin only
+ */
+router.get('/vehicle-api/:vrm', adminController.getVehicleAPIStats);
+
+/**
+ * @route   GET /api/admin/excessive-api-calls
+ * @desc    Find vehicles with excessive API calls
+ * @access  Admin only
+ */
+router.get('/excessive-api-calls', adminController.getExcessiveAPICalls);
+
 module.exports = router;

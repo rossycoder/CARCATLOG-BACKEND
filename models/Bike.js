@@ -4,19 +4,16 @@ const bikeSchema = new mongoose.Schema({
   make: {
     type: String,
     required: [true, 'Make is required'],
-    trim: true,
-    index: true
+    trim: true
   },
   model: {
     type: String,
     required: [true, 'Model is required'],
-    trim: true,
-    index: true
+    trim: true
   },
   submodel: {
     type: String,
-    trim: true,
-    index: true
+    trim: true
   },
   year: {
     type: Number,
@@ -49,7 +46,7 @@ const bikeSchema = new mongoose.Schema({
   fuelType: {
     type: String,
     required: [true, 'Fuel type is required'],
-    enum: ['Petrol', 'PETROL', 'Electric', 'ELECTRIC', 'Hybrid', 'HYBRID', 'Petrol Hybrid', 'PETROL HYBRID', 'Diesel Hybrid', 'DIESEL HYBRID', 'Plug-in Hybrid', 'PLUG-IN HYBRID', 'Petrol Plug-in Hybrid', 'PETROL PLUG-IN HYBRID', 'Diesel Plug-in Hybrid', 'DIESEL PLUG-IN HYBRID']
+    enum: ['Petrol', 'Diesel', 'Electric', 'Hybrid', 'Petrol Hybrid', 'Diesel Hybrid', 'Plug-in Hybrid', 'Petrol Plug-in Hybrid', 'Diesel Plug-in Hybrid']
   },
   description: {
     type: String,
@@ -175,6 +172,14 @@ const bikeSchema = new mongoose.Schema({
       type: String,
       trim: true
     },
+    businessLogo: {
+      type: String,
+      trim: true
+    },
+    businessWebsite: {
+      type: String,
+      trim: true
+    },
     tradingName: {
       type: String,
       trim: true
@@ -227,7 +232,7 @@ const bikeSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: [true, 'User ID is required'],
+    required: false, // Made optional - will be set from req.user or passed explicitly
     index: true
   },
   // Analytics
@@ -253,8 +258,27 @@ const bikeSchema = new mongoose.Schema({
     },
     co2Emissions: { type: Number, default: null },
     insuranceGroup: { type: String, default: null },
-    annualTax: { type: Number, default: null }
+    annualTax: { type: Number, default: null },
+    // Electric bike specific fields
+    electricRange: { type: Number, default: null }, // Range in miles for electric bikes
+    chargingTime: { type: Number, default: null }, // Charging time in hours (0-100%)
+    batteryCapacity: { type: Number, default: null } // Battery capacity in kWh
   },
+
+  // Electric bike specific fields (individual - for compatibility)
+  electricRange: { type: Number, default: null }, // Range in miles for electric bikes
+  chargingTime: { type: Number, default: null }, // Charging time in hours (0-100%)
+  batteryCapacity: { type: Number, default: null }, // Battery capacity in kWh
+  // Charging speeds and capabilities
+  homeChargingSpeed: { type: Number, default: null }, // Home charging speed in kW (e.g., 3.3kW)
+  publicChargingSpeed: { type: Number, default: null }, // Public charging speed in kW (e.g., 22kW)
+  rapidChargingSpeed: { type: Number, default: null }, // Rapid charging speed in kW (e.g., 50kW)
+  chargingTime10to80: { type: Number, default: null }, // Charging time from 10% to 80% in minutes
+  // Additional electric bike fields
+  electricMotorPower: { type: Number, default: null }, // Electric motor power in kW
+  electricMotorTorque: { type: Number, default: null }, // Electric motor torque in Nm
+  chargingPortType: { type: String, default: null }, // Type of charging port (e.g., "Type 2", "CCS")
+  fastChargingCapability: { type: String, default: null }, // Fast charging capability description
 
   // MOT History - Full array like cars
   motHistory: [{
@@ -262,7 +286,7 @@ const bikeSchema = new mongoose.Schema({
     expiryDate: { type: Date },
     testResult: { 
       type: String, 
-      enum: ['PASS', 'FAIL', 'ADVISORY', 'PRS', 'ABA'] 
+      enum: ['PASS', 'PASSED', 'FAIL', 'FAILED', 'ADVISORY', 'PRS', 'ABA'] // Support both formats
     },
     odometerValue: { type: Number },
     odometerUnit: { 
@@ -275,7 +299,7 @@ const bikeSchema = new mongoose.Schema({
       text: String,
       type: { 
         type: String, 
-        enum: ['FAIL', 'ADVISORY', 'USER ENTERED', 'MINOR', 'MAJOR'] 
+        enum: ['FAIL', 'FAILED', 'ADVISORY', 'USER ENTERED', 'MINOR', 'MAJOR', 'DANGEROUS'] // Support all API formats
       },
       dangerous: { type: Boolean, default: false }
     }],
@@ -283,7 +307,7 @@ const bikeSchema = new mongoose.Schema({
       text: String,
       type: { 
         type: String, 
-        enum: ['FAIL', 'ADVISORY', 'USER ENTERED', 'MINOR', 'MAJOR'] 
+        enum: ['FAIL', 'FAILED', 'ADVISORY', 'USER ENTERED', 'MINOR', 'MAJOR', 'DANGEROUS'] // Support all API formats
       }
     }],
     testStation: {
@@ -298,13 +322,21 @@ const bikeSchema = new mongoose.Schema({
   historyCheckId: { type: String },
   historyCheckStatus: { 
     type: String, 
-    enum: ['pending', 'completed', 'failed', 'not_requested'],
+    enum: ['pending', 'completed', 'failed', 'not_requested', 'verified'],
     default: 'not_requested'
   },
   historyCheckDate: { type: Date },
   historyCheckData: {
     writeOffCategory: { type: String },
-    writeOffDetails: { type: String },
+    writeOffDetails: { 
+      category: String,
+      date: Date,
+      status: String,
+      description: String,
+      insurerName: String,
+      claimNumber: String,
+      damageLocations: [String]
+    },
     stolen: { type: Boolean, default: false },
     scrapped: { type: Boolean, default: false },
     exported: { type: Boolean, default: false },
@@ -423,8 +455,114 @@ const bikeSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Pre-save middleware to generate display title
-bikeSchema.pre('save', function(next) {
+// Pre-save middleware to normalize bike data and generate display title
+bikeSchema.pre('save', async function(next) {
+  console.log(`🔧 [Bike Pre-Save Hook] Starting for ${this.make} ${this.model} (${this.registrationNumber})`);
+  
+  // CRITICAL: Normalize make names (exactly like cars)
+  // Honda, HONDA, honda → Honda
+  // Yamaha, YAMAHA, yamaha → Yamaha
+  if (this.make) {
+    const makeUpper = this.make.toUpperCase().trim();
+    
+    // Common bike makes normalization
+    const makeNormalization = {
+      'HONDA': 'Honda',
+      'YAMAHA': 'Yamaha',
+      'KAWASAKI': 'Kawasaki',
+      'SUZUKI': 'Suzuki',
+      'BMW': 'BMW',
+      'DUCATI': 'Ducati',
+      'TRIUMPH': 'Triumph',
+      'HARLEY-DAVIDSON': 'Harley-Davidson',
+      'HARLEY DAVIDSON': 'Harley-Davidson',
+      'KTM': 'KTM',
+      'APRILIA': 'Aprilia',
+      'MV AGUSTA': 'MV Agusta',
+      'ROYAL ENFIELD': 'Royal Enfield',
+      'INDIAN': 'Indian',
+      'BENELLI': 'Benelli',
+      'HUSQVARNA': 'Husqvarna',
+      'PIAGGIO': 'Piaggio',
+      'VESPA': 'Vespa',
+      'SYM': 'SYM',
+      'KYMCO': 'Kymco'
+    };
+    
+    if (makeNormalization[makeUpper]) {
+      const oldMake = this.make;
+      this.make = makeNormalization[makeUpper];
+      if (oldMake !== this.make) {
+        console.log(`✅ [Bike Make] Normalized: "${oldMake}" → "${this.make}"`);
+      }
+    }
+  }
+  
+  // CRITICAL: Normalize fuel type (exactly like cars)
+  // PETROL, petrol, Petrol → Petrol
+  // ELECTRIC, electric, Electric → Electric
+  if (this.fuelType) {
+    const fuelUpper = this.fuelType.toUpperCase().trim();
+    
+    const fuelNormalization = {
+      'PETROL': 'Petrol',
+      'DIESEL': 'Diesel',
+      'ELECTRIC': 'Electric',
+      'HYBRID': 'Hybrid',
+      'PETROL HYBRID': 'Petrol Hybrid',
+      'DIESEL HYBRID': 'Diesel Hybrid',
+      'PLUG-IN HYBRID': 'Plug-in Hybrid',
+      'PETROL PLUG-IN HYBRID': 'Petrol Plug-in Hybrid',
+      'DIESEL PLUG-IN HYBRID': 'Diesel Plug-in Hybrid'
+    };
+    
+    if (fuelNormalization[fuelUpper]) {
+      const oldFuel = this.fuelType;
+      this.fuelType = fuelNormalization[fuelUpper];
+      if (oldFuel !== this.fuelType) {
+        console.log(`✅ [Bike Fuel] Normalized: "${oldFuel}" → "${this.fuelType}"`);
+      }
+    }
+  }
+  
+  // CRITICAL: Auto-fetch coordinates from postcode if missing
+  // This ensures ALL bikes can be found in postcode searches (exactly like cars)
+  if (this.postcode && this.isNew) {
+    const needsCoordinates = !this.latitude || !this.longitude;
+    const needsLocationName = !this.locationName;
+    
+    if (needsCoordinates || needsLocationName) {
+      try {
+        console.log(`📍 [Bike Model] Fetching coordinates for postcode: ${this.postcode}`);
+        const postcodeService = require('../services/postcodeService');
+        const postcodeData = await postcodeService.lookupPostcode(this.postcode);
+        
+        if (postcodeData) {
+          // Set coordinates in multiple formats for compatibility
+          this.latitude = postcodeData.latitude;
+          this.longitude = postcodeData.longitude;
+          
+          // Set GeoJSON location for geospatial queries
+          this.location = {
+            type: 'Point',
+            coordinates: [postcodeData.longitude, postcodeData.latitude]
+          };
+          
+          // Set location name
+          this.locationName = postcodeData.locationName;
+          
+          console.log(`✅ [Bike Model] Coordinates set: ${postcodeData.latitude}, ${postcodeData.longitude}`);
+          console.log(`✅ [Bike Model] Location name set: ${postcodeData.locationName}`);
+        } else {
+          console.log(`⚠️  [Bike Model] Could not fetch coordinates for postcode: ${this.postcode}`);
+        }
+      } catch (error) {
+        console.error(`❌ [Bike Model] Error fetching coordinates:`, error.message);
+      }
+    }
+  }
+  
+  // Generate display title
   if (this.make && this.model) {
     let title = `${this.make} ${this.model}`;
     if (this.variant) {
@@ -438,6 +576,7 @@ bikeSchema.pre('save', function(next) {
     }
     this.displayTitle = title;
   }
+  
   next();
 });
 
@@ -458,3 +597,63 @@ bikeSchema.index({ historyCheckStatus: 1 });
 bikeSchema.index({ 'motHistory.expiryDate': 1 });
 
 module.exports = mongoose.model('Bike', bikeSchema);
+
+
+// Pre-save hook to automatically enhance electric bikes AND plug-in hybrid bikes
+bikeSchema.pre('save', async function(next) {
+  try {
+    // Check if this is an electric bike OR plug-in hybrid bike
+    const isElectricOrPluginHybrid = this.fuelType === 'Electric' || 
+                                      this.fuelType === 'Plug-in Hybrid' ||
+                                      this.fuelType === 'Petrol Plug-in Hybrid' ||
+                                      this.fuelType === 'Diesel Plug-in Hybrid' ||
+                                      this.fuelType === 'Hybrid'; // Include regular hybrids for bikes
+    
+    // Only enhance if it's electric/hybrid and it's a new document or fuelType changed
+    if (isElectricOrPluginHybrid && (this.isNew || this.isModified('fuelType'))) {
+      console.log(`🔋 [Bike] Auto-enhancing electric/hybrid bike: ${this.make} ${this.model} ${this.variant}`);
+      console.log(`   Fuel Type: ${this.fuelType}`);
+      
+      // Import services (dynamic import to avoid circular dependencies)
+      const ElectricVehicleEnhancementService = require('../services/electricVehicleEnhancementService');
+      const AutoDataPopulationService = require('../services/autoDataPopulationService');
+      
+      // Convert document to plain object for enhancement
+      const bikeData = this.toObject();
+      
+      // Enhance with comprehensive electric vehicle data
+      const enhancedData = ElectricVehicleEnhancementService.enhanceWithEVData(bikeData);
+      const fullyEnhancedData = AutoDataPopulationService.populateMissingData(enhancedData);
+      
+      // Apply enhanced data back to the document
+      Object.keys(fullyEnhancedData).forEach(key => {
+        if (key !== '_id' && key !== '__v') {
+          this[key] = fullyEnhancedData[key];
+        }
+      });
+      
+      console.log(`✅ [Bike] Auto-enhanced EV/Hybrid: ${this.electricRange || this.runningCosts?.electricRange}mi range, ${this.batteryCapacity || this.runningCosts?.batteryCapacity}kWh battery`);
+    }
+    
+    // CRITICAL: For plug-in hybrids, DON'T remove electric data
+    // Only remove electric data for pure petrol (NOT hybrids or electric)
+    const isPureNonElectric = this.fuelType === 'Petrol';
+    
+    if (isPureNonElectric && (this.batteryCapacity || this.electricRange)) {
+      console.log(`⚠️  [Bike] Removing electric data from pure ${this.fuelType} bike`);
+      this.batteryCapacity = null;
+      this.electricRange = null;
+      this.homeChargingSpeed = null;
+      this.rapidChargingSpeed = null;
+      this.chargingPortType = null;
+      this.electricMotorPower = null;
+      this.electricMotorTorque = null;
+    }
+    
+    next();
+  } catch (error) {
+    console.error('❌ [Bike] Error in electric vehicle pre-save hook:', error);
+    // Don't fail the save operation, just log the error
+    next();
+  }
+});

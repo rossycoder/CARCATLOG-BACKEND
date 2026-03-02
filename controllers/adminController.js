@@ -228,3 +228,109 @@ module.exports = {
   deleteListing,
   getDashboardStats
 };
+
+/**
+ * Get API usage statistics (admin only)
+ */
+const getAPIStats = async (req, res) => {
+  try {
+    const safeAPI = require('../services/safeAPIService');
+    const vehicleAPILimit = require('../services/vehicleAPILimitService');
+    
+    // Get overall usage stats
+    const usageStats = await safeAPI.getUsageStats();
+    
+    // Get all vehicle API stats
+    const vehicleStats = await vehicleAPILimit.getAllVehicleAPIStats(50);
+    
+    // Get excessive API calls
+    const excessiveCalls = await vehicleAPILimit.findExcessiveAPICalls(4);
+    
+    res.json({
+      success: true,
+      data: {
+        usage: usageStats,
+        topVehicles: vehicleStats,
+        excessiveCalls: excessiveCalls.length,
+        excessiveCallsDetails: excessiveCalls.slice(0, 10)
+      }
+    });
+  } catch (error) {
+    console.error('Error getting API stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get API statistics',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get API call summary for specific vehicle (admin only)
+ */
+const getVehicleAPIStats = async (req, res) => {
+  try {
+    const { vrm } = req.params;
+    const safeAPI = require('../services/safeAPIService');
+    
+    // Get vehicle summary
+    const summary = await safeAPI.getVehicleSummary(vrm);
+    
+    // Generate detailed report
+    const report = await safeAPI.generateVehicleReport(vrm);
+    
+    res.json({
+      success: true,
+      data: {
+        summary,
+        report
+      }
+    });
+  } catch (error) {
+    console.error('Error getting vehicle API stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get vehicle API statistics',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Find vehicles with excessive API calls (admin only)
+ */
+const getExcessiveAPICalls = async (req, res) => {
+  try {
+    const { threshold = 4 } = req.query;
+    const vehicleAPILimit = require('../services/vehicleAPILimitService');
+    
+    const excessiveCalls = await vehicleAPILimit.findExcessiveAPICalls(parseInt(threshold));
+    
+    res.json({
+      success: true,
+      data: {
+        threshold: parseInt(threshold),
+        count: excessiveCalls.length,
+        vehicles: excessiveCalls
+      }
+    });
+  } catch (error) {
+    console.error('Error getting excessive API calls:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get excessive API calls',
+      error: error.message
+    });
+  }
+};
+
+module.exports = {
+  getAllListings,
+  getListingDetails,
+  updateListing,
+  deleteListing,
+  getDashboardStats,
+  getAPIStats,
+  getVehicleAPIStats,
+  getExcessiveAPICalls
+};

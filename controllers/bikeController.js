@@ -126,6 +126,41 @@ exports.getBikeById = async (req, res) => {
       lastViewedAt: new Date()
     });
 
+    // CRITICAL: Use Universal Auto Complete Service to fetch and save enhanced data
+    // This ensures API is called ONCE and data is SAVED to database (exactly like cars)
+    if (bike.registrationNumber && !bike.dataSources?.checkCarDetails) {
+      try {
+        console.log(`🔍 [Bike Detail] Fetching enhanced data for: ${bike.registrationNumber}`);
+        
+        // Get the bike document (not lean) so we can save it
+        const bikeDoc = await Bike.findById(req.params.id);
+        
+        if (bikeDoc) {
+          // Use Universal Service to fetch and save complete data
+          // completeCarData handles ALL vehicle types (cars, bikes, vans)
+          const enhancedBike = await universalService.completeCarData(bikeDoc, false);
+          
+          console.log(`✅ [Bike Detail] Enhanced data fetched from API and SAVED to database`);
+          console.log(`📊 [Bike Detail] Saved data:`, {
+            variant: enhancedBike.variant,
+            engineSize: enhancedBike.engineSize,
+            fuelEconomy: enhancedBike.runningCosts?.fuelEconomy?.combined,
+            annualTax: enhancedBike.runningCosts?.annualTax,
+            dataSources: enhancedBike.dataSources
+          });
+          
+          // Update bike object with saved data
+          Object.assign(bike, enhancedBike.toObject());
+        }
+      } catch (apiError) {
+        console.log(`⚠️  [Bike Detail] Could not fetch enhanced data:`, apiError.message);
+        // Continue without enhanced data - not critical
+      }
+    } else if (bike.dataSources?.checkCarDetails) {
+      console.log(`✅ [Bike Detail] Enhanced data already in database - using cached data`);
+      console.log(`   💰 Saved API call cost!`);
+    }
+
     // If this is a trade dealer listing, fetch dealer information
     if (bike.dealerId) {
       const TradeDealer = require('../models/TradeDealer');
@@ -169,6 +204,44 @@ exports.getBikeById = async (req, res) => {
   }
 };
 
+// Get bike by advertId (for edit page)
+exports.getBikeByAdvertId = async (req, res) => {
+  try {
+    const { advertId } = req.params;
+    
+    console.log(`🔍 [Bike Edit] Fetching bike by advertId: ${advertId}`);
+    
+    const bike = await Bike.findOne({ advertId }).lean();
+
+    if (!bike) {
+      return res.status(404).json({
+        success: false,
+        message: 'Bike not found'
+      });
+    }
+
+    console.log(`✅ [Bike Edit] Bike found:`, {
+      id: bike._id,
+      registration: bike.registrationNumber,
+      motDue: bike.motDue || bike.motExpiry,
+      motHistoryCount: bike.motHistory?.length || 0,
+      previousOwners: bike.historyCheckData?.previousKeepers
+    });
+
+    res.json({
+      success: true,
+      data: bike
+    });
+  } catch (error) {
+    console.error('Error fetching bike by advertId:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching bike',
+      error: error.message
+    });
+  }
+};
+
 // Create new bike with auto-enhancement
 exports.createBike = async (req, res) => {
   try {
@@ -176,6 +249,44 @@ exports.createBike = async (req, res) => {
 
     // Auto-enhance bike data if registration is provided
     let bikeData = { ...req.body };
+    
+    // CRITICAL: Normalize fuelType to match enum values (Petrol, Diesel, Electric, etc.)
+    if (bikeData.fuelType) {
+      const normalizeFuelType = (fuelType) => {
+        if (!fuelType) return 'Petrol'; // Default
+        const normalized = fuelType.toLowerCase().trim();
+        
+        // Check for plug-in hybrids first
+        if (normalized.includes('plug-in') && normalized.includes('hybrid')) {
+          if (normalized.includes('petrol')) return 'Petrol Plug-in Hybrid';
+          if (normalized.includes('diesel')) return 'Diesel Plug-in Hybrid';
+          return 'Plug-in Hybrid';
+        }
+        
+        // Check for regular hybrids
+        if (normalized.includes('hybrid')) {
+          if (normalized.includes('petrol') || normalized.includes('gasoline')) return 'Petrol Hybrid';
+          if (normalized.includes('diesel')) return 'Diesel Hybrid';
+          return 'Hybrid';
+        }
+        
+        if (normalized.includes('petrol') || normalized.includes('gasoline')) return 'Petrol';
+        if (normalized.includes('diesel')) return 'Diesel';
+        if (normalized.includes('electric') || normalized.includes('ev')) return 'Electric';
+        
+        // Default to Petrol if unknown
+        return 'Petrol';
+      };
+      
+      bikeData.fuelType = normalizeFuelType(bikeData.fuelType);
+      console.log(`✅ Normalized fuelType: ${req.body.fuelType} → ${bikeData.fuelType}`);
+    }
+    
+    // CRITICAL: Normalize transmission to match enum values (automatic, manual, semi-automatic)
+    if (bikeData.transmission) {
+      bikeData.transmission = bikeData.transmission.toLowerCase().trim();
+      console.log(`✅ Normalized transmission: ${req.body.transmission} → ${bikeData.transmission}`);
+    }
     
     if (bikeData.registrationNumber && !bikeData.skipAutoEnhancement) {
       try {
@@ -215,41 +326,107 @@ exports.createBike = async (req, res) => {
       }
     }
 
-    const bike = new Bike(bikeData);
-    await bike.save();
-
-    // Auto-fetch MOT history and vehicle history in background
-    if (bike.registrationNumber) {
-      setImmediate(async () => {
-        try {
-          // Fetch MOT history
-          const motResult = await motHistoryService.getMOTHistory(bike.registrationNumber);
-          if (motResult.success && motResult.data) {
-            bike.motHistory = motResult.data;
-            bike.dataSources.motHistory = true;
-            await bike.save();
-            console.log(`✅ MOT history auto-fetched for bike ${bike._id}`);
-          }
-        } catch (motError) {
-          console.log(`⚠️ Background MOT fetch failed for bike ${bike._id}: ${motError.message}`);
-        }
-
-        try {
-          // Fetch vehicle history
-          const historyResult = await historyService.getVehicleHistory(bike.registrationNumber);
-          if (historyResult.success && historyResult.data) {
-            bike.historyCheckData = historyResult.data;
-            bike.historyCheckStatus = 'completed';
-            bike.historyCheckDate = new Date();
-            bike.dataSources.historyCheck = true;
-            await bike.save();
-            console.log(`✅ Vehicle history auto-fetched for bike ${bike._id}`);
-          }
-        } catch (historyError) {
-          console.log(`⚠️ Background history fetch failed for bike ${bike._id}: ${historyError.message}`);
-        }
-      });
+    // CRITICAL FIX: Set userId from authenticated user
+    if (req.user && req.user._id) {
+      bikeData.userId = req.user._id;
+      console.log(`✅ Setting userId: ${req.user._id} (${req.user.email})`);
     }
+    
+    const bike = new Bike(bikeData);
+    
+    // CRITICAL: Fetch MOT + Valuation (WITHOUT Vehicle History - that's expensive £1.82)
+    // Vehicle History will be fetched after payment
+    if (bike.registrationNumber && !bike.dataSources?.checkCarDetails) {
+      try {
+        console.log(`🔍 [Bike Create] Fetching MOT + Valuation for: ${bike.registrationNumber}`);
+        
+        const CheckCarDetailsClient = require('../clients/CheckCarDetailsClient');
+        const MOTHistoryService = require('../services/motHistoryService');
+        const ValuationService = require('../services/valuationService');
+        
+        const client = new CheckCarDetailsClient();
+        const motService = new MOTHistoryService();
+        const valuationService = new ValuationService();
+        
+        const cleanedReg = bike.registrationNumber.toUpperCase().replace(/\s/g, '');
+        const parsedMileage = bike.mileage || 50000;
+        
+        // Fetch Vehicle Specs, MOT, and Valuation in parallel (NO Vehicle History)
+        const [specsResult, motResult, valuationResult] = await Promise.allSettled([
+          client.getVehicleSpecs(cleanedReg),
+          motService.fetchAndSaveMOTHistory(cleanedReg, false),
+          valuationService.getValuation(cleanedReg, parsedMileage)
+        ]);
+        
+        // Parse specs data
+        if (specsResult.status === 'fulfilled') {
+          const ApiResponseParser = require('../utils/apiResponseParser');
+          const parsedSpecs = ApiResponseParser.parseCheckCarDetailsResponse(specsResult.value);
+          
+          // Update bike with specs data
+          if (parsedSpecs.variant) bike.variant = parsedSpecs.variant;
+          if (parsedSpecs.engineSize) bike.engineSize = parsedSpecs.engineSize;
+          
+          console.log(`✅ Vehicle Specs fetched (£0.05)`);
+        }
+        
+        // Add MOT data
+        if (motResult.status === 'fulfilled' && motResult.value && motResult.value.success) {
+          const motData = motResult.value.data || [];
+          bike.motHistory = motData;
+          
+          // Get latest MOT test for expiry date
+          if (motData.length > 0) {
+            const latestTest = motData[0];
+            bike.motDue = latestTest.expiryDate || null;
+            bike.motStatus = latestTest.testResult === 'PASSED' ? 'Valid' : 'Failed';
+            bike.motExpiry = latestTest.expiryDate || null;
+          }
+          
+          console.log(`✅ MOT History fetched (£0.02) - ${motData.length} tests`);
+          if (bike.motDue) {
+            console.log(`   MOT Due: ${new Date(bike.motDue).toLocaleDateString()}`);
+          }
+        }
+        
+        // Add Valuation data
+        if (valuationResult.status === 'fulfilled' && valuationResult.value) {
+          const valuationData = valuationResult.value;
+          bike.valuation = {
+            privatePrice: valuationData.estimatedValue?.private || 0,
+            dealerPrice: valuationData.estimatedValue?.retail || 0,
+            partExchangePrice: valuationData.estimatedValue?.trade || 0
+          };
+          bike.estimatedValue = valuationData.estimatedValue?.private || null;
+          console.log(`✅ Valuation fetched (£0.12) - Private: £${bike.estimatedValue}`);
+        }
+        
+        // Mark data sources
+        if (!bike.dataSources) bike.dataSources = {};
+        bike.dataSources.checkCarDetails = true;
+        bike.dataSources.motHistory = motResult.status === 'fulfilled';
+        bike.dataSources.valuation = valuationResult.status === 'fulfilled';
+        
+        console.log(`💰 Total API cost: £0.19 (Specs + MOT + Valuation)`);
+        console.log(`💡 Vehicle History (£1.82) will be fetched after payment`);
+        
+        // Save bike with MOT + Valuation data
+        await bike.save();
+        
+        res.status(201).json({
+          success: true,
+          data: bike,
+          message: 'Bike created successfully with MOT and Valuation data'
+        });
+        return;
+      } catch (apiError) {
+        console.log(`⚠️  [Bike Create] Could not fetch MOT/Valuation:`, apiError.message);
+        // Continue with basic data - save bike anyway
+      }
+    }
+    
+    // Save bike if UniversalService was not used or failed
+    await bike.save();
 
     res.status(201).json({
       success: true,
@@ -380,6 +557,24 @@ exports.deleteBike = async (req, res) => {
       });
     }
 
+    // CRITICAL: Also delete VehicleHistory cache for this bike
+    if (bike.registrationNumber) {
+      try {
+        const VehicleHistory = require('../models/VehicleHistory');
+        const cleanedReg = bike.registrationNumber.toUpperCase().replace(/\s/g, '');
+        const deletedCache = await VehicleHistory.deleteOne({ vrm: cleanedReg });
+        
+        if (deletedCache.deletedCount > 0) {
+          console.log(`✅ VehicleHistory cache deleted for ${bike.registrationNumber}`);
+        } else {
+          console.log(`⚠️  No VehicleHistory cache found for ${bike.registrationNumber}`);
+        }
+      } catch (cacheError) {
+        console.error('⚠️  Error deleting VehicleHistory cache:', cacheError.message);
+        // Don't fail the bike deletion if cache deletion fails
+      }
+    }
+
     res.json({
       success: true,
       message: 'Bike deleted successfully'
@@ -453,6 +648,10 @@ exports.searchByPostcode = async (req, res) => {
     const haversine = require('../utils/haversine');
     const radiusMiles = Number(radius);
     
+    // NATIONWIDE SEARCH: Always show ALL bikes nationwide with distance
+    // Set effective radius to 10000 miles to cover entire UK
+    const effectiveRadius = 10000; // Nationwide search
+    
     const bikesWithDistance = bikes
       .map(bike => {
         let bikeLat, bikeLon;
@@ -476,8 +675,14 @@ exports.searchByPostcode = async (req, res) => {
         );
         return { ...bike, distance: Math.round(distance * 10) / 10 };
       })
-      .filter(bike => bike !== null && bike.distance <= radiusMiles)
+      .filter(bike => {
+        if (bike === null) return false;
+        // Show all bikes nationwide (within 10000 miles = entire UK and beyond)
+        return bike.distance <= effectiveRadius;
+      })
       .sort((a, b) => a.distance - b.distance);
+    
+    console.log(`🔍 Bike search NATIONWIDE - Found ${bikesWithDistance.length} bikes`);
 
     res.json({
       success: true,
@@ -569,19 +774,46 @@ exports.publishBike = async (req, res) => {
     bike.price = advertData?.price || bike.price;
     bike.description = advertData?.description || bike.description;
     bike.images = advertData?.photos?.map(p => p.url || p) || bike.images;
+    bike.features = advertData?.features || bike.features || []; // Save features from advertData
+    
+    // Save running costs from advertData (will be preserved even if API call overwrites)
+    const userRunningCosts = advertData?.runningCosts ? {
+      fuelEconomy: {
+        urban: advertData.runningCosts.fuelEconomy?.urban || '',
+        extraUrban: advertData.runningCosts.fuelEconomy?.extraUrban || '',
+        combined: advertData.runningCosts.fuelEconomy?.combined || ''
+      },
+      annualTax: advertData.runningCosts.annualTax || '',
+      insuranceGroup: advertData.runningCosts.insuranceGroup || '',
+      co2Emissions: advertData.runningCosts.co2Emissions || ''
+    } : null;
+    
+    if (userRunningCosts) {
+      console.log('[Bike Publish] User provided running costs:', userRunningCosts);
+      bike.runningCosts = userRunningCosts;
+    }
+    
     bike.sellerContact = {
       type: 'trade',
       phoneNumber: contactDetails?.phoneNumber,
       email: contactDetails?.email,
       allowEmailContact: contactDetails?.allowEmailContact || false,
       postcode: contactDetails?.postcode,
-      businessName: req.dealer?.businessName,
+      businessName: advertData?.businessName || req.dealer?.businessName,
+      businessLogo: advertData?.businessLogo || '',
+      businessWebsite: advertData?.businessWebsite || '',
       ...req.dealer?.businessAddress
     };
     bike.dealerId = req.dealerId;
     bike.isDealerListing = true;
     bike.status = 'active';
     bike.publishedAt = new Date();
+    
+    console.log('[Bike Publish] Business info:', {
+      businessName: bike.sellerContact.businessName,
+      businessLogo: bike.sellerContact.businessLogo,
+      businessWebsite: bike.sellerContact.businessWebsite
+    });
 
     // Geocode postcode if available
     if (contactDetails?.postcode) {
@@ -595,12 +827,49 @@ exports.publishBike = async (req, res) => {
           type: 'Point',
           coordinates: [postcodeData.longitude, postcodeData.latitude]
         };
+        console.log('[Bike Publish] Location saved:', {
+          postcode: contactDetails.postcode,
+          locationName: bike.locationName,
+          coordinates: [bike.longitude, bike.latitude]
+        });
       } catch (error) {
         console.warn('[Bike Publish] Could not geocode postcode:', error.message);
       }
     }
-
+    
+    // Save bike first before API call
     await bike.save();
+    console.log('[Bike Publish] Bike saved to database');
+    
+    // Call UniversalAutoCompleteService to fetch and save API data (MOT history, running costs, etc.)
+    // This will fetch API data but preserve user-entered running costs if they exist
+    if (vehicleData?.registration) {
+      try {
+        console.log('[Bike Publish] Calling UniversalAutoCompleteService for:', vehicleData.registration);
+        const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');
+        const service = new UniversalAutoCompleteService();
+        await service.completeCarData(bike, false); // Pass bike object, not registration
+        console.log('[Bike Publish] API data fetched and saved successfully');
+        
+        // Reload bike to get updated data
+        await bike.populate('dealerId');
+        
+        // Restore user running costs if they were provided (API might have overwritten with empty data)
+        if (userRunningCosts && userRunningCosts.fuelEconomy.combined) {
+          const reloadedBike = await Bike.findById(bike._id);
+          const apiHasRunningCosts = reloadedBike.runningCosts?.fuelEconomy?.combined;
+          
+          if (!apiHasRunningCosts) {
+            console.log('[Bike Publish] Restoring user running costs (API had no data)');
+            reloadedBike.runningCosts = userRunningCosts;
+            await reloadedBike.save();
+          }
+        }
+      } catch (error) {
+        console.warn('[Bike Publish] Could not fetch API data:', error.message);
+        // Don't fail publish if API call fails
+      }
+    }
     console.log('[Bike Publish] Bike published successfully:', bike._id);
 
     console.log('[Bike Publish] ========== PUBLISH SUCCESS ==========');
@@ -1076,6 +1345,70 @@ exports.basicBikeLookup = async (req, res) => {
   }
 };
 
+// Complete bike lookup - fetches ALL data (MOT, History, Valuation)
+// Used in edit page to get complete information
+exports.completeBikeLookup = async (req, res) => {
+  try {
+    console.log('[Bike Controller] ========== COMPLETE BIKE LOOKUP ==========');
+    
+    // Support both path parameter and query parameter
+    const registration = req.params.registration || req.query.registration;
+    const { mileage } = req.query;
+    
+    if (!registration) {
+      return res.status(400).json({
+        success: false,
+        error: 'Registration number is required'
+      });
+    }
+    
+    console.log(`[Bike Controller] Fetching COMPLETE data for: ${registration} with ${mileage || 'unknown'} miles`);
+    
+    // Clean registration number
+    const cleanedReg = registration.toUpperCase().replace(/\s/g, '');
+    const parsedMileage = mileage ? parseInt(mileage, 10) : 50000;
+    
+    // Get complete bike data (MOT + History + Valuation)
+    const result = await lightweightBikeService.getCompleteBikeData(cleanedReg, parsedMileage);
+    
+    if (!result.success) {
+      console.log(`[Bike Controller] Complete lookup failed: ${result.error}`);
+      return res.status(500).json({
+        success: false,
+        error: result.error || 'Failed to fetch complete bike data'
+      });
+    }
+    
+    console.log(`[Bike Controller] Complete lookup successful - Cost: £${result.cost}, APIs: ${result.apiCalls}`);
+    console.log(`[Bike Controller] Data returned:`, {
+      motDue: result.data.motDue,
+      motHistoryCount: result.data.motHistory?.length || 0,
+      previousOwners: result.data.previousOwners,
+      estimatedValue: result.data.estimatedValue,
+      valuation: result.data.valuation
+    });
+    
+    return res.json({
+      success: true,
+      data: result.data,
+      metadata: {
+        fromCache: result.fromCache,
+        apiCalls: result.apiCalls,
+        cost: result.cost,
+        note: `Complete data fetched: Specs + MOT + History + Valuation`
+      }
+    });
+    
+  } catch (error) {
+    console.error('[Bike Controller] Complete lookup error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Internal server error during complete bike lookup',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
 // Helper function to generate mock bike data when APIs fail
 function generateMockBikeData(registration, mileage) {
   // Extract year from registration if possible
@@ -1130,6 +1463,18 @@ function generateMockBikeData(registration, mileage) {
   
   const insuranceGroup = Math.min(20, Math.floor(randomBike.cc / 50) + Math.floor(Math.random() * 5));
   
+  // Generate mock MOT history
+  const motExpiryDate = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+  const mockMOTHistory = [
+    {
+      testDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      expiryDate: motExpiryDate.toISOString().split('T')[0],
+      testResult: 'PASSED',
+      odometerValue: mileage - 1000,
+      odometerUnit: 'mi'
+    }
+  ];
+  
   return {
     registration: registration,
     mileage: mileage,
@@ -1156,6 +1501,21 @@ function generateMockBikeData(registration, mileage) {
     
     // Estimated pricing
     estimatedValue: estimatedValue,
+    valuation: {
+      private: estimatedValue,
+      retail: Math.round(estimatedValue * 1.15),
+      trade: Math.round(estimatedValue * 0.75),
+      partExchange: Math.round(estimatedValue * 0.80)
+    },
+    
+    // MOT data
+    motDue: motExpiryDate.toISOString().split('T')[0],
+    motExpiry: motExpiryDate.toISOString().split('T')[0],
+    motStatus: 'Valid',
+    motHistory: mockMOTHistory,
+    
+    // Previous owners (mock)
+    previousOwners: Math.floor(Math.random() * 3) + 1, // 1-3 previous owners
     
     // Metadata
     apiProvider: 'mock-generator',
@@ -1164,7 +1524,230 @@ function generateMockBikeData(registration, mileage) {
     
     // Additional mock data
     taxStatus: 'Taxed',
-    motStatus: 'Valid',
-    motExpiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    taxDue: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   };
 }
+
+
+/**
+ * Activate Bike From Payment (Fallback for Webhook)
+ * 
+ * This endpoint is called from the payment success page as a fallback
+ * in case the Stripe webhook doesn't trigger (common in development mode).
+ * It manually activates the bike and saves all data.
+ */
+exports.activateBikeFromPayment = async (req, res) => {
+  try {
+    const { advertId, sessionId } = req.body;
+
+    console.log(`🔄 Manual activation requested for advertId: ${advertId}`);
+
+    if (!advertId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Advert ID is required'
+      });
+    }
+
+    // Find the bike
+    const Bike = require('../models/Bike');
+    let bike = await Bike.findOne({ advertId });
+
+    if (!bike) {
+      console.log(`❌ Bike not found for advertId: ${advertId}`);
+      return res.status(404).json({
+        success: false,
+        error: 'Bike not found'
+      });
+    }
+
+    // Check if already active
+    if (bike.status === 'active') {
+      console.log(`✅ Bike already active: ${bike._id}`);
+      return res.json({
+        success: true,
+        message: 'Bike is already active',
+        data: { bikeId: bike._id, status: 'active' }
+      });
+    }
+
+    console.log(`📝 Activating bike: ${bike._id}`);
+
+    // Find purchase record
+    const AdvertisingPackagePurchase = require('../models/AdvertisingPackagePurchase');
+    const purchase = await AdvertisingPackagePurchase.findOne({
+      'metadata.advertId': advertId
+    });
+
+    if (!purchase) {
+      console.log(`⚠️  No purchase record found, activating anyway`);
+      bike.status = 'active';
+      bike.publishedAt = new Date();
+      await bike.save();
+      
+      return res.json({
+        success: true,
+        message: 'Bike activated (no purchase record)',
+        data: { bikeId: bike._id, status: 'active' }
+      });
+    }
+
+    // Parse metadata
+    const advertData = JSON.parse(purchase.metadata.get('advertData') || '{}');
+    const vehicleData = JSON.parse(purchase.metadata.get('vehicleData') || '{}');
+    const contactDetails = JSON.parse(purchase.metadata.get('contactDetails') || '{}');
+
+    console.log(`📦 Found purchase record with business info`);
+    console.log(`📦 Vehicle data from API:`, {
+      registration: vehicleData.registrationNumber || vehicleData.registration,
+      make: vehicleData.make,
+      model: vehicleData.model,
+      variant: vehicleData.variant,
+      color: vehicleData.color,
+      engineCC: vehicleData.engineCC || vehicleData.engineSize
+    });
+
+    // Auto-detect seller type
+    const hasLogo = advertData?.businessLogo && advertData.businessLogo.trim() !== '';
+    const hasWebsite = advertData?.businessWebsite && advertData.businessWebsite.trim() !== '';
+    const detectedSellerType = (hasLogo || hasWebsite) ? 'trade' : 'private';
+
+    console.log(`🔍 Auto-detected seller type: ${detectedSellerType}`);
+
+    // Geocode postcode if needed
+    let latitude = bike.latitude;
+    let longitude = bike.longitude;
+    let locationName = bike.locationName;
+
+    if (contactDetails.postcode && (!latitude || !longitude)) {
+      try {
+        const postcodeService = require('../services/postcodeService');
+        const postcodeData = await postcodeService.lookupPostcode(contactDetails.postcode);
+        latitude = postcodeData.latitude;
+        longitude = postcodeData.longitude;
+        locationName = postcodeData.locationName;
+        console.log(`📍 Geocoded: ${locationName}`);
+      } catch (error) {
+        console.warn(`⚠️  Could not geocode postcode: ${error.message}`);
+      }
+    }
+
+    // Update bike
+    bike.status = 'active';
+    bike.publishedAt = new Date();
+
+    // CRITICAL FIX: Update registration number and model from vehicleData
+    if (vehicleData.registrationNumber || vehicleData.registration) {
+      bike.registrationNumber = vehicleData.registrationNumber || vehicleData.registration;
+      console.log(`✅ Updated registration: ${bike.registrationNumber}`);
+    }
+    
+    if (vehicleData.make) {
+      bike.make = vehicleData.make;
+      console.log(`✅ Updated make: ${bike.make}`);
+    }
+    
+    if (vehicleData.model) {
+      bike.model = vehicleData.model;
+      console.log(`✅ Updated model: ${bike.model}`);
+    }
+    
+    if (vehicleData.variant) {
+      bike.variant = vehicleData.variant;
+      console.log(`✅ Updated variant: ${bike.variant}`);
+    }
+    
+    if (vehicleData.color) {
+      bike.color = vehicleData.color;
+      console.log(`✅ Updated color: ${bike.color}`);
+    }
+    
+    if (vehicleData.engineCC || vehicleData.engineSize) {
+      bike.engineCC = parseInt(vehicleData.engineCC || vehicleData.engineSize || '0') || 0;
+      console.log(`✅ Updated engineCC: ${bike.engineCC}`);
+    }
+
+    // Update location
+    if (latitude && longitude) {
+      bike.latitude = latitude;
+      bike.longitude = longitude;
+      bike.locationName = locationName;
+      bike.location = {
+        type: 'Point',
+        coordinates: [longitude, latitude]
+      };
+    }
+
+    // Update seller contact with business info
+    bike.sellerContact = {
+      type: detectedSellerType,
+      phoneNumber: contactDetails.phoneNumber || bike.sellerContact?.phoneNumber,
+      email: contactDetails.email || bike.sellerContact?.email,
+      allowEmailContact: contactDetails.allowEmailContact || false,
+      postcode: contactDetails.postcode || bike.sellerContact?.postcode,
+      businessName: advertData.businessName || bike.sellerContact?.businessName,
+      businessLogo: advertData.businessLogo || bike.sellerContact?.businessLogo,
+      businessWebsite: advertData.businessWebsite || bike.sellerContact?.businessWebsite
+    };
+
+    // Save running costs
+    if (advertData.runningCosts) {
+      console.log(`💰 Saving running costs`);
+      bike.runningCosts = advertData.runningCosts;
+    }
+
+    // Save features
+    if (advertData.features && Array.isArray(advertData.features)) {
+      console.log(`⭐ Saving features: ${advertData.features.length} features`);
+      bike.features = advertData.features;
+    }
+
+    await bike.save();
+    console.log(`✅ Bike activated successfully: ${bike._id}`);
+
+    // Try to fetch MOT history and vehicle history (non-blocking)
+    if (bike.registrationNumber) {
+      console.log(`🔍 Fetching complete vehicle data (MOT + History) for: ${bike.registrationNumber}`);
+      try {
+        const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');
+        const service = new UniversalAutoCompleteService();
+        // CRITICAL FIX: Force fresh API calls (forceRefresh=false means use cache if available)
+        // We need forceRefresh=false to trigger fresh API calls after payment
+        // Fresh APIs: Vehiclespecs £0.05 + MOT £0.02 + History £1.82 + Valuation £0.12 = £2.01
+        await service.completeCarData(bike, false);
+        console.log(`✅ Complete vehicle data fetched (MOT history + Vehicle history)`);
+        
+        // Reload bike to get updated data
+        await bike.populate('historyCheckId');
+        
+        console.log(`📊 Bike data after API call:`, {
+          motHistoryCount: bike.motHistory?.length || 0,
+          hasHistoryCheck: !!bike.historyCheckId,
+          previousOwners: bike.historyCheckData?.previousKeepers,
+          writeOffCategory: bike.historyCheckData?.writeOffCategory
+        });
+      } catch (error) {
+        console.error(`❌ Error fetching complete vehicle data:`, error.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Bike activated successfully',
+      data: {
+        bikeId: bike._id,
+        status: 'active',
+        sellerType: detectedSellerType,
+        hasBusinessInfo: !!(advertData.businessName || advertData.businessLogo || advertData.businessWebsite)
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error activating bike:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to activate bike',
+      details: error.message
+    });
+  }
+};

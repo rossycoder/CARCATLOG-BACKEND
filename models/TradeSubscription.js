@@ -5,8 +5,7 @@ const tradeSubscriptionSchema = new mongoose.Schema({
   dealerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'TradeDealer',
-    required: true,
-    index: true
+    required: true
   },
   
   // Plan
@@ -20,21 +19,18 @@ const tradeSubscriptionSchema = new mongoose.Schema({
   stripeSubscriptionId: {
     type: String,
     required: true,
-    unique: true,
-    index: true
+    unique: true
   },
   stripeCustomerId: {
     type: String,
-    required: true,
-    index: true
+    required: true
   },
   
   // Status
   status: {
     type: String,
     enum: ['active', 'past_due', 'cancelled', 'expired', 'trialing'],
-    default: 'active',
-    index: true
+    default: 'active'
   },
   
   // Billing

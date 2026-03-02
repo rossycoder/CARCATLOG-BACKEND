@@ -1359,6 +1359,28 @@ class UniversalAutoCompleteService {
       vehicle.historyCheckId = vehicleHistory._id;
       vehicle.historyCheckStatus = 'verified';
       vehicle.historyCheckDate = new Date();
+      
+      // CRITICAL FIX: Set historyCheckData from parsedData
+      vehicle.historyCheckData = {
+        writeOffCategory: parsedData.writeOffCategory || 'none',
+        writeOffDetails: parsedData.writeOffDetails || { category: 'none' },
+        stolen: parsedData.stolen || false,
+        scrapped: parsedData.scrapped || false,
+        exported: parsedData.exported || false,
+        isWrittenOff: parsedData.isWrittenOff || (parsedData.writeOffCategory && parsedData.writeOffCategory !== 'none'), // Set true if writeOffCategory exists
+        previousKeepers: parsedData.numberOfPreviousKeepers || 0,
+        colourChanges: parsedData.colourChanges || 0,
+        isImported: parsedData.imported || false,
+        isExported: parsedData.exported || false,
+        isScrapped: parsedData.scrapped || false,
+        isStolen: parsedData.stolen || false
+      };
+      
+      console.log('✅ [UniversalService] Vehicle history data saved:', {
+        previousKeepers: vehicle.historyCheckData.previousKeepers,
+        isWrittenOff: vehicle.historyCheckData.isWrittenOff,
+        writeOffCategory: vehicle.historyCheckData.writeOffCategory
+      });
     }
     
     // Running costs object (common structure for all vehicle types)
@@ -1608,8 +1630,11 @@ class UniversalAutoCompleteService {
       vehicle.motDue = cachedData.motExpiryDate;
       vehicle.motExpiry = cachedData.motExpiryDate;
     }
-    if (cachedData.motTests && cachedData.motTests.length > 0) {
-      vehicle.motHistory = cachedData.motTests;
+    // CRITICAL FIX: Check both motHistory and motTests (field name varies)
+    const motData = cachedData.motHistory || cachedData.motTests || [];
+    if (motData.length > 0) {
+      vehicle.motHistory = motData;
+      console.log(`✅ MOT history saved: ${motData.length} tests`);
     }
     
     // Vehicle history reference
@@ -1628,6 +1653,22 @@ class UniversalAutoCompleteService {
       insuranceGroup: vehicle.insuranceGroup,
       annualTax: vehicle.annualTax
     };
+    
+    // CRITICAL: Set data sources flags
+    if (!vehicle.dataSources) {
+      vehicle.dataSources = {};
+    }
+    vehicle.dataSources.checkCarDetails = true;
+    vehicle.dataSources.vehicleSpecs = true;
+    // CRITICAL FIX: Check both motHistory and motTests
+    const motDataForFlag = cachedData.motHistory || cachedData.motTests || [];
+    if (motDataForFlag.length > 0) {
+      vehicle.dataSources.motHistory = true;
+    }
+    if (cachedData._id) {
+      vehicle.dataSources.historyCheck = true;
+    }
+    console.log('✅ Data sources flags set:', vehicle.dataSources);
     
     await vehicle.save(session ? { session } : {});
     console.log('✅ Vehicle updated from cache');

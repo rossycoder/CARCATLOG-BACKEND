@@ -29,24 +29,21 @@ class HistoryService {
    */
   async getCachedHistory(vrm) {
     try {
-      // TEMPORARY FIX: Disable cache to always fetch fresh data with running costs
-      console.log(`⚠️  Cache temporarily disabled - will fetch fresh data for ${vrm}`);
-      return null;
-      
-      /* ORIGINAL CODE - RE-ENABLE AFTER RUNNING COSTS ARE STABLE
+      // ✅ CACHE RE-ENABLED - Prevents duplicate API calls
       const cached = await VehicleHistory.getMostRecent(vrm);
       
       // Check if cache is still fresh (within 30 days)
       if (cached) {
         const daysSinceCheck = (Date.now() - cached.checkDate.getTime()) / (1000 * 60 * 60 * 24);
         if (daysSinceCheck <= 30) {
-          console.log(`Using cached history for VRM ${vrm} (${Math.floor(daysSinceCheck)} days old)`);
+          console.log(`✅ Using cached history for VRM ${vrm} (${Math.floor(daysSinceCheck)} days old) - Saved £1.82`);
           return cached;
+        } else {
+          console.log(`⏰ Cache expired for ${vrm} (${Math.floor(daysSinceCheck)} days old) - Will fetch fresh data`);
         }
       }
       
       return null;
-      */
     } catch (error) {
       console.error('Error retrieving cached history:', error);
       return null;

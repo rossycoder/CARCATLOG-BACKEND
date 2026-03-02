@@ -217,37 +217,75 @@ exports.createVehicle = async (req, res) => {
         // CRITICAL: Use Universal Auto Complete Service instead of CheckCarDetailsClient
         // Universal Service handles all vehicle data fetching with proper caching and race condition prevention
         const registration = req.body.registrationNumber || req.body.registration;
-        console.log(`[Trade Inventory] Using Universal Service for enhanced data: ${registration}`);
+        console.log(`[Trade Inventory] Checking vehicle data with API limits: ${registration}`);
         
-        // Create a temporary vehicle object for the Universal Service
-        const tempVehicle = new Car({
-          registrationNumber: registration,
-          mileage: req.body.mileage || 50000,
-          dataSource: 'trade-inventory'
-        });
+        // Check if data already cached
+        const safeAPI = require('../services/safeAPIService');
+        const summary = await safeAPI.getVehicleSummary(registration);
         
-        // Use Universal Service to get complete vehicle data
-        const completeVehicle = await universalService.completeCarData(tempVehicle, true); // Use cache for cost optimization
+        if (summary && summary.hasCachedData) {
+          console.log(`✅ [Trade Inventory] Vehicle data already cached for ${registration}`);
+          console.log(`   💰 Skipping API calls - using cached data`);
+          
+          // Load cached data from VehicleHistory
+          const VehicleHistory = require('../models/VehicleHistory');
+          const cached = await VehicleHistory.findOne({ vrm: registration.toUpperCase().replace(/\s/g, '') })
+            .sort({ checkDate: -1 })
+            .lean();
+          
+          if (cached) {
+            enhancedData = {
+              modelVariant: cached.variant,
+              variant: cached.variant,
+              engineSize: cached.engineSize,
+              make: cached.make,
+              model: cached.model,
+              bodyType: cached.bodyType,
+              transmission: cached.transmission,
+              fuelType: cached.fuelType,
+              doors: cached.doors,
+              seats: cached.seats,
+              color: cached.color,
+              co2Emissions: cached.co2Emissions,
+              annualTax: cached.annualTax,
+              insuranceGroup: cached.insuranceGroup
+            };
+            
+            console.log(`✅ [Trade Inventory] Cached data applied`);
+          }
+        } else {
+          console.log(`📞 [Trade Inventory] Fetching vehicle data with Universal Service: ${registration}`);
+          
+          // Create a temporary vehicle object for the Universal Service
+          const tempVehicle = new Car({
+            registrationNumber: registration,
+            mileage: req.body.mileage || 50000,
+            dataSource: 'trade-inventory'
+          });
+          
+          // Use Universal Service to get complete vehicle data
+          const completeVehicle = await universalService.completeCarData(tempVehicle, true); // Use cache for cost optimization
+          
+          // Extract enhanced data in the expected format
+          enhancedData = {
+            modelVariant: completeVehicle.variant,
+            variant: completeVehicle.variant,
+            engineSize: completeVehicle.engineSize,
+            make: completeVehicle.make,
+            model: completeVehicle.model,
+            bodyType: completeVehicle.bodyType,
+            transmission: completeVehicle.transmission,
+            fuelType: completeVehicle.fuelType,
+            doors: completeVehicle.doors,
+            seats: completeVehicle.seats,
+            color: completeVehicle.color,
+            co2Emissions: completeVehicle.co2Emissions,
+            annualTax: completeVehicle.annualTax,
+            insuranceGroup: completeVehicle.insuranceGroup
+          };
+        }
         
-        // Extract enhanced data in the expected format
-        enhancedData = {
-          modelVariant: completeVehicle.variant,
-          variant: completeVehicle.variant,
-          engineSize: completeVehicle.engineSize,
-          make: completeVehicle.make,
-          model: completeVehicle.model,
-          bodyType: completeVehicle.bodyType,
-          transmission: completeVehicle.transmission,
-          fuelType: completeVehicle.fuelType,
-          doors: completeVehicle.doors,
-          seats: completeVehicle.seats,
-          color: completeVehicle.color,
-          co2Emissions: completeVehicle.co2Emissions,
-          annualTax: completeVehicle.annualTax,
-          insuranceGroup: completeVehicle.insuranceGroup
-        };
-        
-        console.log(`[Trade Inventory] Universal Service enhanced data fetched:`, {
+        console.log(`[Trade Inventory] Enhanced data ready:`, {
           modelVariant: enhancedData?.modelVariant,
           variant: enhancedData?.variant,
           engineSize: enhancedData?.engineSize

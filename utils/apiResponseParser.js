@@ -117,15 +117,61 @@ function parseCheckCarDetailsResponse(data) {
     return {};
   }
 
-  const vehicleId = data.VehicleIdentification || {};
-  const bodyDetails = data.BodyDetails || {};
-  const performance = data.Performance || {};
+  // CRITICAL: CheckCarDetails API wraps data in Response.DataItems
+  const dataItems = data.Response?.DataItems || data;
+  
+  const vehicleId = dataItems.VehicleIdentification || {};
+  const vehicleReg = dataItems.VehicleRegistration || {}; // BIKES: Often has make/model here
+  const bodyDetails = dataItems.BodyDetails || {};
+  const performance = dataItems.Performance || {};
   const fuelEconomy = performance.FuelEconomy || {};
-  const modelData = data.ModelData || {};
-  const transmission = data.Transmission || {};
-  const dvlaTech = data.DvlaTechnicalDetails || {};
-  const emissions = data.Emissions || {};
-  const smmtDetails = data.SmmtDetails || {};
+  const modelData = dataItems.ModelData || {};
+  const transmission = dataItems.Transmission || {};
+  const dvlaTech = dataItems.DvlaTechnicalDetails || {};
+  const emissions = dataItems.Emissions || {};
+  const smmtDetails = dataItems.SmmtDetails || {};
+  
+  // CRITICAL: Log ALL available fields to debug bike model issue
+  console.log('🔍 [Parser] ALL DataItems keys:', Object.keys(dataItems));
+  console.log('🔍 [Parser] VehicleIdentification keys:', Object.keys(vehicleId));
+  console.log('🔍 [Parser] VehicleRegistration keys:', Object.keys(vehicleReg));
+  console.log('🔍 [Parser] ModelData keys:', Object.keys(modelData));
+  console.log('🔍 [Parser] SmmtDetails keys:', Object.keys(smmtDetails));
+  
+  // CRITICAL: Log ALL available fields to debug bike model issue
+  console.log('🔍 [Parser] ALL DataItems keys:', Object.keys(dataItems));
+  console.log('🔍 [Parser] VehicleIdentification keys:', Object.keys(vehicleId));
+  console.log('🔍 [Parser] VehicleRegistration keys:', Object.keys(vehicleReg));
+  console.log('🔍 [Parser] ModelData keys:', Object.keys(modelData));
+  console.log('🔍 [Parser] SmmtDetails keys:', Object.keys(smmtDetails));
+  
+  // Log actual values for debugging
+  console.log('🔍 [Parser] VehicleIdentification values:', JSON.stringify({
+    DvlaMake: vehicleId.DvlaMake,
+    DvlaModel: vehicleId.DvlaModel,
+    Make: vehicleId.Make,
+    Model: vehicleId.Model,
+    Manufacturer: vehicleId.Manufacturer
+  }));
+  console.log('🔍 [Parser] VehicleRegistration values:', JSON.stringify({
+    Make: vehicleReg.Make,
+    Model: vehicleReg.Model,
+    MakeModel: vehicleReg.MakeModel,
+    Manufacturer: vehicleReg.Manufacturer
+  }));
+  console.log('🔍 [Parser] ModelData values:', JSON.stringify({
+    Make: modelData.Make,
+    Model: modelData.Model,
+    ModelVariant: modelData.ModelVariant,
+    Range: modelData.Range
+  }));
+  console.log('🔍 [Parser] SmmtDetails values:', JSON.stringify({
+    Marque: smmtDetails.Marque,
+    Model: smmtDetails.Model,
+    ModelVariant: smmtDetails.ModelVariant,
+    Range: smmtDetails.Range,
+    Series: smmtDetails.Series
+  }));
   
   console.log('🔍 [Parser] fuelType from modelData:', modelData.FuelType);
   console.log('🔍 [Parser] bodyType from bodyDetails:', bodyDetails.BodyStyle);
@@ -135,14 +181,31 @@ function parseCheckCarDetailsResponse(data) {
   console.log('🔍 [Parser] SmmtDetails.CombinedMpg:', smmtDetails.CombinedMpg);
   console.log('🔍 [Parser] SmmtDetails.UrbanColdMpg:', smmtDetails.UrbanColdMpg);
   console.log('🔍 [Parser] SmmtDetails.Co2:', smmtDetails.Co2);
+  console.log('🔍 [Parser] ModelData.Model:', modelData.Model);
+  console.log('🔍 [Parser] ModelData.ModelVariant:', modelData.ModelVariant);
+  console.log('🔍 [Parser] VehicleId.DvlaModel:', vehicleId.DvlaModel);
+  console.log('🔍 [Parser] VehicleReg.Make:', vehicleReg.Make);
+  console.log('🔍 [Parser] VehicleReg.Model:', vehicleReg.Model);
+  console.log('🔍 [Parser] VehicleReg.MakeModel:', vehicleReg.MakeModel);
+
+  // CRITICAL: For bikes, make/model often in VehicleRegistration instead of ModelData
+  // Also handle empty strings as null
+  const extractedMake = vehicleId.DvlaMake || modelData.Make || vehicleReg.Make || smmtDetails.Marque || null;
+  const extractedModel = modelData.Model || modelData.ModelVariant || vehicleReg.Model || 
+                        (vehicleId.DvlaModel && vehicleId.DvlaModel.trim() !== '' ? vehicleId.DvlaModel : null) || 
+                        smmtDetails.ModelVariant || null;
+  
+  console.log('🔍 [Parser] EXTRACTED make:', extractedMake);
+  console.log('🔍 [Parser] EXTRACTED model:', extractedModel);
 
   return {
-    make: vehicleId.DvlaMake || modelData.Make || null,
+    make: extractedMake,
     // CRITICAL FIX: Swap model and variant - DVLA has them backwards
     // DvlaModel contains full variant (e.g., "500 POP RHD")
     // ModelVariant contains base model (e.g., "500")
-    model: modelData.ModelVariant || modelData.Model || vehicleId.DvlaModel || null,
-    variant: vehicleId.DvlaModel || modelData.Range || smmtDetails.Range || null,
+    // For bikes: Try Model first, then ModelVariant, then DvlaModel, then VehicleReg.Model
+    model: extractedModel || 'Unknown', // Default to 'Unknown' if no model found
+    variant: vehicleId.DvlaModel || modelData.Range || smmtDetails.Range || vehicleReg.Model || null,
     year: extractNumber(vehicleId.YearOfManufacture),
     fuelType: normalizeFuelType(modelData.FuelType || vehicleId.DvlaFuelType),
     transmission: normalizeTransmission(transmission.TransmissionType || smmtDetails.Transmission),

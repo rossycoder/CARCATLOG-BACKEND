@@ -35,36 +35,39 @@ class LightweightVanService {
       };
     }
     
-    console.log(`❌ CACHE MISS for ${registration} - Trying FREE DVLA API first`);
+    console.log(`❌ CACHE MISS for ${registration} - Fetching from API`);
     
     try {
-      // STEP 1: Try FREE DVLA API first (£0.00)
+      // STEP 1: Try CheckCarDetails API FIRST (£0.05) - has complete van data
       let vehicleData = null;
       let apiCost = 0;
       let apiCalls = 0;
-      let apiProvider = 'dvla';
+      let apiProvider = 'checkcardetails';
+      let dvlaColor = null;
       
       try {
-        console.log(`🆓 Trying FREE DVLA API for ${registration}`);
-        vehicleData = await dvlaService.lookupVehicle(registration);
-        console.log(`✅ DVLA API success for ${registration} - FREE data obtained`);
-        apiCost = 0;
+        console.log(`💰 Calling CheckCarDetails API for ${registration} (£0.05)`);
+        const client = new CheckCarDetailsClient();
+        vehicleData = await client.getVehicleSpecs(registration);
+        apiCost = 0.05;
         apiCalls = 1;
-        apiProvider = 'dvla-free';
-      } catch (dvlaError) {
-        console.log(`❌ DVLA API failed for ${registration}: ${dvlaError.message}`);
-        console.log(`🔄 Falling back to CheckCarDetails Vehiclespecs API (£0.05)`);
+        apiProvider = 'checkcardetails-primary';
+        console.log(`✅ CheckCarDetails Vehiclespecs API success for ${registration}`);
+      } catch (checkCarError) {
+        console.log(`❌ CheckCarDetails API failed for ${registration}: ${checkCarError.message}`);
+        console.log(`🔄 Falling back to FREE DVLA API`);
         
-        // STEP 2: Fallback to CheckCarDetails Vehiclespecs API (£0.05)
+        // STEP 2: Fallback to FREE DVLA API (£0.00)
         try {
-          vehicleData = await CheckCarDetailsClient.getVehicleSpecs(registration);
-          apiCost = 0.05;
+          console.log(`🆓 Trying FREE DVLA API for ${registration}`);
+          vehicleData = await dvlaService.lookupVehicle(registration);
+          console.log(`✅ DVLA API success for ${registration} - FREE data obtained`);
+          apiCost = 0;
           apiCalls = 1;
-          apiProvider = 'vehiclespecs-fallback';
-          console.log(`✅ CheckCarDetails Vehiclespecs API success for ${registration}`);
-        } catch (checkCarError) {
-          console.error(`❌ Both DVLA and CheckCarDetails APIs failed for ${registration}`);
-          throw new Error(`Van lookup failed: DVLA (${dvlaError.message}), CheckCarDetails (${checkCarError.message})`);
+          apiProvider = 'dvla-fallback';
+        } catch (dvlaError) {
+          console.error(`❌ Both CheckCarDetails and DVLA APIs failed for ${registration}`);
+          throw new Error(`Van lookup failed: CheckCarDetails (${checkCarError.message}), DVLA (${dvlaError.message})`);
         }
       }
       
@@ -74,12 +77,28 @@ class LightweightVanService {
       
       // Parse the response to get basic van data
       let parsedData;
-      if (apiProvider === 'dvla-free') {
+      if (apiProvider === 'dvla-fallback') {
         // Parse DVLA response
         parsedData = this.parseDVLAResponse(vehicleData, registration);
       } else {
         // Parse CheckCarDetails response
-        parsedData = CheckCarDetailsClient.parseResponse(vehicleData);
+        const ApiResponseParser = require('../utils/apiResponseParser');
+        parsedData = ApiResponseParser.parseCheckCarDetailsResponse(vehicleData);
+        
+        // If CheckCarDetails is missing color, try DVLA for color
+        if (!parsedData.color || parsedData.color === 'Not specified') {
+          try {
+            console.log(`🎨 CheckCarDetails missing color, trying FREE DVLA API for color`);
+            const dvlaData = await dvlaService.lookupVehicle(registration);
+            dvlaColor = dvlaData.colour || null;
+            if (dvlaColor) {
+              parsedData.color = dvlaColor;
+              console.log(`✅ Got color from DVLA: ${dvlaColor}`);
+            }
+          } catch (dvlaError) {
+            console.log(`⚠️  Could not get color from DVLA: ${dvlaError.message}`);
+          }
+        }
       }
       
       // Format basic van data (no history/MOT data)
@@ -101,6 +120,12 @@ class LightweightVanService {
         emissionClass: parsedData.emissionClass || parsedData.euroStatus ? `Euro ${parsedData.euroStatus}` : null,
         co2Emissions: parsedData.co2Emissions || null,
         
+        // MOT and Tax information from DVLA
+        motDue: parsedData.motExpiryDate || parsedData.motDue || null,
+        motStatus: parsedData.motStatus || null,
+        taxDue: parsedData.taxDueDate || parsedData.taxDue || null,
+        taxStatus: parsedData.taxStatus || null,
+        
         // Van-specific fields (estimated)
         payloadCapacity: this.estimatePayloadCapacity(parsedData),
         loadLength: null, // Not available from basic APIs
@@ -118,6 +143,13 @@ class LightweightVanService {
         
         // Add estimated pricing based on van age and type
         estimatedValue: this.calculateEstimatedPrice(parsedData),
+        
+        // Add valuation structure (like car/bike) for consistency
+        allValuations: {
+          private: this.calculateEstimatedPrice(parsedData),
+          retail: Math.round(this.calculateEstimatedPrice(parsedData) * 1.15), // Retail ~15% higher
+          trade: Math.round(this.calculateEstimatedPrice(parsedData) * 0.85)   // Trade ~15% lower
+        },
         
         // NO vehicle history, MOT history, or detailed valuation data
         // These will be fetched later when van is actually saved
@@ -198,6 +230,12 @@ class LightweightVanService {
         emissionClass: cached.emissionClass,
         co2Emissions: cached.co2Emissions,
         
+        // MOT and Tax information
+        motDue: cached.motExpiryDate || null,
+        motStatus: cached.motStatus || null,
+        taxDue: cached.taxDueDate || null,
+        taxStatus: cached.taxStatus || null,
+        
         // Van-specific fields
         payloadCapacity: this.estimatePayloadCapacity({ make: cached.make, model: cached.model }),
         loadLength: null,
@@ -221,6 +259,31 @@ class LightweightVanService {
           fuelType: cached.fuelType,
           engineSize: cached.engineCapacity ? (cached.engineCapacity / 1000).toFixed(1) : null
         }),
+        
+        // Add valuation structure (like car/bike) for consistency
+        allValuations: {
+          private: this.calculateEstimatedPrice({
+            make: cached.make,
+            model: cached.model,
+            year: cached.yearOfManufacture,
+            fuelType: cached.fuelType,
+            engineSize: cached.engineCapacity ? (cached.engineCapacity / 1000).toFixed(1) : null
+          }),
+          retail: Math.round(this.calculateEstimatedPrice({
+            make: cached.make,
+            model: cached.model,
+            year: cached.yearOfManufacture,
+            fuelType: cached.fuelType,
+            engineSize: cached.engineCapacity ? (cached.engineCapacity / 1000).toFixed(1) : null
+          }) * 1.15),
+          trade: Math.round(this.calculateEstimatedPrice({
+            make: cached.make,
+            model: cached.model,
+            year: cached.yearOfManufacture,
+            fuelType: cached.fuelType,
+            engineSize: cached.engineCapacity ? (cached.engineCapacity / 1000).toFixed(1) : null
+          }) * 0.85)
+        },
         
         // Metadata
         apiProvider: cached.apiProvider || 'cached',
@@ -263,6 +326,12 @@ class LightweightVanService {
         existing.emissionClass = basicData.emissionClass || existing.emissionClass;
         existing.co2Emissions = basicData.co2Emissions || existing.co2Emissions;
         
+        // Update MOT and Tax information
+        existing.motExpiryDate = basicData.motDue || existing.motExpiryDate;
+        existing.motStatus = basicData.motStatus || existing.motStatus;
+        existing.taxDueDate = basicData.taxDue || existing.taxDueDate;
+        existing.taxStatus = basicData.taxStatus || existing.taxStatus;
+        
         // Update running costs if available
         existing.urbanMpg = basicData.urbanMpg || existing.urbanMpg;
         existing.extraUrbanMpg = basicData.extraUrbanMpg || existing.extraUrbanMpg;
@@ -292,6 +361,12 @@ class LightweightVanService {
           seats: basicData.seats,
           emissionClass: basicData.emissionClass,
           co2Emissions: basicData.co2Emissions,
+          
+          // MOT and Tax information
+          motExpiryDate: basicData.motDue,
+          motStatus: basicData.motStatus,
+          taxDueDate: basicData.taxDue,
+          taxStatus: basicData.taxStatus,
           
           // Add running costs
           urbanMpg: basicData.urbanMpg,

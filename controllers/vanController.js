@@ -1,5 +1,5 @@
 const Van = require('../models/Van');
-const lightweightVanService = require('./../services/universalAutoCompleteService');
+const lightweightVanService = require('../services/lightweightVanService');
 
 // Get all vans with filtering and pagination
 exports.getVans = async (req, res) => {
@@ -170,7 +170,14 @@ exports.getVanById = async (req, res) => {
 // Create new van
 exports.createVan = async (req, res) => {
   try {
-    const van = new Van(req.body);
+    // CRITICAL FIX: Set userId from authenticated user
+    const vanData = { ...req.body };
+    if (req.user && req.user._id) {
+      vanData.userId = req.user._id;
+      console.log(`✅ Setting userId: ${req.user._id} (${req.user.email})`);
+    }
+    
+    const van = new Van(vanData);
     await van.save();
 
     res.status(201).json({
@@ -327,6 +334,10 @@ exports.searchByPostcode = async (req, res) => {
     const haversine = require('../utils/haversine');
     const radiusMiles = Number(radius);
     
+    // NATIONWIDE SEARCH: Always show ALL vans nationwide with distance
+    // Set effective radius to 10000 miles to cover entire UK
+    const effectiveRadius = 10000; // Nationwide search
+    
     const vansWithDistance = vans
       .map(van => {
         let vanLat, vanLon;
@@ -350,8 +361,14 @@ exports.searchByPostcode = async (req, res) => {
         );
         return { ...van, distance: Math.round(distance * 10) / 10 };
       })
-      .filter(van => van !== null && van.distance <= radiusMiles)
+      .filter(van => {
+        if (van === null) return false;
+        // Show all vans nationwide (within 10000 miles = entire UK and beyond)
+        return van.distance <= effectiveRadius;
+      })
       .sort((a, b) => a.distance - b.distance);
+    
+    console.log(`🔍 Van search NATIONWIDE - Found ${vansWithDistance.length} vans`);
 
     res.json({
       success: true,
@@ -605,6 +622,8 @@ exports.searchVans = async (req, res) => {
       colour,
       fuelType,
       sort,
+      postcode,
+      radius = 10000, // Default: Nationwide search (entire UK)
       limit = 50,
       skip = 0 
     } = req.query;
@@ -644,50 +663,119 @@ exports.searchVans = async (req, res) => {
     
     console.log('[Van Controller] Constructed query:', JSON.stringify(query, null, 2));
 
-    // Determine sort order
-    let sortOption = { createdAt: -1 }; // Default: newest first
-    
-    if (sort) {
-      switch (sort) {
-        case 'price-low':
-          sortOption = { price: 1 };
-          break;
-        case 'price-high':
-          sortOption = { price: -1 };
-          break;
-        case 'year-new':
-          sortOption = { year: -1 };
-          break;
-        case 'year-old':
-          sortOption = { year: 1 };
-          break;
-        case 'mileage-low':
-          sortOption = { mileage: 1 };
-          break;
-        case 'mileage-high':
-          sortOption = { mileage: -1 };
-          break;
-      }
-    }
-
     // Execute query
-    const vans = await Van.find(query)
+    let vans = await Van.find(query)
       .limit(Math.min(parseInt(limit), 100)) // Cap at 100
       .skip(parseInt(skip))
-      .sort(sortOption);
+      .lean();
 
     const total = await Van.countDocuments(query);
 
-    console.log('[Van Controller] Found', total, 'vans matching filters');
+    // Calculate distance if postcode provided
+    if (postcode) {
+      const postcodeService = require('../services/postcodeService');
+      const haversine = require('../utils/haversine');
+      
+      try {
+        const postcodeData = await postcodeService.lookupPostcode(postcode);
+        const userCoords = {
+          latitude: postcodeData.latitude,
+          longitude: postcodeData.longitude
+        };
+        
+        console.log('[Van Controller] Calculating distances from:', postcode);
+        
+        // Calculate distance for each van
+        vans = vans.map(van => {
+          let vanLat, vanLon;
+          
+          // Handle both coordinate formats
+          if (van.latitude !== undefined && van.longitude !== undefined) {
+            vanLat = van.latitude;
+            vanLon = van.longitude;
+          } else if (van.location?.coordinates?.length === 2) {
+            vanLon = van.location.coordinates[0];
+            vanLat = van.location.coordinates[1];
+          } else {
+            return { ...van, distance: 0 };
+          }
+
+          const distance = haversine(
+            userCoords.latitude,
+            userCoords.longitude,
+            vanLat,
+            vanLon
+          );
+          
+          return { ...van, distance: Math.round(distance * 10) / 10 };
+        });
+        
+        // Filter by radius if specified
+        if (radius && radius !== 'nationwide') {
+          const radiusMiles = Number(radius);
+          vans = vans.filter(van => van.distance <= radiusMiles);
+          console.log('[Van Controller] Filtered to', vans.length, 'vans within', radius, 'miles');
+        } else {
+          console.log('[Van Controller] Showing all', vans.length, 'vans nationwide (sorted by distance)');
+        }
+      } catch (err) {
+        console.warn('[Van Controller] Could not calculate distances:', err.message);
+        // Continue without distance calculation
+        vans = vans.map(van => ({ ...van, distance: 0 }));
+      }
+    } else {
+      // No postcode - set distance to 0
+      vans = vans.map(van => ({ ...van, distance: 0 }));
+    }
+
+    // Determine sort order
+    let sortOption = 'distance'; // Default: nearest first if postcode provided
+    
+    if (sort) {
+      sortOption = sort;
+    } else if (!postcode) {
+      sortOption = 'newest'; // Default to newest if no postcode
+    }
+    
+    // Apply sorting
+    switch (sortOption) {
+      case 'price-low':
+        vans.sort((a, b) => a.price - b.price);
+        break;
+      case 'price-high':
+        vans.sort((a, b) => b.price - a.price);
+        break;
+      case 'year-new':
+        vans.sort((a, b) => b.year - a.year);
+        break;
+      case 'year-old':
+        vans.sort((a, b) => a.year - b.year);
+        break;
+      case 'mileage-low':
+        vans.sort((a, b) => a.mileage - b.mileage);
+        break;
+      case 'mileage-high':
+        vans.sort((a, b) => b.mileage - a.mileage);
+        break;
+      case 'distance':
+        vans.sort((a, b) => a.distance - b.distance);
+        break;
+      case 'newest':
+      default:
+        vans.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        break;
+    }
+
+    console.log('[Van Controller] Found', vans.length, 'vans matching filters');
 
     return res.json({
       success: true,
       vans: vans,
-      total: total,
+      total: vans.length, // Update total to reflect filtered count
       pagination: {
         limit: parseInt(limit),
         skip: parseInt(skip),
-        hasMore: total > parseInt(skip) + parseInt(limit)
+        hasMore: vans.length > parseInt(skip) + parseInt(limit)
       }
     });
 
