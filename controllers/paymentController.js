@@ -876,7 +876,10 @@ async function handlePaymentSuccess(paymentIntent) {
                   phoneNumber: contactDetails.phoneNumber || van.sellerContact?.phoneNumber,
                   email: contactDetails.email || van.sellerContact?.email,
                   allowEmailContact: contactDetails.allowEmailContact || false,
-                  postcode: contactDetails.postcode || van.sellerContact?.postcode
+                  postcode: contactDetails.postcode || van.sellerContact?.postcode,
+                  businessName: advertData.businessName || van.sellerContact?.businessName || null,
+                  businessLogo: advertData.businessLogo || van.sellerContact?.businessLogo || null,
+                  businessWebsite: advertData.businessWebsite || van.sellerContact?.businessWebsite || null
                 };
                 
                 van.advertisingPackage = {
@@ -992,7 +995,10 @@ async function handlePaymentSuccess(paymentIntent) {
                     phoneNumber: contactDetails.phoneNumber,
                     email: contactDetails.email,
                     allowEmailContact: contactDetails.allowEmailContact || false,
-                    postcode: contactDetails.postcode
+                    postcode: contactDetails.postcode,
+                    businessName: advertData.businessName || null,
+                    businessLogo: advertData.businessLogo || null,
+                    businessWebsite: advertData.businessWebsite || null
                   },
                   advertisingPackage: {
                     packageId: purchase.packageId,

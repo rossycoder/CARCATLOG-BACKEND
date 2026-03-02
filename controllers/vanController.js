@@ -446,7 +446,10 @@ exports.publishVan = async (req, res) => {
       email: contactDetails?.email,
       allowEmailContact: contactDetails?.allowEmailContact || false,
       postcode: contactDetails?.postcode,
-      businessName: req.dealer?.businessName,
+      businessName: advertData?.businessName || req.dealer?.businessName,
+      businessLogo: advertData?.businessLogo || req.dealer?.logo,
+      businessWebsite: advertData?.businessWebsite || req.dealer?.website,
+      tradingName: req.dealer?.tradingName,
       ...req.dealer?.businessAddress
     };
     van.dealerId = req.dealerId;
