@@ -221,14 +221,6 @@ const getDashboardStats = async (req, res) => {
   }
 };
 
-module.exports = {
-  getAllListings,
-  getListingDetails,
-  updateListing,
-  deleteListing,
-  getDashboardStats
-};
-
 /**
  * Get API usage statistics (admin only)
  */
@@ -324,6 +316,113 @@ const getExcessiveAPICalls = async (req, res) => {
   }
 };
 
+
+/**
+ * Manually activate a van (admin only)
+ * POST /api/admin/vans/:id/activate
+ */
+const activateVan = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const Van = require('../models/Van');
+    
+    console.log(`🔧 [Admin] Manually activating van: ${id}`);
+    
+    // Find van
+    const van = await Van.findById(id);
+    
+    if (!van) {
+      return res.status(404).json({
+        success: false,
+        error: 'Van not found'
+      });
+    }
+    
+    // Check if already active
+    if (van.status === 'active') {
+      return res.json({
+        success: true,
+        message: 'Van is already active',
+        data: van
+      });
+    }
+    
+    // Activate van
+    van.status = 'active';
+    van.publishedAt = new Date();
+    
+    // If no advertising package, create a default one
+    if (!van.advertisingPackage || !van.advertisingPackage.packageId) {
+      van.advertisingPackage = {
+        packageId: 'bronze',
+        packageName: 'Bronze Package',
+        duration: '4 weeks',
+        price: 0,
+        purchaseDate: new Date(),
+        expiryDate: new Date(Date.now() + 28 * 24 * 60 * 60 * 1000) // 4 weeks
+      };
+    }
+    
+    await van.save();
+    
+    console.log(`✅ [Admin] Van activated: ${van._id}`);
+    console.log(`   Make/Model: ${van.make} ${van.model}`);
+    console.log(`   Registration: ${van.registrationNumber}`);
+    console.log(`   Status: ${van.status}`);
+    
+    res.json({
+      success: true,
+      message: 'Van activated successfully',
+      data: van
+    });
+    
+  } catch (error) {
+    console.error('❌ [Admin] Error activating van:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to activate van',
+      details: error.message
+    });
+  }
+};
+
+/**
+ * Get all vans with payment issues (admin only)
+ * GET /api/admin/vans/payment-issues
+ */
+const getVansWithPaymentIssues = async (req, res) => {
+  try {
+    const Van = require('../models/Van');
+    
+    // Find vans that have advertising package but are not active
+    const vans = await Van.find({
+      'advertisingPackage.stripePaymentIntentId': { $exists: true },
+      status: { $ne: 'active' }
+    })
+    .populate('userId', 'email name')
+    .sort({ createdAt: -1 })
+    .lean();
+    
+    console.log(`🔍 [Admin] Found ${vans.length} vans with payment issues`);
+    
+    res.json({
+      success: true,
+      data: {
+        vans,
+        count: vans.length
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ [Admin] Error fetching vans with payment issues:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch vans',
+      details: error.message
+    });
+  }
+};
+
 module.exports = {
   getAllListings,
   getListingDetails,
@@ -332,5 +431,7 @@ module.exports = {
   getDashboardStats,
   getAPIStats,
   getVehicleAPIStats,
-  getExcessiveAPICalls
+  getExcessiveAPICalls,
+  activateVan,
+  getVansWithPaymentIssues
 };

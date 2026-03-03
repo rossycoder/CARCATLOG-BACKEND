@@ -141,6 +141,9 @@ class LightweightVanService {
         annualTax: parsedData.annualTax || parsedData.roadTax || null,
         insuranceGroup: parsedData.insuranceGroup || null,
         
+        // Add structured running costs for frontend
+        runningCosts: this.calculateRunningCosts(parsedData),
+        
         // Add estimated pricing based on van age and type
         estimatedValue: this.calculateEstimatedPrice(parsedData),
         
@@ -606,6 +609,47 @@ class LightweightVanService {
       console.error(`❌ Error parsing DVLA response for van ${registration}:`, error.message);
       throw new Error(`Failed to parse DVLA response: ${error.message}`);
     }
+  }
+
+  /**
+   * Calculate running costs from van data
+   * @param {Object} vanData - Parsed van data
+   * @returns {Object} Running costs object
+   */
+  calculateRunningCosts(vanData) {
+    const taxCalculator = require('../utils/taxCalculator');
+    
+    const runningCosts = {
+      fuelEconomy: {
+        urban: vanData.urbanMpg || vanData.fuelEconomyUrban || '',
+        extraUrban: vanData.extraUrbanMpg || vanData.fuelEconomyExtraUrban || '',
+        combined: vanData.combinedMpg || vanData.fuelEconomyCombined || ''
+      },
+      annualTax: '',
+      insuranceGroup: vanData.insuranceGroup || '',
+      co2Emissions: vanData.co2Emissions || ''
+    };
+    
+    // Calculate annual tax if CO2 emissions available
+    if (vanData.co2Emissions && vanData.year) {
+      try {
+        const calculatedTax = taxCalculator.calculateAnnualTax(
+          vanData.co2Emissions,
+          vanData.year,
+          0 // Vans don't have expensive car supplement
+        );
+        runningCosts.annualTax = calculatedTax;
+      } catch (error) {
+        console.log(`⚠️  Could not calculate tax: ${error.message}`);
+      }
+    }
+    
+    // Use API-provided tax if available and calculated tax is not
+    if (!runningCosts.annualTax && (vanData.annualTax || vanData.roadTax)) {
+      runningCosts.annualTax = vanData.annualTax || vanData.roadTax;
+    }
+    
+    return runningCosts;
   }
 }
 

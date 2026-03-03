@@ -882,6 +882,18 @@ async function handlePaymentSuccess(paymentIntent) {
                   businessWebsite: advertData.businessWebsite || van.sellerContact?.businessWebsite || null
                 };
                 
+                // Save running costs from advertData
+                if (advertData.runningCosts) {
+                  console.log(`💰 Saving running costs from advertData:`, advertData.runningCosts);
+                  van.runningCosts = advertData.runningCosts;
+                }
+                
+                // Save features from advertData
+                if (advertData.features && Array.isArray(advertData.features)) {
+                  console.log(`✨ Saving features from advertData:`, advertData.features);
+                  van.features = advertData.features;
+                }
+                
                 van.advertisingPackage = {
                   packageId: purchase.packageId,
                   packageName: purchase.packageName,
@@ -899,66 +911,19 @@ async function handlePaymentSuccess(paymentIntent) {
                 await van.save();
                 console.log(`✅ Van advert UPDATED and published!`);
                 
-                // CRITICAL: Fetch MOT and Vehicle History after payment (like bike)
+                // CRITICAL: Use UniversalAutoCompleteService like bike (fetches FRESH data)
                 if (van.registrationNumber) {
-                  console.log(`🔍 [Van Payment] Checking for cached data: ${van.registrationNumber}`);
+                  console.log(`🔍 [Van Payment] Calling UniversalAutoCompleteService for van: ${van.registrationNumber}`);
+                  console.log(`   💰 Payment completed - fetching FRESH vehicle data (not cache)`);
                   
-                  // Check if data already cached
-                  const summary = await safeAPI.getVehicleSummary(van.registrationNumber);
-                  
-                  if (summary && summary.hasCachedData) {
-                    console.log(`✅ [Van Payment] Using cached data for ${van.registrationNumber}`);
-                    console.log(`   💰 Skipping API calls - using cached data`);
-                  } else {
-                    console.log(`📞 [Van Payment] Fetching MOT and history data for ${van.registrationNumber}`);
-                    
-                    const HistoryService = require('../services/historyService');
-                    const MOTHistoryService = require('../services/motHistoryService');
-                    
-                    // Create service instances
-                    const historyService = new HistoryService();
-                    const motHistoryService = new MOTHistoryService();
-                    
-                    // Fetch MOT history and vehicle history in parallel using safeAPI
-                    const [motResult, historyResult] = await Promise.allSettled([
-                      safeAPI.call('mothistory', van.registrationNumber, null, async () => {
-                        return await motHistoryService.getMOTHistory(van.registrationNumber);
-                      }),
-                      safeAPI.call('vehiclehistory', van.registrationNumber, null, async () => {
-                        return await historyService.checkVehicleHistory(van.registrationNumber);
-                      })
-                    ]);
-                    
-                    // Update MOT data
-                    if (motResult.status === 'fulfilled' && motResult.value?.data) {
-                      const motData = motResult.value.data;
-                      van.motHistory = motData.motHistory || [];
-                      van.motDue = motData.mot?.motDueDate || null;
-                      van.motStatus = motData.mot?.motStatus || null;
-                      van.motExpiry = motData.mot?.motDueDate || null;
-                      console.log(`✅ [Van Payment] MOT history fetched: ${van.motHistory.length} tests`);
-                    }
-                    
-                    // Update vehicle history data
-                    if (historyResult.status === 'fulfilled' && historyResult.value?.data) {
-                      const historyData = historyResult.value.data;
-                      van.historyCheckData = {
-                        previousKeepers: historyData.previousKeepers || 0,
-                        writeOffCategory: historyData.writeOffCategory || null,
-                        stolen: historyData.stolen || false,
-                        scrapped: historyData.scrapped || false,
-                        exported: historyData.exported || false,
-                        colourChanges: historyData.colourChanges || 0,
-                        plateChanges: historyData.plateChanges || 0
-                      };
-                      van.historyCheckStatus = 'completed';
-                      van.historyCheckDate = new Date();
-                      console.log(`✅ [Van Payment] Vehicle history fetched: ${historyData.previousKeepers || 0} previous keepers`);
-                    }
-                    
-                    // Save updated van with MOT and history data
-                    await van.save();
-                    console.log(`✅ [Van Payment] Van updated with MOT and history data`);
+                  try {
+                    const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');
+                    const service = new UniversalAutoCompleteService();
+                    await service.completeCarData(van, true); // forceRefresh = true for fresh data
+                    console.log(`✅ [Van Payment] MOT history and vehicle data fetched and saved`);
+                  } catch (error) {
+                    console.error(`❌ [Van Payment] Error fetching vehicle data:`, error.message);
+                    // Don't fail payment if data fetch fails
                   }
                 }
               } else {
@@ -1000,6 +965,8 @@ async function handlePaymentSuccess(paymentIntent) {
                     businessLogo: advertData.businessLogo || null,
                     businessWebsite: advertData.businessWebsite || null
                   },
+                  runningCosts: advertData.runningCosts || undefined,
+                  features: advertData.features || [],
                   advertisingPackage: {
                     packageId: purchase.packageId,
                     packageName: purchase.packageName,
@@ -1017,57 +984,19 @@ async function handlePaymentSuccess(paymentIntent) {
                 await van.save();
                 console.log(`✅ Van advert CREATED and published!`);
                 
-                // CRITICAL: Fetch MOT and Vehicle History after creating new van
+                // CRITICAL: Use UniversalAutoCompleteService like bike (fetches FRESH data)
                 if (van.registrationNumber) {
-                  console.log(`🔍 [Van Payment] Fetching MOT and history for new van: ${van.registrationNumber}`);
+                  console.log(`🔍 [Van Payment - New] Calling UniversalAutoCompleteService for van: ${van.registrationNumber}`);
                   
-                  const HistoryService = require('../services/historyService');
-                  const MOTHistoryService = require('../services/motHistoryService');
-                  
-                  // Create service instances
-                  const historyService = new HistoryService();
-                  const motHistoryService = new MOTHistoryService();
-                  
-                  // Fetch MOT history and vehicle history in parallel using safeAPI
-                  const [motResult, historyResult] = await Promise.allSettled([
-                    safeAPI.call('mothistory', van.registrationNumber, null, async () => {
-                      return await motHistoryService.getMOTHistory(van.registrationNumber);
-                    }),
-                    safeAPI.call('vehiclehistory', van.registrationNumber, null, async () => {
-                      return await historyService.checkVehicleHistory(van.registrationNumber);
-                    })
-                  ]);
-                  
-                  // Update MOT data
-                  if (motResult.status === 'fulfilled' && motResult.value?.data) {
-                    const motData = motResult.value.data;
-                    van.motHistory = motData.motHistory || [];
-                    van.motDue = motData.mot?.motDueDate || null;
-                    van.motStatus = motData.mot?.motStatus || null;
-                    van.motExpiry = motData.mot?.motDueDate || null;
-                    console.log(`✅ [Van Payment] MOT history fetched: ${van.motHistory.length} tests`);
+                  try {
+                    const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');
+                    const service = new UniversalAutoCompleteService();
+                    await service.completeCarData(van, true); // forceRefresh = true for fresh data
+                    console.log(`✅ [Van Payment - New] MOT history and vehicle data fetched and saved`);
+                  } catch (error) {
+                    console.error(`❌ [Van Payment - New] Error fetching vehicle data:`, error.message);
+                    // Don't fail payment if data fetch fails
                   }
-                  
-                  // Update vehicle history data
-                  if (historyResult.status === 'fulfilled' && historyResult.value?.data) {
-                    const historyData = historyResult.value.data;
-                    van.historyCheckData = {
-                      previousKeepers: historyData.previousKeepers || 0,
-                      writeOffCategory: historyData.writeOffCategory || null,
-                      stolen: historyData.stolen || false,
-                      scrapped: historyData.scrapped || false,
-                      exported: historyData.exported || false,
-                      colourChanges: historyData.colourChanges || 0,
-                      plateChanges: historyData.plateChanges || 0
-                    };
-                    van.historyCheckStatus = 'completed';
-                    van.historyCheckDate = new Date();
-                    console.log(`✅ [Van Payment] Vehicle history fetched: ${historyData.previousKeepers || 0} previous keepers`);
-                  }
-                  
-                  // Save updated van with MOT and history data
-                  await van.save();
-                  console.log(`✅ [Van Payment] Van updated with MOT and history data`);
                 }
               }
               
@@ -1083,8 +1012,14 @@ async function handlePaymentSuccess(paymentIntent) {
               }
               return;
             }
-            
-            // Handle CAR payments (existing code)
+          } catch (error) {
+            console.error(`⚠️  Error processing vehicle payment:`, error.message);
+            console.error(error.stack);
+            // Continue to allow other payment processing
+          }
+          
+          // Handle CAR payments (existing code)
+          try {
             console.log(`📦 Creating car from purchase data:`);
             console.log(`   Advert ID: ${advertId}`);
             console.log(`   Vehicle: ${vehicleData.make} ${vehicleData.model}`);
@@ -2547,6 +2482,97 @@ async function autoCompletePurchase(req, res) {
 
     // Fetch updated purchase
     const updatedPurchase = await AdvertisingPackagePurchase.findOne({ stripeSessionId: sessionId });
+
+    // CRITICAL: Fetch MOT and History data for the vehicle (if not already done)
+    if (updatedPurchase.vehicleId) {
+      const vehicleType = updatedPurchase.metadata?.get('vehicleType') || 'car';
+      console.log(`🔍 [Auto-Complete] Fetching MOT/History for ${vehicleType}: ${updatedPurchase.vehicleId}`);
+      
+      try {
+        let vehicle;
+        let registrationNumber;
+        
+        if (vehicleType === 'van') {
+          const Van = require('../models/Van');
+          vehicle = await Van.findById(updatedPurchase.vehicleId);
+          registrationNumber = vehicle?.registrationNumber;
+        } else if (vehicleType === 'bike') {
+          const Bike = require('../models/Bike');
+          vehicle = await Bike.findById(updatedPurchase.vehicleId);
+          registrationNumber = vehicle?.registrationNumber;
+        } else {
+          const Car = require('../models/Car');
+          vehicle = await Car.findById(updatedPurchase.vehicleId);
+          registrationNumber = vehicle?.registrationNumber;
+        }
+        
+        if (vehicle && registrationNumber) {
+          console.log(`📞 [Auto-Complete] Calling MOT/History APIs for: ${registrationNumber}`);
+          
+          const safeAPI = require('../services/safeAPIService');
+          const HistoryService = require('../services/historyService');
+          const MOTHistoryService = require('../services/motHistoryService');
+          
+          const historyService = new HistoryService();
+          const motHistoryService = new MOTHistoryService();
+          
+          // Fetch MOT and History in parallel
+          const [motResult, historyResult] = await Promise.allSettled([
+            safeAPI.call('mothistory', registrationNumber, null, async () => {
+              return await motHistoryService.getMOTHistory(registrationNumber);
+            }),
+            safeAPI.call('vehiclehistory', registrationNumber, null, async () => {
+              return await historyService.checkVehicleHistory(registrationNumber);
+            })
+          ]);
+          
+          console.log(`✅ [Auto-Complete] API Results - MOT: ${motResult.status}, History: ${historyResult.status}`);
+          
+          // Update vehicle with MOT data
+          if (motResult.status === 'fulfilled' && motResult.value) {
+            const motData = motResult.value.data || motResult.value;
+            if (motData.motHistory && Array.isArray(motData.motHistory)) {
+              vehicle.motHistory = motData.motHistory;
+              if (motData.mot?.motDueDate) {
+                vehicle.motDue = motData.mot.motDueDate;
+                vehicle.motExpiry = motData.mot.motDueDate;
+              }
+              if (motData.mot?.motStatus) {
+                vehicle.motStatus = motData.mot.motStatus;
+              }
+              console.log(`✅ [Auto-Complete] MOT data updated: ${vehicle.motHistory.length} tests`);
+            }
+          }
+          
+          // Update vehicle with History data
+          if (historyResult.status === 'fulfilled' && historyResult.value) {
+            const historyData = historyResult.value;
+            vehicle.historyCheckData = {
+              previousKeepers: historyData.previousKeepers || historyData.keeperChanges || 0,
+              writeOffCategory: historyData.writeOffCategory || null,
+              stolen: historyData.stolen || false,
+              scrapped: historyData.scrapped || false,
+              exported: historyData.exported || false,
+              colourChanges: historyData.colourChanges || 0,
+              plateChanges: historyData.plateChanges || 0,
+              outstandingFinance: historyData.outstandingFinance || false
+            };
+            vehicle.historyCheckStatus = 'completed';
+            vehicle.historyCheckDate = new Date();
+            console.log(`✅ [Auto-Complete] History data updated: ${vehicle.historyCheckData.previousKeepers} previous keepers`);
+          }
+          
+          // Save vehicle with updated data
+          vehicle.markModified('motHistory');
+          vehicle.markModified('historyCheckData');
+          await vehicle.save();
+          console.log(`✅ [Auto-Complete] Vehicle data saved to database`);
+        }
+      } catch (apiError) {
+        console.error(`❌ [Auto-Complete] Error fetching vehicle data:`, apiError.message);
+        // Don't fail the response if API calls fail
+      }
+    }
 
     res.json({
       success: true,

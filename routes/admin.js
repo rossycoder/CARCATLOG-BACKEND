@@ -64,4 +64,18 @@ router.get('/vehicle-api/:vrm', adminController.getVehicleAPIStats);
  */
 router.get('/excessive-api-calls', adminController.getExcessiveAPICalls);
 
+/**
+ * @route   POST /api/admin/vans/:id/activate
+ * @desc    Manually activate a van
+ * @access  Admin only
+ */
+router.post('/vans/:id/activate', adminController.activateVan);
+
+/**
+ * @route   GET /api/admin/vans/payment-issues
+ * @desc    Get all vans with payment issues
+ * @access  Admin only
+ */
+router.get('/vans/payment-issues', adminController.getVansWithPaymentIssues);
+
 module.exports = router;

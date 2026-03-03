@@ -26,6 +26,9 @@ router.post('/test-complete-purchase', paymentController.completeTestPurchase);
 // POST /api/payments/auto-complete-purchase - Auto-complete purchase after payment (bypasses webhook)
 router.post('/auto-complete-purchase', paymentController.autoCompletePurchase);
 
+// POST /api/payments/auto-complete - Alias for auto-complete-purchase
+router.post('/auto-complete', paymentController.autoCompletePurchase);
+
 // GET /api/payments/session/:sessionId - Get checkout session details
 router.get('/session/:sessionId', paymentController.getSessionDetails);
 
