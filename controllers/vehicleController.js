@@ -1166,7 +1166,7 @@ class VehicleController {
         sellerType,
         writeOffStatus,
         sort,
-        limit = 50,
+        limit = 100, // Increased from 50 to 100 to show all cars
         skip = 0 
       } = req.query;
 

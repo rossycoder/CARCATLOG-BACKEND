@@ -475,16 +475,11 @@ async function handlePaymentSuccess(paymentIntent) {
         try {
           const historyService = new HistoryService();
           
-          // Check if data already exists in cache
-          const summary = await safeAPI.getVehicleSummary(paymentData.vrm);
-          
-          if (summary && summary.hasCachedData) {
-            console.log(`✅ [Payment] Vehicle history already cached for ${paymentData.vrm}`);
-          } else {
-            // Only call API if not cached
-            await historyService.checkVehicleHistory(paymentData.vrm, true);
-            console.log(`✅ [Payment] Vehicle history report generated for VRM: ${paymentData.vrm}`);
-          }
+          // CRITICAL: ALWAYS fetch fresh data after payment (bypass cache)
+          // Payment is a trigger event that requires up-to-date MOT and history data
+          console.log(`📞 [Payment] Fetching FRESH vehicle history for: ${paymentData.vrm}`);
+          await historyService.checkVehicleHistory(paymentData.vrm, true); // forceRefresh = true
+          console.log(`✅ [Payment] Vehicle history report generated for VRM: ${paymentData.vrm}`);
         } catch (error) {
           console.error(`❌ [Payment] Error generating vehicle history:`, error.message);
           // Don't fail payment if history generation fails
@@ -679,51 +674,43 @@ async function handlePaymentSuccess(paymentIntent) {
                 if (bike.registrationNumber) {
                   console.log(`🔍 [Payment] Checking vehicle history for bike: ${bike.registrationNumber}`);
                   try {
-                    // Check if data already cached
-                    const summary = await safeAPI.getVehicleSummary(bike.registrationNumber);
+                    // CRITICAL: ALWAYS fetch fresh data after payment (bypass cache)
+                    console.log(`📞 [Payment] Fetching FRESH MOT and history data for ${bike.registrationNumber}`);
                     
-                    if (summary && summary.hasCachedData) {
-                      console.log(`✅ [Payment] Vehicle data already cached for ${bike.registrationNumber}`);
-                      console.log(`   💰 Skipping API calls - using cached data`);
-                    } else {
-                      console.log(`📞 [Payment] Fetching MOT and history data for ${bike.registrationNumber}`);
-                      
-                      const historyService = require('../services/historyService');
-                      const motHistoryService = require('../services/motHistoryService');
-                      
-                      // Fetch MOT history and vehicle history in parallel using safeAPI
-                      const [motResult, historyResult] = await Promise.allSettled([
-                        safeAPI.call('mothistory', bike.registrationNumber, null, async () => {
-                          return await motHistoryService.getMOTHistory(bike.registrationNumber);
-                        }),
-                        safeAPI.call('vehiclehistory', bike.registrationNumber, null, async () => {
-                          return await historyService.getVehicleHistory(bike.registrationNumber);
-                        })
-                      ]);
-                      
-                      // Update MOT data
-                      if (motResult.status === 'fulfilled' && motResult.value?.data) {
-                        const motData = motResult.value.data;
-                        bike.motHistory = motData.motHistory || [];
-                        bike.motDue = motData.mot?.motDueDate || null;
-                        bike.motStatus = motData.mot?.motStatus || null;
-                        bike.motExpiry = motData.mot?.motDueDate || null;
-                        console.log(`✅ [Payment] MOT history fetched: ${bike.motHistory.length} tests`);
-                      }
-                      
-                      // Update history data (previous owners)
-                      if (historyResult.status === 'fulfilled' && historyResult.value?.data) {
-                        const histData = historyResult.value.data;
-                        if (!bike.historyCheckData) bike.historyCheckData = {};
-                        bike.historyCheckData.previousKeepers = histData.previousOwners || null;
-                        bike.historyCheckData.isWrittenOff = histData.writeOffCategory !== 'none';
-                        bike.historyCheckData.writeOffCategory = histData.writeOffCategory || 'none';
-                        console.log(`✅ [Payment] Vehicle history fetched: ${bike.historyCheckData.previousKeepers} previous owners`);
-                      }
-                      
-                      await bike.save();
-                      console.log(`✅ [Payment] Vehicle history data saved to database`);
+                    const HistoryService = require('../services/historyService');
+                    const MOTHistoryService = require('../services/motHistoryService');
+                    
+                    const historyService = new HistoryService();
+                    const motHistoryService = new MOTHistoryService();
+                    
+                    // Fetch MOT history and vehicle history in parallel - FORCE REFRESH
+                    const [motResult, historyResult] = await Promise.allSettled([
+                      motHistoryService.getMOTHistory(bike.registrationNumber),
+                      historyService.checkVehicleHistory(bike.registrationNumber, true) // forceRefresh = true
+                    ]);
+                    
+                    // Update MOT data
+                    if (motResult.status === 'fulfilled' && motResult.value) {
+                      const motData = motResult.value;
+                      bike.motHistory = motData.motTests || motData.motHistory || [];
+                      bike.motDue = motData.motDueDate || motData.motExpiryDate || null;
+                      bike.motStatus = motData.motStatus || null;
+                      bike.motExpiry = motData.motDueDate || motData.motExpiryDate || null;
+                      console.log(`✅ [Payment] MOT history fetched: ${bike.motHistory.length} tests`);
                     }
+                    
+                    // Update history data (previous owners)
+                    if (historyResult.status === 'fulfilled' && historyResult.value) {
+                      const histData = historyResult.value;
+                      if (!bike.historyCheckData) bike.historyCheckData = {};
+                      bike.historyCheckData.previousKeepers = histData.previousOwners || histData.numberOfPreviousKeepers || null;
+                      bike.historyCheckData.isWrittenOff = histData.writeOffCategory !== 'none';
+                      bike.historyCheckData.writeOffCategory = histData.writeOffCategory || 'none';
+                      console.log(`✅ [Payment] Vehicle history fetched: ${bike.historyCheckData.previousKeepers} previous owners`);
+                    }
+                    
+                    await bike.save();
+                    console.log(`✅ [Payment] Vehicle history data saved to database`);
                   } catch (error) {
                     console.error(`❌ [Payment] Error fetching vehicle history for bike:`, error.message);
                     // Don't fail payment if history fetch fails
@@ -1020,6 +1007,11 @@ async function handlePaymentSuccess(paymentIntent) {
           
           // Handle CAR payments (existing code)
           try {
+            // Parse stored data from metadata
+            const advertData = JSON.parse(purchase.metadata.get('advertData') || '{}');
+            const vehicleData = JSON.parse(purchase.metadata.get('vehicleData') || '{}');
+            const contactDetails = JSON.parse(purchase.metadata.get('contactDetails') || '{}');
+            
             console.log(`📦 Creating car from purchase data:`);
             console.log(`   Advert ID: ${advertId}`);
             console.log(`   Vehicle: ${vehicleData.make} ${vehicleData.model}`);
@@ -1143,9 +1135,10 @@ async function handlePaymentSuccess(paymentIntent) {
               console.log(`🔍 FULL advertData received:`, JSON.stringify(advertData, null, 2));
               
               // CRITICAL: Preserve existing business info if new data is empty
-              const finalBusinessName = advertData?.businessName || car.sellerContact?.businessName;
-              const finalBusinessLogo = advertData?.businessLogo || car.sellerContact?.businessLogo;
-              const finalBusinessWebsite = advertData?.businessWebsite || car.sellerContact?.businessWebsite;
+              // Use empty string as fallback to avoid "undefined" strings
+              const finalBusinessName = advertData?.businessName || car.sellerContact?.businessName || '';
+              const finalBusinessLogo = advertData?.businessLogo || car.sellerContact?.businessLogo || '';
+              const finalBusinessWebsite = advertData?.businessWebsite || car.sellerContact?.businessWebsite || '';
               
               console.log(`📝 Final business info to save:`);
               console.log(`   Business Name: "${finalBusinessName}"`);
@@ -1189,27 +1182,71 @@ async function handlePaymentSuccess(paymentIntent) {
                 try {
                   console.log(`🔍 [Payment] Checking vehicle data for car: ${car.registrationNumber}`);
                   
-                  // Check if data already cached
-                  const summary = await safeAPI.getVehicleSummary(car.registrationNumber);
+                  // CRITICAL: ALWAYS fetch fresh data after payment (bypass cache)
+                  console.log(`📞 [Payment] Fetching FRESH MOT and vehicle history for: ${car.registrationNumber}`);
                   
-                  if (summary && summary.hasCachedData) {
-                    console.log(`✅ [Payment] Vehicle data already cached for ${car.registrationNumber}`);
-                    console.log(`   💰 Skipping API calls - using cached data`);
-                  } else {
-                    console.log(`📞 [Payment] Fetching FRESH vehicle data from Universal Service: ${car.registrationNumber}`);
+                  try {
+                    const HistoryService = require('../services/historyService');
+                    const MOTHistoryService = require('../services/motHistoryService');
                     
-                    // Set flag to skip API calls in pre-save hooks
-                    car._skipAPICallsInHooks = true;
+                    const historyService = new HistoryService();
+                    const motHistoryService = new MOTHistoryService();
                     
-                    // DISABLED: Universal Service makes unlimited API calls
-                    // Instead, rely on data already fetched during car creation
-                    // await universalService.completeCarData(car, true); // forceRefresh = true
+                    // Fetch MOT history and vehicle history in parallel - FORCE REFRESH
+                    const [motResult, historyResult] = await Promise.allSettled([
+                      motHistoryService.getMOTHistory(car.registrationNumber),
+                      historyService.checkVehicleHistory(car.registrationNumber, true) // forceRefresh = true
+                    ]);
                     
-                    console.log(`⚠️  [Payment] Universal Service call DISABLED to prevent unlimited API usage`);
-                    console.log(`   Using existing vehicle data from car creation`);
-                    console.log(`   Detected fuel type: ${car.fuelType}`);
-                    console.log(`   Battery capacity: ${car.batteryCapacity || 'N/A'} kWh`);
-                    console.log(`   Electric range: ${car.electricRange || 'N/A'} miles`);
+                    // Process MOT history result
+                    if (motResult.status === 'fulfilled' && motResult.value) {
+                      console.log(`✅ [Car Payment] MOT history fetched successfully`);
+                      
+                      // Update car with MOT data
+                      if (motResult.value.motTests && motResult.value.motTests.length > 0) {
+                        car.motHistory = motResult.value.motTests;
+                        
+                        const latestTest = motResult.value.motTests[0];
+                        if (latestTest.expiryDate) {
+                          car.motDue = latestTest.expiryDate;
+                          car.motExpiry = latestTest.expiryDate;
+                          car.motStatus = latestTest.testResult === 'PASSED' ? 'Valid' : 'Expired';
+                        }
+                      }
+                    } else {
+                      console.warn(`⚠️  [Car Payment] MOT history fetch failed:`, motResult.reason?.message);
+                    }
+                    
+                    // Process vehicle history result
+                    if (historyResult.status === 'fulfilled' && historyResult.value) {
+                      console.log(`✅ [Car Payment] Vehicle history fetched successfully`);
+                      
+                      // Update car with history data
+                      if (historyResult.value.previousOwners !== undefined) {
+                        car.previousOwners = historyResult.value.previousOwners;
+                      }
+                      if (historyResult.value.colourChanges !== undefined) {
+                        car.colourChanges = historyResult.value.colourChanges;
+                      }
+                      if (historyResult.value.plateChanges !== undefined) {
+                        car.plateChanges = historyResult.value.plateChanges;
+                      }
+                      
+                      // CRITICAL: Save historyCheckId to link Car with VehicleHistory
+                      if (historyResult.value._id) {
+                        car.historyCheckId = historyResult.value._id.toString();
+                        car.historyCheckStatus = 'verified';
+                        car.historyCheckDate = historyResult.value.checkDate || new Date();
+                        console.log(`✅ [Car Payment] Linked history check: ${car.historyCheckId}`);
+                      }
+                    } else {
+                      console.warn(`⚠️  [Car Payment] Vehicle history fetch failed:`, historyResult.reason?.message);
+                    }
+                    
+                    console.log(`✅ [Car Payment] API calls completed for ${car.registrationNumber}`);
+                  } catch (error) {
+                    console.error(`❌ [Car Payment] Error fetching vehicle data:`, error.message);
+                    // Don't fail payment if data fetch fails
                   }
                 } catch (error) {
                   console.error(`⚠️  [Payment] Vehicle data check failed: ${error.message}`);
@@ -1220,6 +1257,15 @@ async function handlePaymentSuccess(paymentIntent) {
               // CRITICAL: Use findOneAndUpdate with $set to properly save Mixed type fields (sellerContact)
               // This ensures business logo and website are saved correctly
               const updateFields = {
+                userId: userId || car.userId, // CRITICAL FIX: Always save userId
+                price: car.price,
+                description: car.description,
+                images: car.images,
+                postcode: car.postcode,
+                locationName: car.locationName,
+                latitude: car.latitude,
+                longitude: car.longitude,
+                location: car.location,
                 advertisingPackage: car.advertisingPackage,
                 advertStatus: car.advertStatus,
                 publishedAt: car.publishedAt,
@@ -1230,6 +1276,13 @@ async function handlePaymentSuccess(paymentIntent) {
                 'sellerContact.allowEmailContact': car.sellerContact.allowEmailContact,
                 'sellerContact.postcode': car.sellerContact.postcode
               };
+              
+              console.log(`🔍 CRITICAL FIELDS in updateFields:`, {
+                userId: updateFields.userId,
+                latitude: updateFields.latitude,
+                longitude: updateFields.longitude,
+                postcode: updateFields.postcode
+              });
               
               // Add business info if present
               if (finalBusinessName) updateFields['sellerContact.businessName'] = finalBusinessName;
@@ -1242,32 +1295,39 @@ async function handlePaymentSuccess(paymentIntent) {
                 businessWebsite: updateFields['sellerContact.businessWebsite']
               });
               
-              // CRITICAL: Normalize BMW series models (318d → 3 Series)
-              if (car.make && car.make.toUpperCase() === 'BMW' && car.model) {
-                const seriesMatch = car.model.match(/^([1-8])(\d{2})[a-z]*/i);
-                if (seriesMatch) {
-                  const seriesNumber = seriesMatch[1];
-                  const seriesModel = `${seriesNumber} Series`;
-                  const fullVariant = car.model;
-                  
-                  console.log(`🔄 Normalizing BMW model: "${car.model}" → "${seriesModel}"`);
-                  updateFields.model = seriesModel;
-                  
-                  // Update variant if it's empty or same as model
-                  if (!car.variant || car.variant === car.model) {
-                    updateFields.variant = fullVariant;
-                    console.log(`🔄 Setting variant to: "${fullVariant}"`);
-                  }
-                }
-              }
-              
               // Update all other modified fields from universalService
               if (car.isModified('fuelType')) updateFields.fuelType = car.fuelType;
               if (car.isModified('batteryCapacity')) updateFields.batteryCapacity = car.batteryCapacity;
               if (car.isModified('electricRange')) updateFields.electricRange = car.electricRange;
               if (car.isModified('runningCosts')) updateFields.runningCosts = car.runningCosts;
-              if (car.isModified('variant') && !updateFields.variant) updateFields.variant = car.variant;
-              if (car.isModified('model') && !updateFields.model) updateFields.model = car.model;
+              if (car.isModified('variant')) updateFields.variant = car.variant;
+              if (car.isModified('model')) updateFields.model = car.model;
+              
+              // CRITICAL FIX: Add MOT history and vehicle history data to updateFields
+              if (car.motHistory && car.motHistory.length > 0) {
+                updateFields.motHistory = car.motHistory;
+                updateFields.motDue = car.motDue;
+                updateFields.motExpiry = car.motExpiry;
+                updateFields.motStatus = car.motStatus;
+                console.log(`✅ Adding MOT history to update: ${car.motHistory.length} tests`);
+              }
+              
+              if (car.historyCheckId) {
+                updateFields.historyCheckId = car.historyCheckId;
+                updateFields.historyCheckStatus = car.historyCheckStatus;
+                updateFields.historyCheckDate = car.historyCheckDate;
+                console.log(`✅ Adding historyCheckId to update: ${car.historyCheckId}`);
+              }
+              
+              if (car.previousOwners !== undefined) {
+                updateFields.previousOwners = car.previousOwners;
+              }
+              if (car.colourChanges !== undefined) {
+                updateFields.colourChanges = car.colourChanges;
+              }
+              if (car.plateChanges !== undefined) {
+                updateFields.plateChanges = car.plateChanges;
+              }
               
               console.log(`🔍 Update fields to save:`, JSON.stringify(updateFields, null, 2));
               
@@ -1289,6 +1349,15 @@ async function handlePaymentSuccess(paymentIntent) {
                 sellerType: savedCar.sellerContact?.type
               });
               
+              console.log(`🔍 Verification - Critical fields in saved car:`, {
+                userId: savedCar.userId,
+                latitude: savedCar.latitude,
+                longitude: savedCar.longitude,
+                postcode: savedCar.postcode,
+                historyCheckId: savedCar.historyCheckId,
+                motHistoryCount: savedCar.motHistory?.length || 0
+              });
+              
             } else {
               // Check if a car with this payment intent already exists (prevent duplicates)
               const existingCarWithPayment = await Car.findOne({
@@ -1306,24 +1375,30 @@ async function handlePaymentSuccess(paymentIntent) {
               // Get userId from purchase metadata or create user automatically
               let userId = purchase.metadata.get('userId');
               
+              console.log(`🔍 [CAR Payment] Checking userId for new car creation`);
+              console.log(`   userId from metadata: ${userId || 'NULL'}`);
+              console.log(`   contactDetails.email: ${contactDetails.email || 'NULL'}`);
+              console.log(`   purchase.customerEmail: ${purchase.customerEmail || 'NULL'}`);
+              
               // AUTOMATIC FIX: Create user account if it doesn't exist
-              if (!userId && contactDetails.email) {
-                console.log(`👤 No userId found, checking if user exists for email: ${contactDetails.email}`);
+              const userEmail = contactDetails.email || purchase.customerEmail;
+              if (!userId && userEmail) {
+                console.log(`👤 No userId found, checking if user exists for email: ${userEmail}`);
                 
                 const User = require('../models/User');
-                let user = await User.findOne({ email: contactDetails.email });
+                let user = await User.findOne({ email: userEmail });
                 
                 if (!user) {
                   // Create user account automatically
-                  console.log(`👤 Creating new user account for: ${contactDetails.email}`);
+                  console.log(`👤 Creating new user account for: ${userEmail}`);
                   const bcrypt = require('bcryptjs');
                   
-                  const tempPassword = Math.random().toString(36).slice(-8);
+                  const tempPassword = Math.random().toString(36).slice(-8) + 'Aa1!';
                   const hashedPassword = await bcrypt.hash(tempPassword, 10);
                   
                   user = new User({
-                    name: contactDetails.email.split('@')[0],
-                    email: contactDetails.email,
+                    name: userEmail.split('@')[0],
+                    email: userEmail,
                     password: hashedPassword,
                     isEmailVerified: true, // Auto-verify since they completed payment
                     provider: 'local',
@@ -1332,16 +1407,26 @@ async function handlePaymentSuccess(paymentIntent) {
                   
                   await user.save();
                   console.log(`✅ User created automatically: ${user._id}`);
+                  console.log(`   Email: ${userEmail}`);
                   console.log(`   Temp password: ${tempPassword}`);
+                  console.log(`   ⚠️  SEND THIS PASSWORD TO USER VIA EMAIL!`);
                 } else {
                   console.log(`✅ Found existing user: ${user._id}`);
                 }
                 
                 userId = user._id;
+                console.log(`✅ userId set to: ${userId}`);
+              } else if (!userId) {
+                console.error(`❌ CRITICAL: No userId and no email found! Car will be created without userId!`);
+                console.error(`   contactDetails:`, contactDetails);
+                console.error(`   purchase.customerEmail:`, purchase.customerEmail);
+                console.error(`   This car will NOT appear in My Listings!`);
               }
               
               if (userId) {
-                console.log(`   Setting userId: ${userId}`);
+                console.log(`   ✅ Final userId for car: ${userId}`);
+              } else {
+                console.error(`   ❌ NO userId - car will be orphaned!`);
               }
               
               // CRITICAL FIX: Normalize data before creating car
@@ -1396,6 +1481,22 @@ async function handlePaymentSuccess(paymentIntent) {
               console.log(`   Engine size: "${vehicleData.engineSize}" → ${normalizedEngineSize}`);
               console.log(`   Transmission: "${vehicleData.transmission}" → "${normalizedTransmission}"`);
               console.log(`   Fuel type: "${vehicleData.fuelType}" → "${normalizedFuelType}"`);
+              
+              // CRITICAL: Fetch coordinates from postcode for NEW car
+              let locationName, latitude, longitude;
+              if (contactDetails.postcode) {
+                try {
+                  console.log(`📍 Fetching coordinates for postcode: ${contactDetails.postcode}`);
+                  const postcodeService = require('../services/postcodeService');
+                  const postcodeData = await postcodeService.lookupPostcode(contactDetails.postcode);
+                  locationName = postcodeData.locationName;
+                  latitude = postcodeData.latitude;
+                  longitude = postcodeData.longitude;
+                  console.log(`✅ Coordinates: ${latitude}, ${longitude} (${locationName})`);
+                } catch (error) {
+                  console.warn(`⚠️  Could not geocode postcode ${contactDetails.postcode}: ${error.message}`);
+                }
+              }
               
               // Import validator
               const CarDataValidator = require('../utils/carDataValidator');
@@ -1511,27 +1612,77 @@ async function handlePaymentSuccess(paymentIntent) {
                 try {
                   console.log(`🔍 [Payment] Checking vehicle data for new car: ${cleanedCarData.registrationNumber}`);
                   
-                  // Check if data already cached
-                  const summary = await safeAPI.getVehicleSummary(cleanedCarData.registrationNumber);
+                  // CRITICAL: ALWAYS fetch fresh data after payment (bypass cache)
+                  console.log(`📞 [Payment - New Car] Fetching FRESH MOT and vehicle history: ${cleanedCarData.registrationNumber}`);
                   
-                  if (summary && summary.hasCachedData) {
-                    console.log(`✅ [Payment] Vehicle data already cached for ${cleanedCarData.registrationNumber}`);
-                    console.log(`   💰 Skipping API calls - using cached data`);
-                  } else {
-                    console.log(`📞 [Payment] Fetching FRESH vehicle data from Universal Service: ${cleanedCarData.registrationNumber}`);
+                  try {
+                    const HistoryService = require('../services/historyService');
+                    const MOTHistoryService = require('../services/motHistoryService');
                     
-                    // DISABLED: Universal Service makes unlimited API calls
-                    // Instead, rely on data already provided in vehicleData
-                    // const tempCar = new Car(cleanedCarData);
-                    // tempCar._skipAPICallsInHooks = true;
-                    // const completeVehicle = await universalService.completeCarData(tempCar, true);
+                    const historyService = new HistoryService();
+                    const motHistoryService = new MOTHistoryService();
                     
-                    console.log(`⚠️  [Payment] Universal Service call DISABLED to prevent unlimited API usage`);
-                    console.log(`   Using vehicle data provided from frontend`);
-                    console.log(`   Fuel type: ${cleanedCarData.fuelType}`);
-                    console.log(`   Battery capacity: ${cleanedCarData.batteryCapacity || 'N/A'} kWh`);
-                    console.log(`   Electric range: ${cleanedCarData.electricRange || 'N/A'} miles`);
+                    // Fetch MOT history and vehicle history in parallel - FORCE REFRESH
+                    const [motResult, historyResult] = await Promise.allSettled([
+                      motHistoryService.getMOTHistory(cleanedCarData.registrationNumber),
+                      historyService.checkVehicleHistory(cleanedCarData.registrationNumber, true) // forceRefresh = true
+                    ]);
+                    
+                    // Process MOT history result
+                    if (motResult.status === 'fulfilled' && motResult.value) {
+                      console.log(`✅ [Payment - New Car] MOT history fetched successfully`);
+                      
+                      // Add MOT data to cleanedCarData
+                      if (motResult.value.motTests && motResult.value.motTests.length > 0) {
+                        cleanedCarData.motHistory = motResult.value.motTests;
+                        
+                        const latestTest = motResult.value.motTests[0];
+                        if (latestTest.expiryDate) {
+                          cleanedCarData.motDue = latestTest.expiryDate;
+                          cleanedCarData.motExpiry = latestTest.expiryDate;
+                          cleanedCarData.motStatus = latestTest.testResult === 'PASSED' ? 'Valid' : 'Expired';
+                        }
+                      }
+                    } else {
+                      console.warn(`⚠️  [Payment - New Car] MOT history fetch failed:`, motResult.reason?.message);
+                    }
+                    
+                    // Process vehicle history result
+                    if (historyResult.status === 'fulfilled' && historyResult.value) {
+                      console.log(`✅ [Payment - New Car] Vehicle history fetched successfully`);
+                      
+                      // Add history data to cleanedCarData
+                      if (historyResult.value.previousOwners !== undefined) {
+                        cleanedCarData.previousOwners = historyResult.value.previousOwners;
+                      }
+                      if (historyResult.value.colourChanges !== undefined) {
+                        cleanedCarData.colourChanges = historyResult.value.colourChanges;
+                      }
+                      if (historyResult.value.plateChanges !== undefined) {
+                        cleanedCarData.plateChanges = historyResult.value.plateChanges;
+                      }
+                      
+                      // CRITICAL: Save historyCheckId to link Car with VehicleHistory
+                      if (historyResult.value._id) {
+                        cleanedCarData.historyCheckId = historyResult.value._id.toString();
+                        cleanedCarData.historyCheckStatus = 'verified';
+                        cleanedCarData.historyCheckDate = historyResult.value.checkDate || new Date();
+                        console.log(`✅ [Payment - New Car] Linked history check: ${cleanedCarData.historyCheckId}`);
+                      }
+                    } else {
+                      console.warn(`⚠️  [Payment - New Car] Vehicle history fetch failed:`, historyResult.reason?.message);
+                    }
+                    
+                    console.log(`✅ [Payment - New Car] API calls completed for ${cleanedCarData.registrationNumber}`);
+                  } catch (error) {
+                    console.error(`❌ [Payment - New Car] Error fetching vehicle data:`, error.message);
+                    // Don't fail payment if data fetch fails
                   }
+                  
+                  console.log(`   Using vehicle data provided from frontend`);
+                  console.log(`   Fuel type: ${cleanedCarData.fuelType}`);
+                  console.log(`   Battery capacity: ${cleanedCarData.batteryCapacity || 'N/A'} kWh`);
+                  console.log(`   Electric range: ${cleanedCarData.electricRange || 'N/A'} miles`);
                 } catch (error) {
                   console.error(`⚠️  [Payment] Vehicle data check failed: ${error.message}`);
                   // Continue with original data if check fails
@@ -1653,6 +1804,20 @@ async function handlePaymentSuccess(paymentIntent) {
             console.log(`   Photos: ${car.images.length}`);
             console.log(`   Contact: ${car.sellerContact?.email || 'N/A'}`);
             console.log(`   Location: ${car.postcode} (${car.latitude}, ${car.longitude})`);
+            console.log(`   User ID: ${car.userId || 'NOT SET - ERROR!'}`);
+            console.log(`   History Check ID: ${car.historyCheckId || 'NOT SET'}`);
+            console.log(`   MOT History: ${car.motHistory?.length || 0} tests`);
+            
+            // CRITICAL VERIFICATION
+            if (!car.userId) {
+              console.error(`❌ CRITICAL ERROR: Car created without userId!`);
+            }
+            if (!car.latitude || !car.longitude) {
+              console.error(`❌ WARNING: Car created without coordinates!`);
+            }
+            if (!car.historyCheckId && car.registrationNumber) {
+              console.error(`❌ WARNING: Car created without historyCheckId link!`);
+            }
           } catch (error) {
             console.error(`⚠️  Error creating car advert: ${error.message}`);
             console.error(error.stack);

@@ -513,6 +513,55 @@ carSchema.pre('save', async function(next) {
     console.log(`🔒 [Pre-Save Hook] SAFE MODE - All external API calls DISABLED`);
     console.log(`   Only running validation and normalization for ${this.make} ${this.model}`);
     
+    // 🔧 GENERAL MODEL/VARIANT NORMALIZATION (SAFE - no API calls)
+    // Fix cases where model contains full variant string and variant is just the base model
+    // Example: model="X2 XDRIVE25E M SPORT X AUTO", variant="X2" 
+    // Should be: model="X2", variant="M Sport X"
+    if (this.model && this.variant) {
+      const modelStr = this.model.trim();
+      const variantStr = this.variant.trim();
+      
+      // Check if model is much longer than variant and contains variant at the start
+      // This indicates they might be swapped
+      if (modelStr.length > variantStr.length + 5 && 
+          modelStr.toUpperCase().startsWith(variantStr.toUpperCase())) {
+        
+        console.log(`🔄 [Car Model] Detected swapped model/variant:`);
+        console.log(`   Current model: "${modelStr}"`);
+        console.log(`   Current variant: "${variantStr}"`);
+        
+        // Extract the variant part from the model string
+        // Remove the base model name from the start
+        let extractedVariant = modelStr.substring(variantStr.length).trim();
+        
+        // Clean up the extracted variant
+        // Remove common patterns like "XDRIVE25E", "SDRIVE20I", etc. and keep trim level
+        const trimLevels = ['M SPORT X', 'M SPORT', 'SE', 'SPORT', 'LUXURY', 'LOUNGE', 'POP', 'CROSS'];
+        let finalVariant = variantStr; // Default to original variant
+        
+        for (const trim of trimLevels) {
+          if (extractedVariant.toUpperCase().includes(trim)) {
+            // Found a trim level - use it
+            // Convert to proper case (M Sport instead of M SPORT)
+            finalVariant = trim.split(' ')
+              .map(word => word.charAt(0) + word.slice(1).toLowerCase())
+              .join(' ');
+            break;
+          }
+        }
+        
+        // If we found a better variant, swap them
+        if (finalVariant !== variantStr) {
+          this.model = variantStr; // Use the short variant as model
+          this.variant = finalVariant; // Use the extracted trim as variant
+          
+          console.log(`✅ [Car Model] Normalized to:`);
+          console.log(`   New model: "${this.model}"`);
+          console.log(`   New variant: "${this.variant}"`);
+        }
+      }
+    }
+    
     // Run ONLY safe operations (no external APIs)
     // Just validation and normalization, then exit
     
@@ -613,6 +662,55 @@ carSchema.pre('save', async function(next) {
     }
   }
   
+  // 🔧 GENERAL MODEL/VARIANT NORMALIZATION
+  // Fix cases where model contains full variant string and variant is just the base model
+  // Example: model="X2 XDRIVE25E M SPORT X AUTO", variant="X2" 
+  // Should be: model="X2", variant="M Sport X"
+  if (this.model && this.variant) {
+    const modelStr = this.model.trim();
+    const variantStr = this.variant.trim();
+    
+    // Check if model is much longer than variant and contains variant at the start
+    // This indicates they might be swapped
+    if (modelStr.length > variantStr.length + 5 && 
+        modelStr.toUpperCase().startsWith(variantStr.toUpperCase())) {
+      
+      console.log(`🔄 [Car Model] Detected swapped model/variant:`);
+      console.log(`   Current model: "${modelStr}"`);
+      console.log(`   Current variant: "${variantStr}"`);
+      
+      // Extract the variant part from the model string
+      // Remove the base model name from the start
+      let extractedVariant = modelStr.substring(variantStr.length).trim();
+      
+      // Clean up the extracted variant
+      // Remove common patterns like "XDRIVE25E", "SDRIVE20I", etc. and keep trim level
+      const trimLevels = ['M SPORT X', 'M SPORT', 'SE', 'SPORT', 'LUXURY', 'LOUNGE', 'POP', 'CROSS'];
+      let finalVariant = variantStr; // Default to original variant
+      
+      for (const trim of trimLevels) {
+        if (extractedVariant.toUpperCase().includes(trim)) {
+          // Found a trim level - use it
+          // Convert to proper case (M Sport instead of M SPORT)
+          finalVariant = trim.split(' ')
+            .map(word => word.charAt(0) + word.slice(1).toLowerCase())
+            .join(' ');
+          break;
+        }
+      }
+      
+      // If we found a better variant, swap them
+      if (finalVariant !== variantStr) {
+        this.model = variantStr; // Use the short variant as model
+        this.variant = finalVariant; // Use the extracted trim as variant
+        
+        console.log(`✅ [Car Model] Normalized to:`);
+        console.log(`   New model: "${this.model}"`);
+        console.log(`   New variant: "${this.variant}"`);
+      }
+    }
+  }
+  
   // CRITICAL: Normalize model and variant for FIAT cars
   // FIAT 500, 500X, 500L etc. should have model="500" and variant="POP RHD/LOUNGE/SPORT"
   // Sometimes API returns them reversed: model="500 POP RHD", variant="500"
@@ -642,7 +740,8 @@ carSchema.pre('save', async function(next) {
   
   // CRITICAL: Auto-fetch coordinates from postcode if missing
   // This ensures ALL cars can be found in postcode searches
-  if (this.postcode && this.isNew) {
+  // Check for missing coordinates on EVERY save, not just new cars
+  if (this.postcode) {
     const needsCoordinates = !this.coordinates?.latitude || !this.latitude;
     const needsLocationName = !this.locationName;
     

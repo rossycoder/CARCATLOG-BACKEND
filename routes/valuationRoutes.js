@@ -6,6 +6,10 @@ const cachedValuationController = require('../controllers/cachedValuationControl
 // GET /api/vehicle-valuation/cached/:vrm - Get cached valuation (no API calls)
 router.get('/cached/:vrm', cachedValuationController.getCachedValuation);
 
+// POST /api/vehicle-valuation/fresh - Get FRESH valuation (makes API call)
+// IMPORTANT: This makes a PAID API call - use only when necessary
+router.post('/fresh', valuationController.getFreshValuation);
+
 // POST /api/vehicle-valuation/detailed - Get detailed valuation with DVLA data
 // This must come BEFORE the root route to avoid being caught by the '/' matcher
 router.post('/detailed', valuationController.getDetailedValuation);

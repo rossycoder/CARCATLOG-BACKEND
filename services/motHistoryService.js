@@ -307,6 +307,25 @@ class MOTHistoryService {
       throw error;
     }
   }
+
+  /**
+   * Get MOT history (alias for fetchAndSaveMOTHistory for compatibility)
+   * @param {string} vrm - Vehicle registration mark
+   * @returns {Promise<Object>} MOT history data with tests array
+   */
+  async getMOTHistory(vrm) {
+    const result = await this.fetchAndSaveMOTHistory(vrm, true); // Force refresh
+    
+    // Return in format expected by payment controller
+    return {
+      motTests: result.data || [],
+      motHistory: result.data || [],
+      motStatus: result.data && result.data.length > 0 ? 
+        (result.data[0].testResult === 'PASSED' ? 'Valid' : 'Failed') : null,
+      motDueDate: result.data && result.data.length > 0 ? result.data[0].expiryDate : null,
+      motExpiryDate: result.data && result.data.length > 0 ? result.data[0].expiryDate : null
+    };
+  }
 }
 
 module.exports = MOTHistoryService;

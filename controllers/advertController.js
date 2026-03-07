@@ -91,6 +91,7 @@ const createAdvert = async (req, res) => {
     // Create car with enhanced variant handling
     const car = new Car({
       advertId,
+      userId: req.user ? (req.user._id || req.user.id) : null, // CRITICAL: Set userId for My Listings
       make: normalizeMake(carDataToSave.make) || 'Unknown',
       model: carDataToSave.model || 'Unknown',
       variant: carDataToSave.variant || null, // Will be auto-fetched in pre-save hook if missing
@@ -129,6 +130,7 @@ const createAdvert = async (req, res) => {
     });
     
     console.log(`🚗 Creating car with registration: ${car.registrationNumber}`);
+    console.log(`   User ID: ${car.userId || 'NOT SET - user not authenticated'}`);
     console.log(`   Initial variant: ${car.variant || 'NOT SET - will be fetched from API'}`);
     
     // CRITICAL: Normalize model/variant BEFORE saving

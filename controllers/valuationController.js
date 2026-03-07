@@ -183,7 +183,90 @@ async function getDetailedValuation(req, res) {
   }
 }
 
+/**
+ * Get FRESH vehicle valuation (bypasses cache, makes API call)
+ * POST /api/vehicle-valuation/fresh
+ * Body: { vrm: string, mileage: number }
+ * 
+ * IMPORTANT: This endpoint makes a PAID API call (£0.02-0.05)
+ * Use only when absolutely necessary (e.g., payment flow, manual refresh)
+ */
+async function getFreshValuation(req, res) {
+  try {
+    const { vrm, mileage } = req.body;
+    
+    console.log(`🔄 [Fresh Valuation] Request for ${vrm} with ${mileage} miles`);
+    
+    // Validate inputs
+    if (!vrm) {
+      return res.status(400).json({
+        success: false,
+        error: 'VRM is required',
+      });
+    }
+
+    if (mileage === undefined || mileage === null) {
+      return res.status(400).json({
+        success: false,
+        error: 'Mileage is required',
+      });
+    }
+
+    if (typeof mileage !== 'number' || mileage < 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Mileage must be a non-negative number',
+      });
+    }
+
+    // ALWAYS make fresh API call (no cache)
+    const valuationService = new ValuationService();
+    console.log(`💰 [Fresh Valuation] Making PAID API call for ${vrm}`);
+    
+    const valuation = await valuationService.getValuation(vrm, mileage, true); // forceRefresh = true
+
+    console.log(`✅ [Fresh Valuation] API call successful for ${vrm}`);
+    console.log(`   Private: £${valuation.estimatedValue?.private || 'N/A'}`);
+    console.log(`   Retail: £${valuation.estimatedValue?.retail || 'N/A'}`);
+    console.log(`   Trade: £${valuation.estimatedValue?.trade || 'N/A'}`);
+
+    res.json({
+      success: true,
+      data: valuation,
+      source: 'fresh_api',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ [Fresh Valuation] Error:', error.message);
+    
+    // Handle valuation not found error
+    if (error.code === 'VALUATION_NOT_FOUND') {
+      return res.status(404).json({
+        success: false,
+        error: error.userMessage || 'Valuation data not available for this vehicle',
+        code: 'VALUATION_NOT_FOUND',
+      });
+    }
+
+    // Handle API unavailability
+    if (isAPIUnavailable(error)) {
+      return res.status(503).json({
+        success: false,
+        error: 'Valuation service is temporarily unavailable. Please try again later.',
+        code: 'SERVICE_UNAVAILABLE',
+      });
+    }
+
+    // Handle other errors with user-friendly messages
+    const errorResponse = formatErrorResponse(error, 'valuation');
+    const statusCode = error.message.includes('Invalid') ? 400 : 500;
+    
+    res.status(statusCode).json(errorResponse);
+  }
+}
+
 module.exports = {
   getValuation,
   getDetailedValuation,
+  getFreshValuation, // NEW: Fresh valuation endpoint
 };
