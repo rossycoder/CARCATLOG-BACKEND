@@ -67,52 +67,113 @@ exports.getInventory = async (req, res) => {
 };
 
 /**
- * Get inventory stats
+ * Get inventory stats (Cars, Bikes, Vans combined)
  * GET /api/trade/inventory/stats
  */
 exports.getStats = async (req, res) => {
   try {
-    const stats = await Car.aggregate([
-      { $match: { dealerId: req.dealerId, isDealerListing: true } },
-      {
-        $group: {
-          _id: '$advertStatus',
-          count: { $sum: 1 },
-          totalViews: { $sum: '$viewCount' }
+    const Bike = require('../models/Bike');
+    const Van = require('../models/Van');
+    
+    // Fetch stats from all three collections in parallel
+    const [carStats, bikeStats, vanStats] = await Promise.all([
+      // Car stats
+      Car.aggregate([
+        { $match: { dealerId: req.dealerId, isDealerListing: true } },
+        {
+          $group: {
+            _id: '$advertStatus',
+            count: { $sum: 1 },
+            totalViews: { $sum: '$viewCount' }
+          }
         }
-      }
+      ]),
+      
+      // Bike stats
+      Bike.aggregate([
+        { $match: { dealerId: req.dealerId, isDealerListing: true } },
+        {
+          $group: {
+            _id: '$advertStatus',
+            count: { $sum: 1 },
+            totalViews: { $sum: '$viewCount' }
+          }
+        }
+      ]),
+      
+      // Van stats
+      Van.aggregate([
+        { $match: { dealerId: req.dealerId, isDealerListing: true } },
+        {
+          $group: {
+            _id: '$advertStatus',
+            count: { $sum: 1 },
+            totalViews: { $sum: '$viewCount' }
+          }
+        }
+      ])
     ]);
 
-    const totalViews = await Car.aggregate([
-      { $match: { dealerId: req.dealerId, isDealerListing: true } },
-      { $group: { _id: null, total: { $sum: '$viewCount' } } }
-    ]);
-
-    // Get most viewed active listings, or recent active listings if no views
-    let mostViewed = await Car.find({
-      dealerId: req.dealerId,
-      isDealerListing: true,
-      advertStatus: 'active'
-    })
-      .sort({ viewCount: -1, createdAt: -1 })
-      .limit(5)
-      .select('make model year viewCount images price');
-
-    const statusCounts = {};
-    stats.forEach(stat => {
-      statusCounts[stat._id] = stat.count;
+    // Combine stats from all vehicle types
+    const combinedStats = {};
+    let totalViewsCount = 0;
+    
+    [...carStats, ...bikeStats, ...vanStats].forEach(stat => {
+      const status = stat._id;
+      combinedStats[status] = (combinedStats[status] || 0) + stat.count;
+      totalViewsCount += stat.totalViews || 0;
     });
+
+    // Get most viewed active listings from all vehicle types
+    const [carsMostViewed, bikesMostViewed, vansMostViewed] = await Promise.all([
+      Car.find({
+        dealerId: req.dealerId,
+        isDealerListing: true,
+        advertStatus: 'active'
+      })
+        .sort({ viewCount: -1, createdAt: -1 })
+        .limit(5)
+        .select('make model year viewCount images price')
+        .lean(),
+      
+      Bike.find({
+        dealerId: req.dealerId,
+        isDealerListing: true,
+        advertStatus: 'active'
+      })
+        .sort({ viewCount: -1, createdAt: -1 })
+        .limit(5)
+        .select('make model year viewCount images price')
+        .lean(),
+      
+      Van.find({
+        dealerId: req.dealerId,
+        isDealerListing: true,
+        advertStatus: 'active'
+      })
+        .sort({ viewCount: -1, createdAt: -1 })
+        .limit(5)
+        .select('make model year viewCount images price')
+        .lean()
+    ]);
+
+    // Combine and sort most viewed from all types
+    const allMostViewed = [...carsMostViewed, ...bikesMostViewed, ...vansMostViewed]
+      .sort((a, b) => (b.viewCount || 0) - (a.viewCount || 0))
+      .slice(0, 5);
+
+    const totalVehicles = Object.values(combinedStats).reduce((sum, count) => sum + count, 0);
 
     res.json({
       success: true,
       stats: {
-        total: stats.reduce((sum, s) => sum + s.count, 0),
-        active: statusCounts.active || 0,
-        sold: statusCounts.sold || 0,
-        draft: statusCounts.draft || 0,
-        expired: statusCounts.expired || 0,
-        totalViews: totalViews[0]?.total || 0,
-        mostViewed
+        total: totalVehicles,
+        active: combinedStats.active || 0,
+        sold: combinedStats.sold || 0,
+        draft: combinedStats.draft || 0,
+        expired: combinedStats.expired || 0,
+        totalViews: totalViewsCount,
+        mostViewed: allMostViewed
       }
     });
   } catch (error) {

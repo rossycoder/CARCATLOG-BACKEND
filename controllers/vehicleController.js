@@ -787,6 +787,14 @@ class VehicleController {
         });
       }
 
+      // Increment view count (using car._id since car is lean)
+      console.log(`🔍 [View Count] Incrementing view count for car: ${car._id}`);
+      await Car.findByIdAndUpdate(car._id, {
+        $inc: { viewCount: 1 },
+        lastViewedAt: new Date()
+      });
+      console.log(`✅ [View Count] View count incremented for: ${car.make} ${car.model}`);
+
       // car is already a plain object from .lean(), no need for toObject()
       const carData = car;
 
