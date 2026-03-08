@@ -506,94 +506,7 @@ carSchema.index({ vehicleType: 1, condition: 1 });
 // 🔒 SAFE Pre-save hook - NO PAID API CALLS
 // Only validation, normalization, and data formatting
 carSchema.pre('save', async function(next) {
-  // 🔥 KILL SWITCH: Disable ALL external API calls in pre-save hook
-  const DISABLE_ALL_EXTERNAL_APIS = process.env.DISABLE_PRESAVE_API_CALLS !== 'false';
-  
-  if (DISABLE_ALL_EXTERNAL_APIS) {
-    console.log(`🔒 [Pre-Save Hook] SAFE MODE - All external API calls DISABLED`);
-    console.log(`   Only running validation and normalization for ${this.make} ${this.model}`);
-    
-    // 🔧 GENERAL MODEL/VARIANT NORMALIZATION (SAFE - no API calls)
-    // Fix cases where model contains full variant string and variant is just the base model
-    // Example: model="X2 XDRIVE25E M SPORT X AUTO", variant="X2" 
-    // Should be: model="X2", variant="M Sport X"
-    if (this.model && this.variant) {
-      const modelStr = this.model.trim();
-      const variantStr = this.variant.trim();
-      
-      // Check if model is much longer than variant and contains variant at the start
-      // This indicates they might be swapped
-      if (modelStr.length > variantStr.length + 5 && 
-          modelStr.toUpperCase().startsWith(variantStr.toUpperCase())) {
-        
-        console.log(`🔄 [Car Model] Detected swapped model/variant:`);
-        console.log(`   Current model: "${modelStr}"`);
-        console.log(`   Current variant: "${variantStr}"`);
-        
-        // Extract the variant part from the model string
-        // Remove the base model name from the start
-        let extractedVariant = modelStr.substring(variantStr.length).trim();
-        
-        // Clean up the extracted variant
-        // Remove common patterns like "XDRIVE25E", "SDRIVE20I", etc. and keep trim level
-        const trimLevels = ['M SPORT X', 'M SPORT', 'SE', 'SPORT', 'LUXURY', 'LOUNGE', 'POP', 'CROSS'];
-        let finalVariant = variantStr; // Default to original variant
-        
-        for (const trim of trimLevels) {
-          if (extractedVariant.toUpperCase().includes(trim)) {
-            // Found a trim level - use it
-            // Convert to proper case (M Sport instead of M SPORT)
-            finalVariant = trim.split(' ')
-              .map(word => word.charAt(0) + word.slice(1).toLowerCase())
-              .join(' ');
-            break;
-          }
-        }
-        
-        // If we found a better variant, swap them
-        if (finalVariant !== variantStr) {
-          this.model = variantStr; // Use the short variant as model
-          this.variant = finalVariant; // Use the extracted trim as variant
-          
-          console.log(`✅ [Car Model] Normalized to:`);
-          console.log(`   New model: "${this.model}"`);
-          console.log(`   New variant: "${this.variant}"`);
-        }
-      }
-    }
-    
-    // Run ONLY safe operations (no external APIs)
-    // Just validation and normalization, then exit
-    
-    // Basic validation
-    if (this.advertStatus === 'incomplete') {
-      const error = new Error('Cannot save cars with "incomplete" status');
-      error.code = 'INVALID_STATUS';
-      return next(error);
-    }
-    
-    // Check duplicate registrations
-    if (this.registrationNumber && this.advertStatus === 'active') {
-      const duplicate = await this.constructor.findOne({
-        registrationNumber: this.registrationNumber,
-        advertStatus: 'active',
-        _id: { $ne: this._id }
-      });
-      
-      if (duplicate) {
-        const error = new Error(`Active advert already exists for registration ${this.registrationNumber}`);
-        error.code = 'DUPLICATE_REGISTRATION';
-        return next(error);
-      }
-    }
-    
-    console.log(`✅ [Pre-Save Hook] Validation complete - NO API calls made`);
-    return next();
-  }
-  
-  // If kill switch is OFF, run original code (NOT RECOMMENDED)
-  console.log(`⚠️  [Pre-Save Hook] UNSAFE MODE - External APIs ENABLED (not recommended)`);
-  console.log(`🔧 [Pre-Save Hook] Starting for ${this.make} ${this.model} (${this.registrationNumber})`);
+  console.log(`🔧 [Pre-Save Hook] Starting SAFE mode for ${this.make} ${this.model} (${this.registrationNumber})`);
   
   // CRITICAL: Normalize model and variant for BMW i-series cars
   // BMW i3, i4, i8 etc. should have model="i3/i4/i8" and variant="trim level"
@@ -662,55 +575,6 @@ carSchema.pre('save', async function(next) {
     }
   }
   
-  // 🔧 GENERAL MODEL/VARIANT NORMALIZATION
-  // Fix cases where model contains full variant string and variant is just the base model
-  // Example: model="X2 XDRIVE25E M SPORT X AUTO", variant="X2" 
-  // Should be: model="X2", variant="M Sport X"
-  if (this.model && this.variant) {
-    const modelStr = this.model.trim();
-    const variantStr = this.variant.trim();
-    
-    // Check if model is much longer than variant and contains variant at the start
-    // This indicates they might be swapped
-    if (modelStr.length > variantStr.length + 5 && 
-        modelStr.toUpperCase().startsWith(variantStr.toUpperCase())) {
-      
-      console.log(`🔄 [Car Model] Detected swapped model/variant:`);
-      console.log(`   Current model: "${modelStr}"`);
-      console.log(`   Current variant: "${variantStr}"`);
-      
-      // Extract the variant part from the model string
-      // Remove the base model name from the start
-      let extractedVariant = modelStr.substring(variantStr.length).trim();
-      
-      // Clean up the extracted variant
-      // Remove common patterns like "XDRIVE25E", "SDRIVE20I", etc. and keep trim level
-      const trimLevels = ['M SPORT X', 'M SPORT', 'SE', 'SPORT', 'LUXURY', 'LOUNGE', 'POP', 'CROSS'];
-      let finalVariant = variantStr; // Default to original variant
-      
-      for (const trim of trimLevels) {
-        if (extractedVariant.toUpperCase().includes(trim)) {
-          // Found a trim level - use it
-          // Convert to proper case (M Sport instead of M SPORT)
-          finalVariant = trim.split(' ')
-            .map(word => word.charAt(0) + word.slice(1).toLowerCase())
-            .join(' ');
-          break;
-        }
-      }
-      
-      // If we found a better variant, swap them
-      if (finalVariant !== variantStr) {
-        this.model = variantStr; // Use the short variant as model
-        this.variant = finalVariant; // Use the extracted trim as variant
-        
-        console.log(`✅ [Car Model] Normalized to:`);
-        console.log(`   New model: "${this.model}"`);
-        console.log(`   New variant: "${this.variant}"`);
-      }
-    }
-  }
-  
   // CRITICAL: Normalize model and variant for FIAT cars
   // FIAT 500, 500X, 500L etc. should have model="500" and variant="POP RHD/LOUNGE/SPORT"
   // Sometimes API returns them reversed: model="500 POP RHD", variant="500"
@@ -740,8 +604,7 @@ carSchema.pre('save', async function(next) {
   
   // CRITICAL: Auto-fetch coordinates from postcode if missing
   // This ensures ALL cars can be found in postcode searches
-  // Check for missing coordinates on EVERY save, not just new cars
-  if (this.postcode) {
+  if (this.postcode && this.isNew) {
     const needsCoordinates = !this.coordinates?.latitude || !this.latitude;
     const needsLocationName = !this.locationName;
     
@@ -1355,44 +1218,162 @@ carSchema.pre('save', async function(next) {
     }
   }
   
-  // 🔒 REMOVED: History check moved to payment controller
-  // History API (£1.82/call) should ONLY be called after payment confirmation
-  // This prevents automatic charges during testing, imports, or migrations
-  
-  // If history already exists in VehicleHistory collection, link it
+  // History check for new listings with registration numbers
   if (this.isNew && this.registrationNumber && this.historyCheckStatus === 'pending') {
-    try {
-      const VehicleHistory = require('./VehicleHistory');
-      const existingHistory = await VehicleHistory.findOne({ 
-        vrm: this.registrationNumber.toUpperCase() 
-      }).sort({ checkDate: -1 });
-      
-      if (existingHistory) {
-        // ✅ Link to existing history - NO API CALL
-        const daysSinceCheck = (Date.now() - existingHistory.checkDate.getTime()) / (1000 * 60 * 60 * 24);
-        console.log(`✅ Linking to existing history for ${this.registrationNumber} (${Math.floor(daysSinceCheck)} days old) - Saved £1.82`);
-        
-        this.historyCheckId = existingHistory._id;
-        this.historyCheckStatus = 'verified';
-        this.historyCheckDate = existingHistory.checkDate;
-      } else {
-        // No existing history - will be fetched by payment controller
-        console.log(`ℹ️  No existing history for ${this.registrationNumber} - Will be fetched after payment`);
-        this.historyCheckStatus = 'pending';
+    // Skip API calls if flag is set AND it's NOT a trade dealer listing
+    // Trade dealers need history fetched immediately since they bypass payment controller
+    const shouldSkip = this._skipAPICallsInHooks && !this.isDealerListing;
+    
+    if (shouldSkip) {
+      console.log(`⏭️  Skipping history check and MOT fetch in pre-save hook (will be handled by payment controller)`);
+      // Don't return early - let other pre-save logic run (coordinates, etc.)
+      // Just skip the API calls below
+    } else {
+      if (this.isDealerListing) {
+        console.log(`🏢 Trade dealer listing detected - fetching history immediately`);
       }
-    } catch (error) {
-      console.error(`❌ Error checking existing history for ${this.registrationNumber}:`, error.message);
-      this.historyCheckStatus = 'pending';
+      try {
+        // 🔥 CRITICAL FIX: Check if history already exists BEFORE calling API
+        const VehicleHistory = require('./VehicleHistory');
+        const existingHistory = await VehicleHistory.findOne({ 
+          vrm: this.registrationNumber.toUpperCase() 
+        }).sort({ checkDate: -1 });
+        
+        if (existingHistory) {
+          // ✅ Reuse existing history - NO API CALL
+          const daysSinceCheck = (Date.now() - existingHistory.checkDate.getTime()) / (1000 * 60 * 60 * 24);
+          console.log(`✅ Reusing existing history for ${this.registrationNumber} (${Math.floor(daysSinceCheck)} days old) - Saved £1.82`);
+          
+          this.historyCheckId = existingHistory._id;
+          this.historyCheckStatus = 'verified';
+          this.historyCheckDate = existingHistory.checkDate;
+          
+          // Skip API call - history already exists
+        } else {
+          // No existing history - call API
+          const HistoryService = require('../services/historyService');
+          const historyService = new HistoryService();
+          
+          console.log(`🔍 No existing history found - Triggering NEW history check for: ${this.registrationNumber} (£1.82)`);
+          
+          // Perform history check
+          const historyResult = await historyService.checkVehicleHistory(this.registrationNumber);
+          
+          // Update listing with history check results
+          this.historyCheckStatus = 'verified';
+          this.historyCheckDate = new Date();
+          this.historyCheckId = historyResult._id;
+          
+          console.log(`✅ History check completed for ${this.registrationNumber}: ${historyResult.checkStatus}`);
+        }
+      } catch (error) {
+        console.error(`❌ History check failed for ${this.registrationNumber}:`, error.message);
+        
+        // Check if it's a daily limit error (403)
+        if (error.isDailyLimitError || error.details?.status === 403 || error.message.includes('daily limit')) {
+          console.log(`⏰ API daily limit exceeded - skipping history check for now`);
+          console.log(`   History can be added later when API limit resets`);
+          this.historyCheckStatus = 'pending'; // Keep as pending so it can be retried later
+        } else {
+          // Mark as failed for other errors
+          this.historyCheckStatus = 'failed';
+        }
+        this.historyCheckDate = new Date();
+      }
     }
   }
 
-  // 🔒 REMOVED: MOT API moved to payment controller
-  // MOT history is now fetched as part of history check (included in £1.82 call)
-  // This prevents duplicate API calls and automatic charges
+  // MOT History check for new listings with registration numbers
+  // Skip if payment controller will handle it (but NOT for trade dealers)
+  const shouldSkipMOT = this._skipAPICallsInHooks && !this.isDealerListing;
   
-  console.log(`ℹ️  MOT history will be fetched with vehicle history after payment`);
+  if (this.isNew && this.registrationNumber && (!this.motHistory || this.motHistory.length === 0) && !shouldSkipMOT) {
+    try {
+      console.log(`🔍 Triggering MOT history check for new listing: ${this.registrationNumber}`);
+      
+      // Try to use CheckCarDetailsClient directly (more reliable)
+      const CheckCarDetailsClient = require('../clients/CheckCarDetailsClient');
+      
+      // Validate API key is available
+      if (!process.env.CHECKCARD_API_KEY) {
+        console.log(`⚠️  CHECKCARD_API_KEY not found - skipping MOT history fetch for ${this.registrationNumber}`);
+        // Don't add fake sample data - MOT will be fetched from DVLA in pre-save hook
+        return;
+      }
+      
+      console.log(`🔍 Fetching MOT history from CheckCarDetails API for: ${this.registrationNumber}`);
+      
+      // Create client instance
+      const apiKey = process.env.CHECKCARD_API_KEY;
+      const baseUrl = process.env.CHECKCARD_API_BASE_URL || 'https://api.checkcardetails.co.uk';
+      const client = new CheckCarDetailsClient(apiKey, baseUrl, false);
+      
+      const motData = await client.getMOTHistory(this.registrationNumber);
+      
+      if (motData && motData.tests && motData.tests.length > 0) {
+        console.log(`✅ MOT history fetched from API: ${motData.tests.length} tests for ${this.registrationNumber}`);
+        
+        // Convert API response to our schema format
+        const motHistory = motData.tests.map(test => ({
+          testDate: test.testDate ? new Date(test.testDate) : null,
+          expiryDate: test.expiryDate ? new Date(test.expiryDate) : null,
+          testResult: test.result || test.testResult || 'UNKNOWN',
+          odometerValue: parseInt(test.odometerValue) || 0,
+          odometerUnit: test.odometerUnit?.toLowerCase() === 'mi' ? 'mi' : 'km',
+          testNumber: test.testNumber || '',
+          testCertificateNumber: test.testCertificateNumber || '',
+          defects: (test.defects || test.rfrAndComments || []).map(item => ({
+            type: item.type || 'ADVISORY',
+            text: item.text || '',
+            dangerous: item.dangerous === true || item.type === 'DANGEROUS'
+          })),
+          advisoryText: (test.defects || test.rfrAndComments || [])
+            .filter(item => item.type === 'ADVISORY')
+            .map(item => item.text)
+            .filter(text => text && text.trim().length > 0),
+          testClass: test.testClass || '',
+          testType: test.testType || '',
+          completedDate: test.testDate ? new Date(test.testDate) : null,
+          testStation: {
+            name: test.testStationName || '',
+            number: test.testStationNumber || '',
+            address: test.testStationAddress || '',
+            postcode: test.testStationPostcode || ''
+          }
+        })).filter(test => test.testDate); // Only include tests with valid dates
+        
+        // Save MOT history to car
+        this.motHistory = motHistory;
+        
+        // Update MOT status from latest test
+        const latestTest = motHistory[0]; // Most recent test
+        if (latestTest) {
+          this.motStatus = latestTest.testResult === 'PASSED' ? 'Valid' : 'Invalid';
+          this.motExpiry = latestTest.expiryDate;
+          this.motDue = latestTest.expiryDate;
+          console.log(`✅ Updated MOT status: ${this.motStatus}, expires: ${this.motExpiry}`);
+        }
+        
+        console.log(`✅ MOT history automatically saved for new car: ${this.registrationNumber}`);
+      } else {
+        console.log(`ℹ️  No MOT history found in API response for ${this.registrationNumber}`);
+        // Don't add fake sample data - MOT will be fetched from DVLA in pre-save hook
+      }
+    } catch (error) {
+      console.error(`❌ MOT history API call failed for ${this.registrationNumber}:`, error.message);
+      
+      // Check if it's a daily limit error (403)
+      if (error.isDailyLimitError || error.details?.status === 403 || error.message.includes('daily limit')) {
+        console.log(`⏰ API daily limit exceeded - MOT will be fetched from DVLA instead`);
+      } else {
+        console.log(`🔧 API error - MOT will be fetched from DVLA for ${this.registrationNumber}`);
+      }
+      
+      // Don't add fake sample data - MOT will be fetched from DVLA in pre-save hook
+    }
+  }
   
-  // Auto-fetch coordinates from postcode if missing (FREE - keep this)
+  // Auto-fetch coordinates from postcode if missing (works for both new and updated cars)
   if (this.postcode && (!this.latitude || !this.longitude || !this.locationName)) {
     try {
       const postcodeService = require('../services/postcodeService');
@@ -1429,11 +1410,49 @@ carSchema.pre('save', async function(next) {
     console.log(`✅ Set default seller type to 'private'`);
   }
   
-  // 🔒 REMOVED: Valuation API moved to payment controller
-  // Valuation (£0.15/call) should ONLY be called after payment or explicit user request
-  // Price should be set by user or fetched during initial vehicle lookup
-  
-  console.log(`ℹ️  Valuation will be fetched during vehicle lookup or after payment`);
+  // Auto-fetch valuation and set PRIVATE sale price if missing or incorrect
+  if (this.isNew && this.registrationNumber && this.mileage) {
+    // Check if valuation is missing or price is not set correctly
+    const needsValuation = !this.valuation?.privatePrice || 
+                          !this.price || 
+                          this.price === 0 ||
+                          (this.valuation?.privatePrice && this.price !== this.valuation.privatePrice);
+    
+    if (needsValuation) {
+      try {
+        const ValuationService = require('../services/valuationService');
+        const valuationService = new ValuationService();
+        
+        console.log(`💰 Fetching valuation for: ${this.registrationNumber} (${this.mileage} miles)`);
+        
+        const valuation = await valuationService.getValuation(this.registrationNumber, this.mileage);
+        
+        // Store all valuation data
+        this.valuation = {
+          privatePrice: valuation.estimatedValue.private,
+          dealerPrice: valuation.estimatedValue.retail,
+          partExchangePrice: valuation.estimatedValue.trade,
+          confidence: valuation.confidence,
+          valuationDate: new Date()
+        };
+        
+        // Set price to PRIVATE sale price (for private sellers)
+        this.price = valuation.estimatedValue.private;
+        this.estimatedValue = valuation.estimatedValue.private;
+        
+        console.log(`✅ Valuation fetched and price set to £${this.price} (Private Sale)`);
+        console.log(`   Private: £${valuation.estimatedValue.private}, Retail: £${valuation.estimatedValue.retail}, Trade: £${valuation.estimatedValue.trade}`);
+      } catch (error) {
+        console.error(`⚠️  Could not fetch valuation for ${this.registrationNumber}:`, error.message);
+        // Continue without valuation - use existing price or default
+        if (!this.price || this.price === 0) {
+          console.warn(`⚠️  No price set and valuation failed - car may have incorrect price`);
+        }
+      }
+    } else {
+      console.log(`ℹ️  Valuation already exists for ${this.registrationNumber}: £${this.valuation.privatePrice}`);
+    }
+  }
   
   // Auto-set userId from seller contact email if missing
   // Check on EVERY save (not just new cars) to ensure userId is always set
