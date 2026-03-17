@@ -284,7 +284,11 @@ class StripeSubscriptionService {
           currentPeriodStart: currentPeriodStart,
           currentPeriodEnd: currentPeriodEnd,
           listingsLimit: plan.listingLimit,
-          listingsUsed: 0
+          listingsUsed: 0,
+          // Set trial information
+          isTrialing: subscription.status === 'trialing',
+          trialStart: subscription.trial_start ? new Date(subscription.trial_start * 1000) : null,
+          trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null
         });
 
         console.log('💾 Saving subscription to database...');

@@ -68,6 +68,14 @@ const tradeSubscriptionSchema = new mongoose.Schema({
   trialEnd: {
     type: Date
   },
+  isTrialing: {
+    type: Boolean,
+    default: false
+  },
+  trialDaysRemaining: {
+    type: Number,
+    default: 0
+  },
   
   // Metadata
   metadata: {
@@ -102,6 +110,15 @@ tradeSubscriptionSchema.virtual('daysRemaining').get(function() {
   const now = new Date();
   const diff = this.currentPeriodEnd - now;
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
+});
+
+// Virtual for trial days remaining
+tradeSubscriptionSchema.virtual('trialDaysLeft').get(function() {
+  if (!this.isTrialing || !this.trialEnd) return 0;
+  const now = new Date();
+  const diff = this.trialEnd - now;
+  const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+  return Math.max(0, days);
 });
 
 // Virtual for is active

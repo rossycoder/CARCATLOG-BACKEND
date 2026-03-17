@@ -190,13 +190,16 @@ exports.createCheckoutSession = async (req, res) => {
       });
     }
 
-    // PRODUCTION: Create Stripe checkout session
-    console.log('💳 Production mode: Creating Stripe checkout session');
+    // PRODUCTION: Create Stripe checkout session with 30-day trial
+    console.log('💳 Production mode: Creating Stripe checkout session with 30-day trial');
     
     const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
     const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-    // Create Stripe checkout session
+    // Calculate trial end date (30 days from now)
+    const trialEnd = Math.floor((Date.now() + 30 * 24 * 60 * 60 * 1000) / 1000);
+
+    // Create Stripe checkout session with trial
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
@@ -208,7 +211,7 @@ exports.createCheckoutSession = async (req, res) => {
               name: plan.name,
               description: plan.description,
             },
-            unit_amount: plan.price, // Price in pence
+            unit_amount: plan.price, // Full price in pence (will be charged after trial)
             recurring: {
               interval: 'month',
             },
@@ -216,6 +219,16 @@ exports.createCheckoutSession = async (req, res) => {
           quantity: 1,
         },
       ],
+      subscription_data: {
+        trial_period_days: 30, // 30-day free trial
+        metadata: {
+          dealerId: dealer._id.toString(),
+          planId: plan._id.toString(),
+          planSlug: plan.slug,
+          isTrial: 'true',
+          trialDays: '30'
+        },
+      },
       success_url: `${baseUrl}/trade/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/trade/subscription?cancelled=true`,
       customer_email: dealer.email,
@@ -223,17 +236,23 @@ exports.createCheckoutSession = async (req, res) => {
         dealerId: dealer._id.toString(),
         planId: plan._id.toString(),
         planSlug: plan.slug,
+        isTrial: 'true'
       },
     });
 
-    console.log('✅ Stripe session created:', session.id);
+    console.log('✅ Stripe session created with 30-day trial:', session.id);
 
     // Return Stripe checkout URL
     res.json({
       success: true,
       sessionId: session.id,
       url: session.url,
-      message: 'Redirecting to Stripe checkout...'
+      message: 'Redirecting to Stripe checkout...',
+      trial: {
+        enabled: true,
+        days: 30,
+        perCarCharge: 250 // £2.50 in pence
+      }
     });
   } catch (error) {
     console.error('❌ Create checkout session error:', error);
@@ -495,7 +514,11 @@ exports.verifyPayment = async (req, res) => {
         currentPeriodStart: currentPeriodStart,
         currentPeriodEnd: currentPeriodEnd,
         listingsLimit: plan.listingLimit,
-        listingsUsed: 0
+        listingsUsed: 0,
+        // Set trial information
+        isTrialing: stripeSubscription.status === 'trialing',
+        trialStart: stripeSubscription.trial_start ? new Date(stripeSubscription.trial_start * 1000) : null,
+        trialEnd: stripeSubscription.trial_end ? new Date(stripeSubscription.trial_end * 1000) : null
       });
 
       console.log('💾 Saving subscription to database...');

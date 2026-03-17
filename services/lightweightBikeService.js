@@ -35,36 +35,105 @@ class LightweightBikeService {
       };
     }
     
-    console.log(`❌ CACHE MISS for ${registration} - Trying FREE DVLA API first`);
+    console.log(`❌ CACHE MISS for ${registration} - Fetching from API`);
     
     try {
-      // STEP 1: Try FREE DVLA API first (£0.00)
+      // STEP 1: Try CheckCarDetails API FIRST (£0.05) - has complete bike data
       let vehicleData = null;
       let apiCost = 0;
       let apiCalls = 0;
-      let apiProvider = 'dvla';
+      let apiProvider = 'checkcardetails';
+      let dvlaColor = null;
       
       try {
-        console.log(`🆓 Trying FREE DVLA API for ${registration}`);
-        vehicleData = await dvlaService.lookupVehicle(registration);
-        console.log(`✅ DVLA API success for ${registration} - FREE data obtained`);
-        apiCost = 0;
+        console.log(`💰 Calling CheckCarDetails API for ${registration} (£0.05)`);
+        const client = new CheckCarDetailsClient();
+        vehicleData = await client.getVehicleSpecs(registration);
+        apiCost = 0.05;
         apiCalls = 1;
-        apiProvider = 'dvla-free';
-      } catch (dvlaError) {
-        console.log(`❌ DVLA API failed for ${registration}: ${dvlaError.message}`);
-        console.log(`🔄 Falling back to CheckCarDetails Vehiclespecs API (£0.05)`);
+        apiProvider = 'checkcardetails-primary';
+        console.log(`✅ CheckCarDetails Vehiclespecs API success for ${registration}`);
         
-        // STEP 2: Fallback to CheckCarDetails Vehiclespecs API (£0.05)
+        // CRITICAL: Log raw API response to see what data we're getting
+        console.log(`📋 RAW API Response for ${registration}:`, JSON.stringify({
+          hasResponse: !!vehicleData?.Response,
+          hasDataItems: !!vehicleData?.Response?.DataItems,
+          VehicleRegistration: vehicleData?.Response?.DataItems?.VehicleRegistration,
+          ModelData: vehicleData?.Response?.DataItems?.ModelData,
+          SmmtDetails: vehicleData?.Response?.DataItems?.SmmtDetails,
+          hasModel: !!vehicleData?.Response?.DataItems?.ModelData?.Model,
+          model: vehicleData?.Response?.DataItems?.ModelData?.Model,
+          modelVariant: vehicleData?.Response?.DataItems?.ModelData?.ModelVariant
+        }, null, 2));
+        
+        // CRITICAL: For bikes, CheckCarDetails might return data in VehicleRegistration instead of ModelData
+        const dataItems = vehicleData?.Response?.DataItems || {};
+        const vehicleReg = dataItems.VehicleRegistration || {};
+        const modelData = dataItems.ModelData || {};
+        const smmtDetails = dataItems.SmmtDetails || {};
+        
+        console.log(`🔍 Bike-specific fields:`, {
+          'VehicleRegistration.Make': vehicleReg.Make,
+          'VehicleRegistration.Model': vehicleReg.Model,
+          'VehicleRegistration.MakeModel': vehicleReg.MakeModel,
+          'ModelData.Make': modelData.Make,
+          'ModelData.Model': modelData.Model,
+          'SmmtDetails.Marque': smmtDetails.Marque,
+          'SmmtDetails.ModelVariant': smmtDetails.ModelVariant
+        });
+        
+        // Parse CheckCarDetails response
+        const ApiResponseParser = require('../utils/apiResponseParser');
+        const parsedCheckCarData = ApiResponseParser.parseCheckCarDetailsResponse(vehicleData);
+        
+        console.log(`🔍 PARSED Data:`, {
+          make: parsedCheckCarData.make,
+          model: parsedCheckCarData.model,
+          variant: parsedCheckCarData.variant,
+          year: parsedCheckCarData.year
+        });
+        
+        // STEP 2: If CheckCarDetails is missing color, try FREE DVLA API for color
+        if (!parsedCheckCarData.color || parsedCheckCarData.color === 'Not specified') {
+          try {
+            console.log(`🎨 CheckCarDetails missing color, trying FREE DVLA API for color`);
+            const dvlaData = await dvlaService.lookupVehicle(registration);
+            dvlaColor = dvlaData.colour || null;
+            
+            if (dvlaColor) {
+              parsedCheckCarData.color = dvlaColor;
+              console.log(`✅ Using DVLA color: ${dvlaColor}`);
+            }
+          } catch (dvlaError) {
+            console.log(`⚠️ DVLA API failed for color: ${dvlaError.message}`);
+            // Continue without DVLA color - not critical
+          }
+        }
+        
+        vehicleData = parsedCheckCarData;
+        
+      } catch (checkCarError) {
+        console.log(`❌ CheckCarDetails API failed for ${registration}: ${checkCarError.message}`);
+        console.log(`🔄 Falling back to FREE DVLA API`);
+        
+        // STEP 3: Fallback to FREE DVLA API if CheckCarDetails fails
         try {
-          vehicleData = await CheckCarDetailsClient.getVehicleSpecs(registration);
-          apiCost = 0.05;
+          console.log(`🆓 Trying FREE DVLA API for ${registration}`);
+          const dvlaData = await dvlaService.lookupVehicle(registration);
+          
+          // Check if DVLA has complete data
+          if (!dvlaData.model || dvlaData.model === null) {
+            throw new Error('DVLA API returned incomplete data (missing model)');
+          }
+          
+          vehicleData = dvlaData;
+          console.log(`✅ DVLA API success for ${registration} - FREE data obtained`);
+          apiCost = 0;
           apiCalls = 1;
-          apiProvider = 'vehiclespecs-fallback';
-          console.log(`✅ CheckCarDetails Vehiclespecs API success for ${registration}`);
-        } catch (checkCarError) {
-          console.error(`❌ Both DVLA and CheckCarDetails APIs failed for ${registration}`);
-          throw new Error(`Bike lookup failed: DVLA (${dvlaError.message}), CheckCarDetails (${checkCarError.message})`);
+          apiProvider = 'dvla-fallback';
+        } catch (dvlaError) {
+          console.error(`❌ Both CheckCarDetails and DVLA APIs failed for ${registration}`);
+          throw new Error(`Bike lookup failed: CheckCarDetails (${checkCarError.message}), DVLA (${dvlaError.message})`);
         }
       }
       
@@ -73,14 +142,18 @@ class LightweightBikeService {
       }
       
       // Parse the response to get basic bike data
+      const ApiResponseParser = require('../utils/apiResponseParser');
       let parsedData;
-      if (apiProvider === 'dvla-free') {
+      if (apiProvider === 'dvla-fallback') {
         // Parse DVLA response
         parsedData = this.parseDVLAResponse(vehicleData, registration);
       } else {
-        // Parse CheckCarDetails response
-        parsedData = CheckCarDetailsClient.parseResponse(vehicleData);
+        // Already parsed CheckCarDetails data
+        parsedData = vehicleData;
       }
+      
+      // Calculate estimated price
+      const estimatedPrice = this.calculateEstimatedPrice(parsedData);
       
       // Format basic bike data (no history/MOT data)
       const basicData = {
@@ -94,7 +167,8 @@ class LightweightBikeService {
         fuelType: parsedData.fuelType || 'Petrol',
         transmission: 'Manual', // Most bikes are manual
         engineSize: parsedData.engineSize ? `${parseFloat(parsedData.engineSize).toFixed(1)}L` : null,
-        engineCC: parsedData.engineCapacity || null,
+        // Convert engineSize to engineCC if engineCapacity is not available
+        engineCC: parsedData.engineCapacity || (parsedData.engineSize ? Math.round(parseFloat(parsedData.engineSize) * 1000) : null),
         bikeType: this.determineBikeType(parsedData),
         bodyType: parsedData.bodyType || null,
         emissionClass: parsedData.emissionClass || parsedData.euroStatus ? `Euro ${parsedData.euroStatus}` : null,
@@ -106,7 +180,22 @@ class LightweightBikeService {
         insuranceGroup: parsedData.insuranceGroup || null,
         
         // Add estimated pricing based on bike age and type
-        estimatedValue: this.calculateEstimatedPrice(parsedData),
+        estimatedValue: estimatedPrice,
+        
+        // CRITICAL: Add valuation structure (like cars) for frontend compatibility
+        valuation: {
+          private: estimatedPrice,
+          retail: Math.round(estimatedPrice * 1.15), // Retail ~15% higher
+          trade: Math.round(estimatedPrice * 0.75), // Trade ~25% lower
+          partExchange: Math.round(estimatedPrice * 0.80) // Part exchange ~20% lower
+        },
+        
+        // Alternative valuation structure (for compatibility)
+        allValuations: {
+          private: estimatedPrice,
+          retail: Math.round(estimatedPrice * 1.15),
+          trade: Math.round(estimatedPrice * 0.75)
+        },
         
         // NO vehicle history, MOT history, or detailed valuation data
         // These will be fetched later when bike is actually saved
@@ -167,11 +256,20 @@ class LightweightBikeService {
         return null;
       }
 
+      // Calculate estimated price for cached data
+      const cachedEstimatedPrice = this.calculateEstimatedPrice({
+        make: cached.make,
+        model: cached.model,
+        year: cached.yearOfManufacture,
+        fuelType: cached.fuelType,
+        engineCapacity: cached.engineCapacity
+      });
+      
       // Return basic bike data from cache (no history/MOT data)
       return {
         registration: cached.vrm,
-        make: cached.make,
-        model: cached.model,
+        make: cached.make || 'Unknown',
+        model: cached.model || 'Unknown',
         variant: cached.variant,
         year: cached.yearOfManufacture,
         color: cached.colour,
@@ -192,13 +290,22 @@ class LightweightBikeService {
         insuranceGroup: cached.insuranceGroup || null,
         
         // Add estimated pricing for cached data too
-        estimatedValue: this.calculateEstimatedPrice({
-          make: cached.make,
-          model: cached.model,
-          year: cached.yearOfManufacture,
-          fuelType: cached.fuelType,
-          engineCapacity: cached.engineCapacity
-        }),
+        estimatedValue: cachedEstimatedPrice,
+        
+        // CRITICAL: Add valuation structure (like cars) for frontend compatibility
+        valuation: {
+          private: cachedEstimatedPrice,
+          retail: Math.round(cachedEstimatedPrice * 1.15),
+          trade: Math.round(cachedEstimatedPrice * 0.75),
+          partExchange: Math.round(cachedEstimatedPrice * 0.80)
+        },
+        
+        // Alternative valuation structure (for compatibility)
+        allValuations: {
+          private: cachedEstimatedPrice,
+          retail: Math.round(cachedEstimatedPrice * 1.15),
+          trade: Math.round(cachedEstimatedPrice * 0.75)
+        },
         
         // Metadata
         apiProvider: cached.apiProvider || 'cached',
@@ -458,9 +565,10 @@ class LightweightBikeService {
   }
 
   /**
-   * Get complete bike data with MOT, History, and Valuation
-   * @param {string} registration - Vehicle registration
-   * @param {number} mileage - Current mileage
+   * Get COMPLETE bike data including MOT, History, and Valuation
+   * This is used in the edit page to fetch all data after basic lookup
+   * @param {string} registration - Vehicle registration number
+   * @param {number} mileage - Vehicle mileage
    * @returns {Promise<Object>} Complete bike data with MOT, History, Valuation
    */
   async getCompleteBikeData(registration, mileage) {
@@ -470,12 +578,12 @@ class LightweightBikeService {
     const parsedMileage = mileage ? parseInt(mileage, 10) : 50000;
     
     try {
-      const CheckCarDetailsClient = require('../clients/CheckCarDetailsClient');
+      const client = new CheckCarDetailsClient();
       const MOTHistoryService = require('./motHistoryService');
       const HistoryService = require('./historyService');
       const ValuationService = require('./valuationService');
       
-      const client = new CheckCarDetailsClient();
+      // Instantiate services
       const motService = new MOTHistoryService();
       const historyService = new HistoryService();
       const valuationService = new ValuationService();
@@ -501,21 +609,36 @@ class LightweightBikeService {
       }
       
       // Add MOT data
-      if (motResult.status === 'fulfilled' && motResult.value && motResult.value.success) {
+      if (motResult.status === 'fulfilled' && motResult.value) {
+        console.log(`🔍 [Complete Data] MOT Result:`, {
+          success: motResult.value.success,
+          dataType: typeof motResult.value.data,
+          dataIsArray: Array.isArray(motResult.value.data),
+          dataLength: motResult.value.data?.length,
+          source: motResult.value.source
+        });
+        
+        // MOTHistoryService returns { success, data: [...], source }
         const motData = motResult.value.data || [];
         bikeData.motHistory = motData;
         
         // Get latest MOT test for expiry date
-        if (motData.length > 0) {
+        if (Array.isArray(motData) && motData.length > 0) {
           const latestTest = motData[0];
           bikeData.motDue = latestTest.expiryDate || null;
           bikeData.motExpiry = latestTest.expiryDate || null;
           bikeData.motStatus = latestTest.testResult === 'PASSED' ? 'Valid' : 'Failed';
-        }
-        
-        console.log(`✅ [Complete Data] MOT API success - ${motData.length} tests found`);
-        if (bikeData.motDue) {
-          console.log(`   MOT Due: ${new Date(bikeData.motDue).toLocaleDateString()}`);
+          
+          console.log(`✅ [Complete Data] MOT API success - ${motData.length} tests found`);
+          console.log(`   Latest test:`, {
+            testDate: latestTest.testDate || latestTest.completedDate,
+            expiryDate: latestTest.expiryDate,
+            testResult: latestTest.testResult,
+            odometerValue: latestTest.odometerValue
+          });
+          console.log(`   MOT Due: ${bikeData.motDue ? new Date(bikeData.motDue).toLocaleDateString() : 'Not available'}`);
+        } else {
+          console.log(`⚠️ [Complete Data] MOT API returned but no tests found (data length: ${motData?.length || 0})`);
         }
       } else {
         console.log(`❌ [Complete Data] MOT API failed:`, motResult.reason?.message);
@@ -524,11 +647,11 @@ class LightweightBikeService {
       }
       
       // Add History data (previous owners)
-      if (historyResult.status === 'fulfilled' && historyResult.value && historyResult.value.success) {
-        const historyData = historyResult.value.data || {};
-        bikeData.previousOwners = historyData.previousKeepers || null;
+      if (historyResult.status === 'fulfilled' && historyResult.value) {
+        const historyData = historyResult.value;
+        bikeData.previousOwners = historyData.previousKeepers || historyData.keeperChanges || null;
         bikeData.writeOffCategory = historyData.writeOffCategory || 'none';
-        bikeData.isWrittenOff = historyData.isWrittenOff || false;
+        bikeData.isWrittenOff = historyData.isWrittenOff || historyData.scrapped || false;
         console.log(`✅ [Complete Data] History API success - ${bikeData.previousOwners} previous owners`);
       } else {
         console.log(`❌ [Complete Data] History API failed:`, historyResult.reason?.message);
@@ -537,6 +660,7 @@ class LightweightBikeService {
       
       // Add Valuation data
       if (valuationResult.status === 'fulfilled' && valuationResult.value) {
+        // The valuation service returns a parsed result with estimatedValue object
         const valuationData = valuationResult.value;
         bikeData.valuation = {
           private: valuationData.estimatedValue?.private || 0,
@@ -544,11 +668,12 @@ class LightweightBikeService {
           trade: valuationData.estimatedValue?.trade || 0,
           partExchange: valuationData.estimatedValue?.trade || 0
         };
-        bikeData.allValuations = bikeData.valuation;
+        bikeData.allValuations = bikeData.valuation; // Add alias for frontend compatibility
         bikeData.estimatedValue = valuationData.estimatedValue?.private || null;
         console.log(`✅ [Complete Data] Valuation API success - Private: £${bikeData.estimatedValue}`);
       } else {
         console.log(`❌ [Complete Data] Valuation API failed:`, valuationResult.reason?.message);
+        // Generate fallback valuation
         const fallbackPrice = this.calculateEstimatedPrice({
           make: bikeData.make,
           model: bikeData.model,
@@ -595,7 +720,6 @@ class LightweightBikeService {
       };
     }
   }
-
 }
 
 module.exports = new LightweightBikeService();
