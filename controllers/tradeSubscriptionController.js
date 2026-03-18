@@ -141,11 +141,13 @@ exports.createCheckoutSession = async (req, res) => {
     console.log('✅ Plan found, creating Stripe checkout session...');
 
     // Check if we should use direct activation (development) or Stripe (production)
-    const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.STRIPE_SECRET_KEY;
+    // Set FORCE_STRIPE=true in .env to test Stripe in development
+    const forceStripe = process.env.FORCE_STRIPE === 'true';
+    const isDevelopment = (process.env.NODE_ENV === 'development' || !process.env.STRIPE_SECRET_KEY) && !forceStripe;
 
     if (isDevelopment) {
       // DEVELOPMENT: Create subscription directly without Stripe
-      console.log('🔧 Development mode: Creating subscription directly');
+      console.log('🔧 Development mode: Creating subscription directly (set FORCE_STRIPE=true to test Stripe)');
       
       const subscription = new TradeSubscription({
         dealerId: dealer._id,

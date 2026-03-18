@@ -37,6 +37,9 @@ router.post('/', requireActiveSubscription, checkListingLimit, validateVehicleDa
 router.put('/:id', requireActiveSubscription, validateVehicleData, tradeInventoryController.updateVehicle);
 router.delete('/:id', requireActiveSubscription, tradeInventoryController.deleteVehicle);
 
+// Trial listing charge - require active subscription
+router.post('/charge-trial-listing', requireActiveSubscription, tradeInventoryController.chargeTrialListing);
+
 // Mark as sold - require active subscription
 router.patch('/:id/sold', requireActiveSubscription, tradeInventoryController.markAsSold);
 

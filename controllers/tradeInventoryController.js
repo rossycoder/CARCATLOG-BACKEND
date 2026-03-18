@@ -1047,3 +1047,73 @@ exports.publishVehicle = async (req, res) => {
     });
   }
 };
+
+/**
+ * Charge £2.50 for car listing during trial period
+ * POST /api/trade/inventory/charge-trial-listing
+ */
+exports.chargeTrialListing = async (req, res) => {
+  try {
+    const { vehicleId } = req.body;
+    const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+    
+    // Get active subscription
+    const subscription = await TradeSubscription.findOne({
+      dealerId: req.dealerId,
+      status: { $in: ['active', 'trialing'] }
+    }).populate('plan');
+    
+    if (!subscription) {
+      return res.status(404).json({
+        success: false,
+        message: 'No active subscription found'
+      });
+    }
+    
+    // Check if in trial period
+    if (!subscription.isTrialing) {
+      return res.json({
+        success: true,
+        message: 'Not in trial period, no charge needed',
+        charged: false
+      });
+    }
+    
+    // Charge £2.50 using Stripe Payment Intent
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: 250, // £2.50 in pence
+      currency: 'gbp',
+      customer: subscription.stripeCustomerId,
+      description: `Trial listing charge for vehicle ${vehicleId}`,
+      metadata: {
+        dealerId: req.dealerId.toString(),
+        vehicleId: vehicleId,
+        subscriptionId: subscription._id.toString(),
+        chargeType: 'trial_listing'
+      },
+      payment_method: subscription.stripePaymentMethodId,
+      off_session: true,
+      confirm: true
+    });
+    
+    console.log('✅ Trial listing charge successful:', paymentIntent.id);
+    
+    res.json({
+      success: true,
+      message: 'Trial listing charge successful',
+      charged: true,
+      amount: 2.50,
+      chargeId: paymentIntent.id
+    });
+  } catch (error) {
+    console.error('❌ Trial listing charge error:', error);
+    
+    // Don't block listing if charge fails
+    res.json({
+      success: true,
+      message: 'Listing created but charge failed - will retry',
+      charged: false,
+      error: error.message
+    });
+  }
+};
