@@ -249,6 +249,14 @@ const bikeSchema = new mongoose.Schema({
   lastViewedAt: {
     type: Date
   },
+  inquiryCount: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  lastInquiryAt: {
+    type: Date
+  },
   // Running costs data
   runningCosts: {
     fuelEconomy: {

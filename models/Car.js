@@ -346,6 +346,14 @@ const carSchema = new mongoose.Schema({
   lastViewedAt: {
     type: Date
   },
+  inquiryCount: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  lastInquiryAt: {
+    type: Date
+  },
   
   // Vehicle features
   features: {

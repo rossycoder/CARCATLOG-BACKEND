@@ -631,17 +631,27 @@ exports.markAsSold = async (req, res) => {
 
     const wasActive = vehicle.advertStatus === 'active';
 
+    // Fix any invalid historyCheckStatus values before saving
+    if (vehicle.historyCheckStatus && !['pending', 'verified', 'failed', 'not_required'].includes(vehicle.historyCheckStatus)) {
+      console.log(`⚠️  Invalid historyCheckStatus: ${vehicle.historyCheckStatus}, setting to 'not_required'`);
+      vehicle.historyCheckStatus = 'not_required';
+    }
+
     vehicle.advertStatus = 'sold';
     vehicle.soldAt = new Date();
-    await vehicle.save();
+    
+    // Save with validation disabled to avoid enum errors on old data
+    await vehicle.save({ validateBeforeSave: false });
 
     // Decrement subscription usage if was active
-    if (wasActive) {
+    if (wasActive && req.subscription) {
       await req.subscription.decrementListingCount();
     }
 
     // Update dealer stats
-    await req.dealer.updateStats();
+    if (req.dealer) {
+      await req.dealer.updateStats();
+    }
 
     res.json({
       success: true,
@@ -652,7 +662,8 @@ exports.markAsSold = async (req, res) => {
     console.error('Mark as sold error:', error);
     res.status(500).json({
       success: false,
-      message: 'Error marking vehicle as sold'
+      message: 'Error marking vehicle as sold',
+      error: error.message
     });
   }
 };

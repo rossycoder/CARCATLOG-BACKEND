@@ -2802,6 +2802,64 @@ class VehicleController {
       });
     }
   }
+
+  /**
+   * Track inquiry for a vehicle (phone click or email click)
+   * POST /api/vehicles/:id/inquiry
+   */
+  async trackInquiry(req, res) {
+    try {
+      const { id } = req.params;
+      const { type } = req.body; // 'phone' or 'email'
+
+      console.log('[Vehicle Controller] Tracking inquiry for vehicle:', id, 'Type:', type);
+
+      // Find vehicle in Car collection
+      let vehicle = await Car.findById(id);
+      let vehicleType = 'car';
+
+      // If not found in Car, try Bike
+      if (!vehicle) {
+        const Bike = require('../models/Bike');
+        vehicle = await Bike.findById(id);
+        vehicleType = 'bike';
+      }
+
+      // If not found in Bike, try Van
+      if (!vehicle) {
+        const Van = require('../models/Van');
+        vehicle = await Van.findById(id);
+        vehicleType = 'van';
+      }
+
+      if (!vehicle) {
+        return res.status(404).json({
+          success: false,
+          message: 'Vehicle not found'
+        });
+      }
+
+      // Increment inquiry count
+      vehicle.inquiryCount = (vehicle.inquiryCount || 0) + 1;
+      vehicle.lastInquiryAt = new Date();
+      await vehicle.save();
+
+      console.log('[Vehicle Controller] Inquiry tracked successfully. Total inquiries:', vehicle.inquiryCount);
+
+      return res.json({
+        success: true,
+        message: 'Inquiry tracked successfully',
+        inquiryCount: vehicle.inquiryCount
+      });
+
+    } catch (error) {
+      console.error('[Vehicle Controller] Error tracking inquiry:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to track inquiry'
+      });
+    }
+  }
 }
 
 module.exports = new VehicleController();

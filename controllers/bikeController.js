@@ -589,6 +589,68 @@ exports.deleteBike = async (req, res) => {
   }
 };
 
+/**
+ * Mark bike as sold
+ * PATCH /api/bikes/:id/sold
+ */
+exports.markBikeAsSold = async (req, res) => {
+  try {
+    const bike = await Bike.findById(req.params.id);
+
+    if (!bike) {
+      return res.status(404).json({
+        success: false,
+        message: 'Bike not found'
+      });
+    }
+
+    // Check if bike belongs to the dealer (if authenticated as dealer)
+    if (req.dealerId && bike.dealerId && bike.dealerId.toString() !== req.dealerId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to mark this bike as sold'
+      });
+    }
+
+    const wasActive = bike.advertStatus === 'active';
+
+    // Fix any invalid historyCheckStatus values before saving
+    if (bike.historyCheckStatus && !['pending', 'verified', 'failed', 'not_required'].includes(bike.historyCheckStatus)) {
+      console.log(`⚠️  Invalid bike historyCheckStatus: ${bike.historyCheckStatus}, setting to 'not_required'`);
+      bike.historyCheckStatus = 'not_required';
+    }
+
+    bike.advertStatus = 'sold';
+    bike.soldAt = new Date();
+    
+    // Save with validation disabled to avoid enum errors on old data
+    await bike.save({ validateBeforeSave: false });
+
+    // Decrement subscription usage if was active and dealer is authenticated
+    if (wasActive && req.subscription) {
+      await req.subscription.decrementListingCount();
+    }
+
+    // Update dealer stats if dealer is authenticated
+    if (req.dealer) {
+      await req.dealer.updateStats();
+    }
+
+    res.json({
+      success: true,
+      message: 'Bike marked as sold',
+      bike
+    });
+  } catch (error) {
+    console.error('Error marking bike as sold:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error marking bike as sold',
+      error: error.message
+    });
+  }
+};
+
 // Search bikes by postcode
 exports.searchByPostcode = async (req, res) => {
   try {

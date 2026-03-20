@@ -2028,506 +2028,7 @@ async function createRefund(req, res) {
   }
 }
 
-/**
- * Create Stripe checkout session for bike advertising package
- * POST /api/payments/create-bike-checkout-session
- * Body: { packageId, packageName, price, duration, advertId, advertData, vehicleData, contactDetails }
- */
-async function createBikeCheckoutSession(req, res) {
-  try {
-    const { 
-      packageId, packageName, price, duration,
-      advertId, advertData, vehicleData, contactDetails,
-      vehicleType, userId // Add userId from request body
-    } = req.body;
-    
-    console.log('📦 createBikeCheckoutSession called with:', {
-      packageId, packageName, price, duration,
-      vehicleType, advertId: advertId ? 'YES' : 'NO'
-    });
-    
-    if (!packageId || !packageName || !price) {
-      console.error('❌ Missing required fields:', { packageId, packageName, price });
-      return res.status(400).json({
-        success: false,
-        error: 'Package details are required',
-      });
-    }
 
-    const stripeService = new StripeService();
-    
-    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const successUrl = `${baseUrl}/bikes/advert-payment-success?session_id={CHECKOUT_SESSION_ID}&package=${encodeURIComponent(packageName)}&advertId=${advertId}`;
-    const cancelUrl = `${baseUrl}/bikes/advertising-prices?cancelled=true`;
-
-    // Use vehicleType if provided, otherwise default to 'bike'
-    const finalVehicleValue = vehicleType || 'bike';
-
-    // Create Stripe checkout session
-    const session = await stripeService.createAdvertCheckoutSession(
-      packageId,
-      packageName,
-      price,
-      duration,
-      'private', // Bikes are private seller only for now
-      finalVehicleValue,
-      null, // registration
-      null, // mileage
-      advertId,
-      advertData,
-      vehicleData,
-      contactDetails,
-      successUrl,
-      cancelUrl
-    );
-
-    // Validate and prepare metadata
-    const safeAdvertData = advertData || {};
-    const safeVehicleData = vehicleData || {};
-    const safeContactDetails = contactDetails || {};
-    
-    console.log('📦 Preparing BIKE purchase record with data:');
-    console.log('   Advert ID:', advertId || 'None');
-    console.log('   Vehicle Data keys:', Object.keys(safeVehicleData));
-
-    // Save purchase record to database
-    const purchase = new AdvertisingPackagePurchase({
-      stripeSessionId: session.sessionId,
-      customSessionId: session.customSessionId,
-      packageId,
-      packageName,
-      duration,
-      amount: price,
-      currency: 'gbp',
-      sellerType: 'private',
-      vehicleValue: 'bike',
-      registration: safeVehicleData.registrationNumber || null,
-      mileage: safeVehicleData.mileage || null,
-      paymentStatus: 'pending',
-      packageStatus: 'pending',
-      metadata: {
-        advertId: advertId || null,
-        vehicleType: 'bike',
-        advertData: JSON.stringify(safeAdvertData),
-        vehicleData: JSON.stringify(safeVehicleData),
-        contactDetails: JSON.stringify(safeContactDetails),
-        userId: userId || (req.user ? (req.user._id || req.user.id).toString() : null)
-      }
-    });
-
-    await purchase.save();
-    console.log(`✅ Bike purchase record created: ${purchase._id}`);
-
-    // Create bike in database with pending_payment status
-    if (advertId && vehicleData) {
-      try {
-        const Bike = require('../models/Bike');
-        const postcodeService = require('../services/postcodeService');
-        
-        console.log(`📦 Creating/updating bike for advertId: ${advertId}`);
-        
-        // Calculate expiry date
-        const expiryDate = calculateBikeExpiryDate(duration);
-        
-        // Geocode postcode if available
-        let latitude, longitude, locationName;
-        if (contactDetails?.postcode) {
-          try {
-            const postcodeData = await postcodeService.lookupPostcode(contactDetails.postcode);
-            latitude = postcodeData.latitude;
-            longitude = postcodeData.longitude;
-            locationName = postcodeData.locationName;
-          } catch (error) {
-            console.warn(`⚠️  Could not geocode postcode: ${error.message}`);
-          }
-        }
-        
-        // Check if bike already exists
-        let bike = await Bike.findOne({ advertId });
-        
-        if (bike) {
-          // Update existing bike
-          console.log(`📝 Updating existing bike: ${bike._id}`);
-          
-          if (safeAdvertData.price) bike.price = safeAdvertData.price;
-          if (safeAdvertData.description) bike.description = safeAdvertData.description;
-          if (safeAdvertData.photos && safeAdvertData.photos.length > 0) {
-            bike.images = safeAdvertData.photos.map(p => p.url || p);
-          }
-          if (safeContactDetails.postcode) bike.postcode = safeContactDetails.postcode;
-          if (locationName) bike.locationName = locationName;
-          if (latitude) bike.latitude = latitude;
-          if (longitude) bike.longitude = longitude;
-          
-          if (latitude && longitude) {
-            bike.location = {
-              type: 'Point',
-              coordinates: [longitude, latitude]
-            };
-          }
-          
-          bike.sellerContact = {
-            type: 'private',
-            phoneNumber: safeContactDetails.phoneNumber || bike.sellerContact?.phoneNumber,
-            email: safeContactDetails.email || bike.sellerContact?.email,
-            allowEmailContact: safeContactDetails.allowEmailContact || false,
-            postcode: safeContactDetails.postcode || bike.sellerContact?.postcode
-          };
-          
-          bike.advertisingPackage = {
-            packageId: packageId,
-            packageName: packageName,
-            duration: duration,
-            price: price,
-            purchaseDate: new Date(),
-            expiryDate: expiryDate,
-            stripeSessionId: session.sessionId
-          };
-          
-          bike.status = 'pending_payment';
-          
-          await bike.save();
-          console.log(`✅ Bike updated with pending payment status`);
-        } else {
-          // Create new bike
-          console.log(`📝 Creating NEW bike document`);
-          bike = new Bike({
-            advertId: advertId,
-            userId: userId || (req.user ? (req.user._id || req.user.id) : null), // Use userId from request body
-            make: vehicleData.make || 'Unknown',
-            model: vehicleData.model || 'Unknown',
-            year: vehicleData.year || new Date().getFullYear(),
-            mileage: vehicleData.mileage || 0,
-            color: vehicleData.color || 'Not specified',
-            fuelType: vehicleData.fuelType || 'Petrol',
-            transmission: 'manual',
-            registrationNumber: vehicleData.registrationNumber || null,
-            engineCC: parseInt(vehicleData.engineCC || vehicleData.engineSize || '0') || 0,
-            bikeType: vehicleData.bikeType || 'Other',
-            condition: 'used',
-            price: advertData?.price || 0,
-            description: advertData?.description || '',
-            images: advertData?.photos ? advertData.photos.map(p => p.url || p) : [],
-            postcode: contactDetails?.postcode || '',
-            locationName: locationName,
-            latitude: latitude,
-            longitude: longitude,
-            location: latitude && longitude ? {
-              type: 'Point',
-              coordinates: [longitude, latitude]
-            } : undefined,
-            sellerContact: {
-              type: 'private',
-              phoneNumber: contactDetails?.phoneNumber,
-              email: contactDetails?.email,
-              allowEmailContact: contactDetails?.allowEmailContact || false,
-              postcode: contactDetails?.postcode
-            },
-            advertisingPackage: {
-              packageId: packageId,
-              packageName: packageName,
-              duration: duration,
-              price: price,
-              purchaseDate: new Date(),
-              expiryDate: expiryDate,
-              stripeSessionId: session.sessionId
-            },
-            status: 'pending_payment',
-            createdAt: new Date()
-          });
-          
-          await bike.save();
-          console.log(`✅ Bike created with pending payment status`);
-        }
-        
-        console.log(`   Bike ID: ${bike._id}`);
-        console.log(`   Status: ${bike.status}`);
-        console.log(`   Make/Model: ${bike.make} ${bike.model}`);
-        
-      } catch (bikeError) {
-        console.error(`❌ ERROR creating/updating bike:`, bikeError.message);
-        // Don't fail the checkout session creation if bike save fails
-      }
-    }
-    
-    // Helper function to calculate expiry date for bikes
-    function calculateBikeExpiryDate(duration) {
-      const now = new Date();
-      const days = parseInt(duration.match(/\d+/)?.[0] || 14);
-      return new Date(now.setDate(now.getDate() + days));
-    }
-
-    res.json({
-      success: true,
-      data: {
-        sessionId: session.sessionId,
-        url: session.url,
-        customSessionId: session.customSessionId,
-        packageName: session.packageName,
-        amount: session.amount,
-        currency: session.currency,
-        purchaseId: purchase._id
-      }
-    });
-  } catch (error) {
-    console.error('❌ Error in createBikeCheckoutSession:', error);
-    const errorResponse = formatErrorResponse(error, 'payment');
-    res.status(500).json(errorResponse);
-  }
-}
-
-/**
- * Create Stripe checkout session for van advertising package
- * POST /api/payments/create-van-checkout-session
- * Body: { packageId, packageName, price, duration, advertId, advertData, vehicleData, contactDetails }
- */
-async function createVanCheckoutSession(req, res) {
-  try {
-    const { 
-      packageId, packageName, price, duration, durationDays,
-      advertId, advertData, vehicleData, contactDetails,
-      vehicleType, userId // Add userId from request body
-    } = req.body;
-    
-    console.log('📦 createVanCheckoutSession called with:', {
-      packageId, packageName, price, duration, durationDays,
-      vehicleType, advertId: advertId ? 'YES' : 'NO'
-    });
-    
-    if (!packageId || !packageName || !price) {
-      console.error('❌ Missing required fields:', { packageId, packageName, price });
-      return res.status(400).json({
-        success: false,
-        error: 'Package details are required',
-      });
-    }
-
-    const stripeService = new StripeService();
-    
-    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const successUrl = `${baseUrl}/vans/advert-payment-success?session_id={CHECKOUT_SESSION_ID}&package=${encodeURIComponent(packageName)}&advertId=${advertId}`;
-    const cancelUrl = `${baseUrl}/vans/advertising-prices?cancelled=true`;
-
-    // Use vehicleType if provided, otherwise default to 'van'
-    const finalVehicleValue = vehicleType || 'van';
-
-    // Create Stripe checkout session
-    const session = await stripeService.createAdvertCheckoutSession(
-      packageId,
-      packageName,
-      price,
-      duration,
-      'private', // Vans are private seller only for now
-      finalVehicleValue,
-      null, // registration
-      null, // mileage
-      advertId,
-      advertData,
-      vehicleData,
-      contactDetails,
-      successUrl,
-      cancelUrl
-    );
-
-    // Validate and prepare metadata
-    const safeAdvertData = advertData || {};
-    const safeVehicleData = vehicleData || {};
-    const safeContactDetails = contactDetails || {};
-    
-    console.log('📦 Preparing VAN purchase record with data:');
-    console.log('   Advert ID:', advertId || 'None');
-    console.log('   Vehicle Data keys:', Object.keys(safeVehicleData));
-
-    // Save purchase record to database
-    const purchase = new AdvertisingPackagePurchase({
-      stripeSessionId: session.sessionId,
-      customSessionId: session.customSessionId,
-      packageId,
-      packageName,
-      duration,
-      amount: price,
-      currency: 'gbp',
-      sellerType: 'private',
-      vehicleValue: 'van',
-      registration: safeVehicleData.registrationNumber || null,
-      mileage: safeVehicleData.mileage || null,
-      paymentStatus: 'pending',
-      packageStatus: 'pending',
-      metadata: {
-        advertId: advertId || null,
-        vehicleType: 'van',
-        advertData: JSON.stringify(safeAdvertData),
-        vehicleData: JSON.stringify(safeVehicleData),
-        contactDetails: JSON.stringify(safeContactDetails),
-        userId: userId || (req.user ? (req.user._id || req.user.id).toString() : null)
-      }
-    });
-
-    await purchase.save();
-    console.log(`✅ Van purchase record created: ${purchase._id}`);
-
-    // Create van in database with pending_payment status
-    if (advertId && vehicleData) {
-      try {
-        const Van = require('../models/Van');
-        const postcodeService = require('../services/postcodeService');
-        
-        console.log(`📦 Creating/updating van for advertId: ${advertId}`);
-        
-        // Calculate expiry date based on weeks
-        const expiryDate = calculateVanExpiryDate(duration);
-        
-        // Geocode postcode if available
-        let latitude, longitude, locationName;
-        if (contactDetails?.postcode) {
-          try {
-            const postcodeData = await postcodeService.lookupPostcode(contactDetails.postcode);
-            latitude = postcodeData.latitude;
-            longitude = postcodeData.longitude;
-            locationName = postcodeData.locationName;
-          } catch (error) {
-            console.warn(`⚠️  Could not geocode postcode: ${error.message}`);
-          }
-        }
-        
-        // Check if van already exists
-        let van = await Van.findOne({ advertId });
-        
-        if (van) {
-          // Update existing van
-          console.log(`📝 Updating existing van: ${van._id}`);
-          
-          if (safeAdvertData.price) van.price = safeAdvertData.price;
-          if (safeAdvertData.description) van.description = safeAdvertData.description;
-          if (safeAdvertData.photos && safeAdvertData.photos.length > 0) {
-            van.images = safeAdvertData.photos.map(p => p.url || p);
-          }
-          if (safeContactDetails.postcode) van.postcode = safeContactDetails.postcode;
-          if (locationName) van.locationName = locationName;
-          if (latitude) van.latitude = latitude;
-          if (longitude) van.longitude = longitude;
-          
-          if (latitude && longitude) {
-            van.location = {
-              type: 'Point',
-              coordinates: [longitude, latitude]
-            };
-          }
-          
-          van.sellerContact = {
-            type: 'private',
-            phoneNumber: safeContactDetails.phoneNumber || van.sellerContact?.phoneNumber,
-            email: safeContactDetails.email || van.sellerContact?.email,
-            allowEmailContact: safeContactDetails.allowEmailContact || false,
-            postcode: safeContactDetails.postcode || van.sellerContact?.postcode
-          };
-          
-          van.advertisingPackage = {
-            packageId: packageId,
-            packageName: packageName,
-            duration: duration,
-            price: price,
-            purchaseDate: new Date(),
-            expiryDate: expiryDate,
-            stripeSessionId: session.sessionId
-          };
-          
-          van.status = 'pending_payment';
-          
-          await van.save();
-          console.log(`✅ Van updated with pending payment status`);
-        } else {
-          // Create new van
-          console.log(`📝 Creating NEW van document`);
-          van = new Van({
-            advertId: advertId,
-            userId: userId || (req.user ? (req.user._id || req.user.id) : null), // Add userId field
-            make: vehicleData.make || 'Unknown',
-            model: vehicleData.model || 'Unknown',
-            year: vehicleData.year || new Date().getFullYear(),
-            mileage: vehicleData.mileage || 0,
-            color: vehicleData.color || 'Not specified',
-            fuelType: vehicleData.fuelType || 'Diesel',
-            transmission: vehicleData.transmission || 'Manual',
-            registrationNumber: vehicleData.registration || vehicleData.registrationNumber || null,
-            vanType: vehicleData.vanType || 'Panel Van',
-            payloadCapacity: vehicleData.payloadCapacity || 0,
-            loadLength: vehicleData.loadLength || 0,
-            loadWidth: vehicleData.loadWidth || 0,
-            loadHeight: vehicleData.loadHeight || 0,
-            wheelbase: vehicleData.wheelbase || 'Medium',
-            roofHeight: vehicleData.roofHeight || 'Medium',
-            condition: 'used',
-            price: advertData?.price || 0,
-            description: advertData?.description || '',
-            images: advertData?.photos ? advertData.photos.map(p => p.url || p) : [],
-            postcode: contactDetails?.postcode || '',
-            locationName: locationName,
-            latitude: latitude,
-            longitude: longitude,
-            location: latitude && longitude ? {
-              type: 'Point',
-              coordinates: [longitude, latitude]
-            } : undefined,
-            sellerContact: {
-              type: 'private',
-              phoneNumber: contactDetails?.phoneNumber,
-              email: contactDetails?.email,
-              allowEmailContact: contactDetails?.allowEmailContact || false,
-              postcode: contactDetails?.postcode
-            },
-            advertisingPackage: {
-              packageId: packageId,
-              packageName: packageName,
-              duration: duration,
-              price: price,
-              purchaseDate: new Date(),
-              expiryDate: expiryDate,
-              stripeSessionId: session.sessionId
-            },
-            status: 'pending_payment',
-            createdAt: new Date()
-          });
-          
-          await van.save();
-          console.log(`✅ Van created with pending payment status`);
-        }
-        
-        console.log(`   Van ID: ${van._id}`);
-        console.log(`   Status: ${van.status}`);
-        console.log(`   Make/Model: ${van.make} ${van.model}`);
-        
-      } catch (vanError) {
-        console.error(`❌ ERROR creating/updating van:`, vanError.message);
-        // Don't fail the checkout session creation if van save fails
-      }
-    }
-    
-    // Helper function to calculate expiry date for vans (in weeks)
-    function calculateVanExpiryDate(duration) {
-      const now = new Date();
-      const weeks = parseInt(duration.match(/\d+/)?.[0] || 2);
-      return new Date(now.setDate(now.getDate() + (weeks * 7)));
-    }
-
-    res.json({
-      success: true,
-      data: {
-        sessionId: session.sessionId,
-        url: session.url,
-        customSessionId: session.customSessionId,
-        packageName: session.packageName,
-        amount: session.amount,
-        currency: session.currency,
-        purchaseId: purchase._id
-      }
-    });
-  } catch (error) {
-    console.error('❌ Error in createVanCheckoutSession:', error);
-    const errorResponse = formatErrorResponse(error, 'payment');
-    res.status(500).json(errorResponse);
-  }
-}
 
 /**
  * Complete test purchase (for development/testing)
@@ -2648,10 +2149,30 @@ async function autoCompletePurchase(req, res) {
     // Fetch updated purchase
     const updatedPurchase = await AdvertisingPackagePurchase.findOne({ stripeSessionId: sessionId });
 
-    // CRITICAL: Fetch MOT and History data for the vehicle (if not already done)
+    // 🔒 PROTECTED: Check environment variable before auto-completing vehicle data
+    const enableAutoComplete = process.env.ENABLE_PAYMENT_AUTOCOMPLETE === 'true';
+    
+    if (!enableAutoComplete) {
+      console.log(`⏸️  [Auto-Complete] Payment auto-complete is DISABLED (ENABLE_PAYMENT_AUTOCOMPLETE=false)`);
+      console.log(`💰 Saving API costs - MOT/History data will not be fetched automatically`);
+      
+      return res.json({
+        success: true,
+        message: 'Purchase auto-completed successfully (data fetching disabled)',
+        vehicleId: updatedPurchase.vehicleId,
+        purchase: {
+          id: updatedPurchase._id,
+          status: updatedPurchase.paymentStatus,
+          packageStatus: updatedPurchase.packageStatus,
+          vehicleId: updatedPurchase.vehicleId
+        }
+      });
+    }
+
+    // 🔒 PROTECTED: Check if vehicle needs MOT/History data before making API calls
     if (updatedPurchase.vehicleId) {
       const vehicleType = updatedPurchase.metadata?.get('vehicleType') || 'car';
-      console.log(`🔍 [Auto-Complete] Fetching MOT/History for ${vehicleType}: ${updatedPurchase.vehicleId}`);
+      console.log(`🔍 [Auto-Complete] Checking MOT/History status for ${vehicleType}: ${updatedPurchase.vehicleId}`);
       
       try {
         let vehicle;
@@ -2672,29 +2193,58 @@ async function autoCompletePurchase(req, res) {
         }
         
         if (vehicle && registrationNumber) {
-          console.log(`📞 [Auto-Complete] Calling MOT/History APIs for: ${registrationNumber}`);
+          // 🔒 CHECK: Only fetch if data is missing or outdated
+          const needsMOT = !vehicle.motHistory || vehicle.motHistory.length === 0;
+          const needsHistory = !vehicle.historyCheckData || vehicle.historyCheckStatus !== 'completed';
           
-          const safeAPI = require('../services/safeAPIService');
-          const HistoryService = require('../services/historyService');
-          const MOTHistoryService = require('../services/motHistoryService');
-          
-          const historyService = new HistoryService();
-          const motHistoryService = new MOTHistoryService();
-          
-          // Fetch MOT and History in parallel
-          const [motResult, historyResult] = await Promise.allSettled([
-            safeAPI.call('mothistory', registrationNumber, null, async () => {
-              return await motHistoryService.getMOTHistory(registrationNumber);
-            }),
-            safeAPI.call('vehiclehistory', registrationNumber, null, async () => {
-              return await historyService.checkVehicleHistory(registrationNumber);
-            })
-          ]);
-          
-          console.log(`✅ [Auto-Complete] API Results - MOT: ${motResult.status}, History: ${historyResult.status}`);
-          
-          // Update vehicle with MOT data
-          if (motResult.status === 'fulfilled' && motResult.value) {
+          if (!needsMOT && !needsHistory) {
+            console.log(`✅ [Auto-Complete] Vehicle already has complete MOT/History data - skipping API calls`);
+          } else {
+            console.log(`📞 [Auto-Complete] Fetching missing data for: ${registrationNumber} (MOT: ${needsMOT}, History: ${needsHistory})`);
+            
+            const safeAPI = require('../services/safeAPIService');
+            const HistoryService = require('../services/historyService');
+            const MOTHistoryService = require('../services/motHistoryService');
+            
+            const historyService = new HistoryService();
+            const motHistoryService = new MOTHistoryService();
+            
+            // 🔒 PROTECTED: Only fetch what's needed
+            const apiCalls = [];
+            
+            if (needsMOT) {
+              apiCalls.push(
+                safeAPI.call('mothistory', registrationNumber, null, async () => {
+                  return await motHistoryService.getMOTHistory(registrationNumber);
+                }).then(result => ({ type: 'mot', result }))
+              );
+            }
+            
+            if (needsHistory) {
+              apiCalls.push(
+                safeAPI.call('vehiclehistory', registrationNumber, null, async () => {
+                  return await historyService.checkVehicleHistory(registrationNumber);
+                }).then(result => ({ type: 'history', result }))
+              );
+            }
+            
+            // Fetch only what's needed in parallel
+            const results = await Promise.allSettled(apiCalls);
+            
+            let motResult = null;
+            let historyResult = null;
+            
+            results.forEach(({ status, value }) => {
+              if (status === 'fulfilled') {
+                if (value.type === 'mot') motResult = { status: 'fulfilled', value: value.result };
+                if (value.type === 'history') historyResult = { status: 'fulfilled', value: value.result };
+              }
+            });
+            
+            console.log(`✅ [Auto-Complete] API Results - MOT: ${motResult?.status || 'skipped'}, History: ${historyResult?.status || 'skipped'}`);
+            
+            // Update vehicle with MOT data
+            if (motResult && motResult.status === 'fulfilled' && motResult.value) {
             const motData = motResult.value.data || motResult.value;
             if (motData.motHistory && Array.isArray(motData.motHistory)) {
               vehicle.motHistory = motData.motHistory;
@@ -2708,9 +2258,9 @@ async function autoCompletePurchase(req, res) {
               console.log(`✅ [Auto-Complete] MOT data updated: ${vehicle.motHistory.length} tests`);
             }
           }
-          
-          // Update vehicle with History data
-          if (historyResult.status === 'fulfilled' && historyResult.value) {
+            
+            // Update vehicle with History data
+            if (historyResult && historyResult.status === 'fulfilled' && historyResult.value) {
             const historyData = historyResult.value;
             vehicle.historyCheckData = {
               previousKeepers: historyData.previousKeepers || historyData.keeperChanges || 0,
@@ -2726,12 +2276,13 @@ async function autoCompletePurchase(req, res) {
             vehicle.historyCheckDate = new Date();
             console.log(`✅ [Auto-Complete] History data updated: ${vehicle.historyCheckData.previousKeepers} previous keepers`);
           }
-          
-          // Save vehicle with updated data
-          vehicle.markModified('motHistory');
-          vehicle.markModified('historyCheckData');
-          await vehicle.save();
-          console.log(`✅ [Auto-Complete] Vehicle data saved to database`);
+            
+            // Save vehicle with updated data
+            vehicle.markModified('motHistory');
+            vehicle.markModified('historyCheckData');
+            await vehicle.save();
+            console.log(`✅ [Auto-Complete] Vehicle data saved to database`);
+          }
         }
       } catch (apiError) {
         console.error(`❌ [Auto-Complete] Error fetching vehicle data:`, apiError.message);
@@ -2763,8 +2314,6 @@ async function autoCompletePurchase(req, res) {
 module.exports = {
   createCheckoutSession,
   createAdvertCheckoutSession,
-  createBikeCheckoutSession,
-  createVanCheckoutSession,
   createCreditCheckoutSession,
   getSessionDetails,
   getPurchaseDetails,

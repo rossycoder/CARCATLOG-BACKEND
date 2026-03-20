@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const paymentController = require('../controllers/paymentController');
+const bikePaymentController = require('../controllers/bikePaymentController');
+const vanPaymentController = require('../controllers/vanPaymentController');
 
 // POST /api/payments/create-checkout-session - Create Stripe checkout session
 router.post('/create-checkout-session', paymentController.createCheckoutSession);
@@ -12,10 +14,10 @@ router.post('/create-advert-checkout-session', paymentController.createAdvertChe
 router.post('/create-car-checkout-session', paymentController.createAdvertCheckoutSession);
 
 // POST /api/payments/create-bike-checkout-session - Create Stripe checkout session for bike advertising packages
-router.post('/create-bike-checkout-session', paymentController.createBikeCheckoutSession);
+router.post('/create-bike-checkout-session', bikePaymentController.createBikeCheckoutSession);
 
 // POST /api/payments/create-van-checkout-session - Create Stripe checkout session for van advertising packages
-router.post('/create-van-checkout-session', paymentController.createVanCheckoutSession);
+router.post('/create-van-checkout-session', vanPaymentController.createVanCheckoutSession);
 
 // POST /api/payments/webhook - Handle Stripe webhooks
 router.post('/webhook', express.raw({type: 'application/json'}), paymentController.handleWebhook);

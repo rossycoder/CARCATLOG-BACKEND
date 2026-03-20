@@ -51,6 +51,9 @@ router.put('/:id', bikeController.updateBike);
 // PATCH /api/bikes/:id - Patch bike details (make, model, variant)
 router.patch('/:id', bikeController.patchBikeDetails);
 
+// PATCH /api/bikes/:id/sold - Mark bike as sold
+router.patch('/:id/sold', authenticateTradeDealer, bikeController.markBikeAsSold);
+
 // DELETE /api/bikes/:id - Delete bike
 router.delete('/:id', bikeController.deleteBike);
 

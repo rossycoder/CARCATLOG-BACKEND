@@ -70,24 +70,50 @@ exports.getAnalytics = async (req, res) => {
 
     // Calculate overview statistics
     const totalViews = listings.reduce((sum, car) => sum + (car.viewCount || 0), 0);
-    // Note: inquiries field doesn't exist yet, using 0 for now
-    const totalInquiries = 0; // listings.reduce((sum, car) => sum + (car.inquiries || 0), 0);
-    const conversionRate = totalViews > 0 ? ((totalInquiries / totalViews) * 100).toFixed(1) : 0;
+    const totalInquiries = listings.reduce((sum, car) => sum + (car.inquiryCount || 0), 0);
+    const conversionRate = totalViews > 0 ? parseFloat(((totalInquiries / totalViews) * 100).toFixed(1)) : 0;
+
+    console.log('[Analytics Controller] Overview stats:', {
+      totalViews,
+      totalInquiries,
+      conversionRate: `${conversionRate}%`
+    });
 
     // Calculate average time to sell
     const soldListings = listings.filter(car => car.advertStatus === 'sold' && car.soldAt);
     let avgTimeToSell = 0;
     if (soldListings.length > 0) {
       const totalDays = soldListings.reduce((sum, car) => {
-        const days = Math.floor((car.soldAt - car.publishedAt) / (1000 * 60 * 60 * 24));
-        return sum + days;
+        // Use publishedAt if available, otherwise use createdAt as fallback
+        const startDate = car.publishedAt || car.createdAt;
+        const days = Math.floor((car.soldAt - startDate) / (1000 * 60 * 60 * 24));
+        return sum + (days > 0 ? days : 0); // Ensure non-negative days
       }, 0);
-      avgTimeToSell = Math.round(totalDays / soldListings.length);
+      avgTimeToSell = soldListings.length > 0 ? Math.round(totalDays / soldListings.length) : 0;
     }
+
+    console.log('[Analytics Controller] Avg time to sell:', {
+      soldListingsCount: soldListings.length,
+      avgTimeToSell: `${avgTimeToSell} days`
+    });
 
     // Count active and sold listings
     const activeListings = listings.filter(car => car.advertStatus === 'active').length;
-    const soldThisMonth = listings.filter(car => car.advertStatus === 'sold').length;
+    
+    // Count vehicles sold THIS MONTH (not all sold vehicles)
+    // Use existing 'now' variable from line 24
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const soldThisMonth = listings.filter(car => {
+      return car.advertStatus === 'sold' && 
+             car.soldAt && 
+             new Date(car.soldAt) >= firstDayOfMonth;
+    }).length;
+
+    console.log('[Analytics Controller] Sold this month:', {
+      soldThisMonth,
+      firstDayOfMonth: firstDayOfMonth.toISOString(),
+      currentDate: now.toISOString()
+    });
 
     // Get top performers (sorted by view count)
     const topPerformers = listings
@@ -99,7 +125,7 @@ exports.getAnalytics = async (req, res) => {
         model: car.model,
         year: car.year,
         views: car.viewCount || 0,
-        inquiries: 0, // inquiries field doesn't exist yet
+        inquiries: car.inquiryCount || 0,
         price: car.price
       }));
 
@@ -172,26 +198,24 @@ function calculateViewsByDay(listings, startDate, endDate) {
  * Calculate inquiry sources distribution
  */
 function calculateInquiriesBySource(listings) {
-  // Placeholder implementation - will be enhanced with Inquiry model
   const sources = {
-    'Direct': { count: 0, percentage: 0 },
-    'Search': { count: 0, percentage: 0 },
-    'Social': { count: 0, percentage: 0 },
-    'Other': { count: 0, percentage: 0 }
+    'Direct': 0,
+    'Search': 0,
+    'Social': 0,
+    'Other': 0
   };
 
-  // Note: inquiries field doesn't exist yet, so totalInquiries is always 0
-  const totalInquiries = 0; // listings.reduce((sum, car) => sum + (car.inquiries || 0), 0);
+  const totalInquiries = listings.reduce((sum, car) => sum + (car.inquiryCount || 0), 0);
 
   if (totalInquiries === 0) {
-    return Object.entries(sources).map(([source, data]) => ({
+    return Object.entries(sources).map(([source]) => ({
       source,
       count: 0,
       percentage: 0
     }));
   }
 
-  // Distribute inquiries proportionally (placeholder logic)
+  // Distribute inquiries proportionally (placeholder logic - can be enhanced later)
   const distribution = {
     'Direct': 0.47,
     'Search': 0.31,
@@ -232,7 +256,7 @@ function calculatePriceRangePerformance(listings) {
     if (rangeKey) {
       ranges[rangeKey].listings += 1;
       ranges[rangeKey].views += car.viewCount || 0;
-      ranges[rangeKey].inquiries += 0; // inquiries field doesn't exist yet
+      ranges[rangeKey].inquiries += car.inquiryCount || 0;
     }
   });
 

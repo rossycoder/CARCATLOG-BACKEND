@@ -36,6 +36,9 @@ router.post('/', vanController.createVan);
 // PUT /api/vans/:id - Update van
 router.put('/:id', vanController.updateVan);
 
+// PATCH /api/vans/:id/sold - Mark van as sold
+router.patch('/:id/sold', authenticateTradeDealer, vanController.markVanAsSold);
+
 // DELETE /api/vans/:id - Delete van
 router.delete('/:id', vanController.deleteVan);
 

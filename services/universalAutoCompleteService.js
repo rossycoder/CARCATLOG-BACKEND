@@ -1573,11 +1573,18 @@ class UniversalAutoCompleteService {
   }
 
   /**
-   * Refresh cache in background without blocking main operations
+   * 🔒 PROTECTED: Refresh cache in background with deduplication
    * @param {string} vrm - Vehicle registration mark
    */
   async refreshCacheInBackground(vrm) {
     try {
+      // 🔒 DEDUPLICATION: Check if refresh is already in progress
+      const refreshKey = `refresh_${vrm.toUpperCase()}`;
+      if (this.processingLocks.has(refreshKey)) {
+        console.log(`⏸️  Background refresh already in progress for ${vrm} - skipping duplicate`);
+        return;
+      }
+      
       // Find vehicle in database
       const Car = require('../models/Car');
       const Bike = require('../models/Bike');
@@ -1588,15 +1595,24 @@ class UniversalAutoCompleteService {
                      await Van.findOne({ registrationNumber: vrm.toUpperCase() });
       
       if (vehicle) {
-        // Refresh data in background
-        setTimeout(async () => {
-          try {
-            await this.completeCarData(vehicle, true);
-            console.log(`🔄 Background cache refresh completed for ${vrm}`);
-          } catch (error) {
-            console.error(`❌ Background cache refresh failed for ${vrm}:`, error.message);
-          }
-        }, 1000); // 1 second delay to not block main thread
+        // 🔒 PROTECTED: Mark refresh as in-progress
+        const refreshPromise = new Promise((resolve) => {
+          setTimeout(async () => {
+            try {
+              await this.completeCarData(vehicle, true);
+              console.log(`🔄 Background cache refresh completed for ${vrm}`);
+              resolve();
+            } catch (error) {
+              console.error(`❌ Background cache refresh failed for ${vrm}:`, error.message);
+              resolve(); // Resolve anyway to clean up lock
+            } finally {
+              // Clean up lock after completion
+              this.processingLocks.delete(refreshKey);
+            }
+          }, 1000); // 1 second delay to not block main thread
+        });
+        
+        this.processingLocks.set(refreshKey, refreshPromise);
       }
     } catch (error) {
       console.error(`❌ Background cache refresh setup failed for ${vrm}:`, error.message);

@@ -252,6 +252,68 @@ exports.deleteVan = async (req, res) => {
   }
 };
 
+/**
+ * Mark van as sold
+ * PATCH /api/vans/:id/sold
+ */
+exports.markVanAsSold = async (req, res) => {
+  try {
+    const van = await Van.findById(req.params.id);
+
+    if (!van) {
+      return res.status(404).json({
+        success: false,
+        message: 'Van not found'
+      });
+    }
+
+    // Check if van belongs to the dealer (if authenticated as dealer)
+    if (req.dealerId && van.dealerId && van.dealerId.toString() !== req.dealerId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to mark this van as sold'
+      });
+    }
+
+    const wasActive = van.advertStatus === 'active';
+
+    // Fix any invalid historyCheckStatus values before saving
+    if (van.historyCheckStatus && !['pending', 'verified', 'failed', 'not_required'].includes(van.historyCheckStatus)) {
+      console.log(`⚠️  Invalid van historyCheckStatus: ${van.historyCheckStatus}, setting to 'not_required'`);
+      van.historyCheckStatus = 'not_required';
+    }
+
+    van.advertStatus = 'sold';
+    van.soldAt = new Date();
+    
+    // Save with validation disabled to avoid enum errors on old data
+    await van.save({ validateBeforeSave: false });
+
+    // Decrement subscription usage if was active and dealer is authenticated
+    if (wasActive && req.subscription) {
+      await req.subscription.decrementListingCount();
+    }
+
+    // Update dealer stats if dealer is authenticated
+    if (req.dealer) {
+      await req.dealer.updateStats();
+    }
+
+    res.json({
+      success: true,
+      message: 'Van marked as sold',
+      van
+    });
+  } catch (error) {
+    console.error('Error marking van as sold:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error marking van as sold',
+      error: error.message
+    });
+  }
+};
+
 // Get van count
 exports.getVanCount = async (req, res) => {
   try {

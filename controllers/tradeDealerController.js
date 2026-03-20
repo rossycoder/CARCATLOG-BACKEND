@@ -436,7 +436,11 @@ exports.getMe = async (req, res) => {
         listingsAvailable: subscription.listingsAvailable,
         usagePercentage: subscription.usagePercentage,
         currentPeriodEnd: subscription.currentPeriodEnd,
-        daysRemaining: subscription.daysRemaining
+        daysRemaining: subscription.daysRemaining,
+        isTrialing: subscription.isTrialing,
+        trialStart: subscription.trialStart,
+        trialEnd: subscription.trialEnd,
+        trialDaysLeft: subscription.trialDaysLeft
       } : null
     });
   } catch (error) {

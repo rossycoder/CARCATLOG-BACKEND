@@ -64,7 +64,11 @@ exports.getCurrentSubscription = async (req, res) => {
         currentPeriodStart: subscription.currentPeriodStart,
         currentPeriodEnd: subscription.currentPeriodEnd,
         daysRemaining: subscription.daysRemaining,
-        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        isTrialing: subscription.isTrialing,
+        trialStart: subscription.trialStart,
+        trialEnd: subscription.trialEnd,
+        trialDaysLeft: subscription.trialDaysLeft
       }
     });
   } catch (error) {
@@ -192,16 +196,29 @@ exports.createCheckoutSession = async (req, res) => {
       });
     }
 
-    // PRODUCTION: Create Stripe checkout session with 30-day trial
-    console.log('💳 Production mode: Creating Stripe checkout session with 30-day trial');
+    // PRODUCTION: Create Stripe checkout with trial payment + future subscription
+    console.log('💳 Production mode: Creating Stripe checkout with trial payment and scheduled subscription');
     
     const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
     const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-    // Calculate trial end date (30 days from now)
-    const trialEnd = Math.floor((Date.now() + 30 * 24 * 60 * 60 * 1000) / 1000);
+    // Calculate trial prices (in pence, including VAT)
+    // First month pricing: Full car allocation × £2.50 per car + 20% VAT
+    // Bronze: 20 cars × £2.50 = £50 + 20% VAT = £60 (6000 pence)
+    // Silver: 35 cars × £2.50 = £87.50 + 20% VAT = £105 (10500 pence)
+    // Gold: 60 cars × £2.50 = £150 + 20% VAT = £180 (18000 pence)
+    const trialPrices = {
+      'bronze': 6000,  // £60 including VAT (£50 + 20% VAT)
+      'silver': 10500, // £105 including VAT (£87.50 + 20% VAT)
+      'gold': 18000    // £180 including VAT (£150 + 20% VAT)
+    };
+    
+    const trialPrice = trialPrices[plan.slug] || 6000;
 
-    // Create Stripe checkout session with trial
+    // APPROACH: Create subscription with add_invoice_items for trial payment
+    // This will charge trial price immediately AND set up recurring subscription for after 30 days
+    const billingCycleAnchor = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60); // 30 days from now
+    
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
@@ -213,7 +230,7 @@ exports.createCheckoutSession = async (req, res) => {
               name: plan.name,
               description: plan.description,
             },
-            unit_amount: plan.price, // Full price in pence (will be charged after trial)
+            unit_amount: plan.price, // Full monthly price (charged after 30 days)
             recurring: {
               interval: 'month',
             },
@@ -222,13 +239,26 @@ exports.createCheckoutSession = async (req, res) => {
         },
       ],
       subscription_data: {
-        trial_period_days: 30, // 30-day free trial
+        billing_cycle_anchor: billingCycleAnchor, // Start billing in 30 days
+        // Add trial payment as one-time invoice item (charged immediately)
+        add_invoice_items: [
+          {
+            price_data: {
+              currency: 'gbp',
+              product: plan.stripeProductId,
+              unit_amount: trialPrice,
+            },
+            quantity: 1,
+          },
+        ],
         metadata: {
           dealerId: dealer._id.toString(),
           planId: plan._id.toString(),
           planSlug: plan.slug,
           isTrial: 'true',
-          trialDays: '30'
+          trialDays: '30',
+          trialPrice: trialPrice.toString(),
+          fullPrice: plan.price.toString()
         },
       },
       success_url: `${baseUrl}/trade/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
@@ -238,11 +268,15 @@ exports.createCheckoutSession = async (req, res) => {
         dealerId: dealer._id.toString(),
         planId: plan._id.toString(),
         planSlug: plan.slug,
-        isTrial: 'true'
+        isTrial: 'true',
+        trialPrice: trialPrice.toString(),
+        fullPrice: plan.price.toString()
       },
     });
 
-    console.log('✅ Stripe session created with 30-day trial:', session.id);
+    console.log('✅ Stripe session created with trial payment and scheduled subscription:', session.id);
+    console.log(`   Trial price (charged now): £${(trialPrice / 100).toFixed(2)} (including VAT)`);
+    console.log(`   Full price (starts in 30 days): £${(plan.price / 100).toFixed(2)} + VAT monthly`);
 
     // Return Stripe checkout URL
     res.json({
@@ -253,6 +287,7 @@ exports.createCheckoutSession = async (req, res) => {
       trial: {
         enabled: true,
         days: 30,
+        price: trialPrice,
         perCarCharge: 250 // £2.50 in pence
       }
     });
@@ -419,9 +454,9 @@ exports.verifyPayment = async (req, res) => {
     console.log('🔄 Retrieving Stripe session...');
     const session = await stripe.checkout.sessions.retrieve(sessionId);
     console.log('✅ Session retrieved:', session.id);
+    console.log('   Mode:', session.mode);
     console.log('   Payment status:', session.payment_status);
     console.log('   Customer:', session.customer);
-    console.log('   Subscription:', session.subscription);
 
     if (!session) {
       console.log('❌ Session not found');
@@ -440,18 +475,13 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    // Get the subscription from Stripe
-    console.log('🔄 Retrieving Stripe subscription...');
-    const stripeSubscription = await stripe.subscriptions.retrieve(session.subscription);
-    console.log('✅ Stripe subscription retrieved:', stripeSubscription.id);
-    console.log('   Status:', stripeSubscription.status);
-    console.log('   Period start:', new Date(stripeSubscription.current_period_start * 1000));
-    console.log('   Period end:', new Date(stripeSubscription.current_period_end * 1000));
-
     // Use authenticated dealer ID from middleware, not session metadata
     const dealerId = req.dealerId;
     const planId = session.metadata.planId;
-    console.log('📋 Plan ID from metadata:', planId);
+    const isTrial = session.metadata.isTrial === 'true';
+    const trialPrice = parseInt(session.metadata.trialPrice || '0');
+    
+    console.log('📋 Metadata:', { planId, isTrial, trialPrice });
 
     // Verify dealer exists
     console.log('🔍 Looking up dealer:', dealerId);
@@ -477,6 +507,105 @@ exports.verifyPayment = async (req, res) => {
     }
     console.log('✅ Plan found:', plan.name);
 
+    // Check if this is a trial payment (mode='payment') or subscription
+    if (session.mode === 'payment' && isTrial) {
+      console.log('💳 Trial payment detected - creating subscription manually');
+      
+      // Check if subscription already exists
+      let subscription = await TradeSubscription.findOne({
+        dealerId: dealer._id,
+        planId: plan._id,
+        status: { $in: ['active', 'trialing'] }
+      }).populate('planId');
+
+      if (!subscription) {
+        // Create subscription for trial period
+        console.log('📝 Creating new trial subscription for dealer:', dealerId);
+        
+        const now = new Date();
+        const trialEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
+        
+        subscription = new TradeSubscription({
+          dealerId: dealer._id,
+          planId: plan._id,
+          stripeSubscriptionId: `trial_${session.payment_intent}`, // Use payment intent as reference
+          stripeCustomerId: session.customer || `cus_${Date.now()}`,
+          status: 'trialing',
+          currentPeriodStart: now,
+          currentPeriodEnd: trialEnd,
+          listingsLimit: plan.listingLimit,
+          listingsUsed: 0,
+          isTrialing: true,
+          trialStart: now,
+          trialEnd: trialEnd
+        });
+
+        console.log('💾 Saving trial subscription to database...');
+        try {
+          await subscription.save();
+          console.log('✅ Trial subscription saved:', subscription._id);
+        } catch (saveError) {
+          console.error('❌ Failed to save subscription:', saveError.message);
+          throw saveError;
+        }
+        
+        subscription = await subscription.populate('planId');
+
+        // Update dealer
+        console.log('📝 Updating dealer with subscription reference...');
+        dealer.currentSubscriptionId = subscription._id;
+        dealer.status = 'active';
+        dealer.hasActiveSubscription = true;
+        dealer.stripeCustomerId = session.customer;
+        
+        try {
+          await dealer.save();
+          console.log('✅ Dealer updated with subscription:', dealer._id);
+        } catch (dealerError) {
+          console.error('❌ Failed to update dealer:', dealerError.message);
+          throw dealerError;
+        }
+
+        // TODO: Schedule a job to create actual Stripe subscription after 30 days
+        // For now, we'll handle this via a cron job or manual process
+        console.log('⏰ Note: Stripe subscription should be created after 30 days');
+      } else {
+        console.log('ℹ️ Trial subscription already exists:', subscription._id);
+      }
+
+      console.log('✅ VERIFY TRIAL PAYMENT COMPLETE\n');
+
+      return res.json({
+        success: true,
+        message: 'Trial payment verified successfully',
+        subscription: {
+          id: subscription._id,
+          plan: subscription.planId ? {
+            id: subscription.planId._id,
+            name: subscription.planId.name,
+            slug: subscription.planId.slug,
+            price: subscription.planId.price,
+            listingsLimit: subscription.planId.listingLimit
+          } : null,
+          status: subscription.status,
+          listingsUsed: subscription.listingsUsed,
+          listingsLimit: subscription.listingsLimit,
+          listingsAvailable: subscription.listingsAvailable,
+          usagePercentage: subscription.usagePercentage,
+          currentPeriodEnd: subscription.currentPeriodEnd,
+          daysRemaining: subscription.daysRemaining,
+          isTrialing: subscription.isTrialing,
+          trialEnd: subscription.trialEnd
+        }
+      });
+    }
+
+    // Original subscription mode handling (kept for backward compatibility)
+    console.log('🔄 Retrieving Stripe subscription...');
+    const stripeSubscription = await stripe.subscriptions.retrieve(session.subscription);
+    console.log('✅ Stripe subscription retrieved:', stripeSubscription.id);
+    console.log('   Status:', stripeSubscription.status);
+
     // Find or create the subscription in our database
     console.log('🔍 Checking for existing subscription:', stripeSubscription.id);
     let subscription = await TradeSubscription.findOne({
@@ -487,25 +616,15 @@ exports.verifyPayment = async (req, res) => {
       // Create subscription immediately
       console.log('📝 Creating new subscription for dealer:', dealerId);
       
-      // Ensure timestamps are valid numbers before converting
       const startTime = stripeSubscription.current_period_start;
       const endTime = stripeSubscription.current_period_end;
       
-      console.log('   Raw timestamps from Stripe:');
-      console.log('   current_period_start:', startTime, 'type:', typeof startTime);
-      console.log('   current_period_end:', endTime, 'type:', typeof endTime);
-
-      // Convert timestamps - Stripe returns Unix timestamps in seconds
       const currentPeriodStart = startTime && !isNaN(startTime) 
         ? new Date(startTime * 1000)
         : new Date();
       const currentPeriodEnd = endTime && !isNaN(endTime)
         ? new Date(endTime * 1000)
         : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-
-      console.log('   Converted dates:');
-      console.log('   currentPeriodStart:', currentPeriodStart);
-      console.log('   currentPeriodEnd:', currentPeriodEnd);
 
       subscription = new TradeSubscription({
         dealerId: dealer._id,
@@ -517,18 +636,12 @@ exports.verifyPayment = async (req, res) => {
         currentPeriodEnd: currentPeriodEnd,
         listingsLimit: plan.listingLimit,
         listingsUsed: 0,
-        // Set trial information
         isTrialing: stripeSubscription.status === 'trialing',
         trialStart: stripeSubscription.trial_start ? new Date(stripeSubscription.trial_start * 1000) : null,
         trialEnd: stripeSubscription.trial_end ? new Date(stripeSubscription.trial_end * 1000) : null
       });
 
       console.log('💾 Saving subscription to database...');
-      console.log('   dealerId:', subscription.dealerId);
-      console.log('   planId:', subscription.planId);
-      console.log('   stripeSubscriptionId:', subscription.stripeSubscriptionId);
-      console.log('   status:', subscription.status);
-
       try {
         await subscription.save();
         console.log('✅ Subscription saved to database:', subscription._id);

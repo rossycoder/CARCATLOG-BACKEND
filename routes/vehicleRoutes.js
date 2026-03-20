@@ -81,6 +81,12 @@ router.patch(
   vehicleController.updateVehicleStatus.bind(vehicleController)
 );
 
+// POST /api/vehicles/:id/inquiry - Track inquiry (phone/email click)
+router.post(
+  '/:id/inquiry',
+  vehicleController.trackInquiry.bind(vehicleController)
+);
+
 // DELETE /api/vehicles/:id - Delete vehicle (requires auth)
 router.delete(
   '/:id',
