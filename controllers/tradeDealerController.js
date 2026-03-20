@@ -172,12 +172,42 @@ exports.register = async (req, res) => {
 </body>
 </html>`;
     
-    await sendEmail(
+    const emailText = `
+Hello ${dealer.contactPerson},
+
+Thank you for registering ${dealer.businessName} as a trade dealer on CarCatalog.
+
+To complete your registration and start listing vehicles, please verify your email address by clicking the link below:
+
+${verificationUrl}
+
+What happens next?
+- Click the link above to verify your email
+- Choose your subscription plan
+- Start listing vehicles immediately
+- Access your dealer dashboard and analytics
+
+Link expires in 24 hours.
+
+If you didn't create this account, please ignore this email.
+
+Best regards,
+The CarCatalog Team
+    `.trim();
+
+    console.log('📧 Attempting to send verification email to:', dealer.email);
+    const emailSent = await sendEmail(
       dealer.email,
       'Verify Your Trade Dealer Account - CarCatalog',
-      emailHtml,
+      emailText,
       emailHtml
     );
+
+    if (!emailSent) {
+      console.error('⚠️ Failed to send verification email to:', dealer.email);
+    } else {
+      console.log('✅ Verification email sent successfully to:', dealer.email);
+    }
 
     res.status(201).json({
       success: true,
@@ -536,10 +566,28 @@ exports.forgotPassword = async (req, res) => {
 </body>
 </html>`;
     
+    const emailText = `
+Hello ${dealer.contactPerson},
+
+We received a request to reset the password for your trade dealer account at ${dealer.businessName}.
+
+Click the link below to create a new password:
+
+${resetUrl}
+
+Security Notice:
+- This link will expire in 1 hour
+- If you didn't request this reset, please ignore this email
+- Your password will remain unchanged
+
+Best regards,
+The CarCatalog Team
+    `.trim();
+
     await sendEmail(
       dealer.email,
       'Password Reset Request - CarCatalog Trade',
-      emailHtml,
+      emailText,
       emailHtml
     );
 
@@ -627,3 +675,4 @@ exports.logout = async (req, res) => {
     message: 'Logged out successfully'
   });
 };
+
