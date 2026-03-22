@@ -1,14 +1,16 @@
 const Car = require('../models/Car');
+const Bike = require('../models/Bike');
+const Van = require('../models/Van');
 const User = require('../models/User');
 
 /**
- * Get all listings (admin only)
+ * Get all listings (admin only) - Cars, Bikes, and Vans
  */
 const getAllListings = async (req, res) => {
   try {
     const { 
       page = 1, 
-      limit = 20, 
+      limit = 1000, // Get all for admin dashboard
       status, 
       search,
       sortBy = 'createdAt',
@@ -19,49 +21,88 @@ const getAllListings = async (req, res) => {
     const query = {};
     
     // Filter by status if provided
-    if (status) {
-      query.advertStatus = status;
+    if (status && status !== 'All') {
+      const statusMap = {
+        'Active': 'active',
+        'Expired': 'expired',
+        'Sold': 'sold',
+        'Draft': 'draft',
+        'Pending': 'pending_payment'
+      };
+      query.advertStatus = statusMap[status] || status;
     }
     
-    // Search by registration, make, model
+    // Search by registration, make, model, VIN, owner name, owner email
     if (search) {
       query.$or = [
         { registrationNumber: { $regex: search, $options: 'i' } },
         { make: { $regex: search, $options: 'i' } },
-        { model: { $regex: search, $options: 'i' } }
+        { model: { $regex: search, $options: 'i' } },
+        { vin: { $regex: search, $options: 'i' } }
       ];
     }
 
-    // Count total documents
-    const total = await Car.countDocuments(query);
+    // Fetch all vehicle types
+    const [cars, bikes, vans] = await Promise.all([
+      Car.find(query)
+        .populate('userId', 'email name')
+        .populate('dealerId', 'businessName email')
+        .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 })
+        .lean(),
+      Bike.find(query)
+        .populate('userId', 'email name')
+        .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 })
+        .lean(),
+      Van.find(query)
+        .populate('userId', 'email name')
+        .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 })
+        .lean()
+    ]);
 
-    // Get paginated results
-    const cars = await Car.find(query)
-      .populate('userId', 'email name')
-      .populate('dealerId', 'businessName email')
-      .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .lean();
+    // Combine and format all listings
+    const allListings = [
+      ...cars.map(car => ({
+        ...car,
+        vehicleType: 'car',
+        ownerEmail: car.userId?.email || car.dealerId?.email || 'N/A',
+        ownerName: car.userId?.name || car.dealerId?.businessName || 'N/A'
+      })),
+      ...bikes.map(bike => ({
+        ...bike,
+        vehicleType: 'bike',
+        ownerEmail: bike.userId?.email || 'N/A',
+        ownerName: bike.userId?.name || 'N/A'
+      })),
+      ...vans.map(van => ({
+        ...van,
+        vehicleType: 'van',
+        ownerEmail: van.userId?.email || 'N/A',
+        ownerName: van.userId?.name || 'N/A'
+      }))
+    ];
+
+    // Sort combined listings
+    allListings.sort((a, b) => {
+      if (sortBy === 'createdAt') {
+        return sortOrder === 'desc' 
+          ? new Date(b.createdAt) - new Date(a.createdAt)
+          : new Date(a.createdAt) - new Date(b.createdAt);
+      }
+      return 0;
+    });
 
     res.json({
       success: true,
-      data: {
-        cars,
-        pagination: {
-          total,
-          page: parseInt(page),
-          pages: Math.ceil(total / limit),
-          limit: parseInt(limit)
-        }
-      }
+      listings: allListings,
+      total: allListings.length
     });
 
   } catch (error) {
     console.error('Error getting all listings:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to get listings'
+      message: 'Failed to get listings',
+      error: error.message
     });
   }
 };
@@ -73,13 +114,30 @@ const getListingDetails = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const car = await Car.findById(id)
+    // Try to find in all vehicle types
+    let vehicle = await Car.findById(id)
       .populate('userId', 'email name postcode')
       .populate('dealerId', 'businessName email city')
       .populate('historyCheckId')
       .lean();
+    
+    let vehicleType = 'car';
 
-    if (!car) {
+    if (!vehicle) {
+      vehicle = await Bike.findById(id)
+        .populate('userId', 'email name postcode')
+        .lean();
+      vehicleType = 'bike';
+    }
+
+    if (!vehicle) {
+      vehicle = await Van.findById(id)
+        .populate('userId', 'email name postcode')
+        .lean();
+      vehicleType = 'van';
+    }
+
+    if (!vehicle) {
       return res.status(404).json({
         success: false,
         message: 'Listing not found'
@@ -88,7 +146,12 @@ const getListingDetails = async (req, res) => {
 
     res.json({
       success: true,
-      data: car
+      data: {
+        ...vehicle,
+        vehicleType,
+        ownerEmail: vehicle.userId?.email || 'N/A',
+        ownerName: vehicle.userId?.name || 'N/A'
+      }
     });
 
   } catch (error) {
@@ -112,14 +175,32 @@ const updateListing = async (req, res) => {
     delete updates._id;
     delete updates.__v;
     delete updates.createdAt;
+    delete updates.vehicleType;
 
-    const car = await Car.findByIdAndUpdate(
+    // Try to find and update in all vehicle types
+    let vehicle = await Car.findByIdAndUpdate(
       id,
       { $set: updates },
       { new: true, runValidators: true }
     );
 
-    if (!car) {
+    if (!vehicle) {
+      vehicle = await Bike.findByIdAndUpdate(
+        id,
+        { $set: updates },
+        { new: true, runValidators: true }
+      );
+    }
+
+    if (!vehicle) {
+      vehicle = await Van.findByIdAndUpdate(
+        id,
+        { $set: updates },
+        { new: true, runValidators: true }
+      );
+    }
+
+    if (!vehicle) {
       return res.status(404).json({
         success: false,
         message: 'Listing not found'
@@ -128,7 +209,7 @@ const updateListing = async (req, res) => {
 
     res.json({
       success: true,
-      data: car,
+      data: vehicle,
       message: 'Listing updated successfully'
     });
 
@@ -149,8 +230,24 @@ const deleteListing = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Use the safe delete method from Car model
-    const result = await Car.deleteCarWithCleanup(id);
+    // Try to delete from all vehicle types
+    let result = await Car.deleteCarWithCleanup(id);
+
+    if (!result.success) {
+      // Try Bike
+      const bike = await Bike.findByIdAndDelete(id);
+      if (bike) {
+        result = { success: true };
+      }
+    }
+
+    if (!result.success) {
+      // Try Van
+      const van = await Van.findByIdAndDelete(id);
+      if (van) {
+        result = { success: true };
+      }
+    }
 
     if (result.success) {
       res.json({
@@ -179,24 +276,52 @@ const deleteListing = async (req, res) => {
 const getDashboardStats = async (req, res) => {
   try {
     const [
-      totalListings,
-      activeListings,
-      pendingListings,
-      soldListings,
+      totalCars,
+      totalBikes,
+      totalVans,
+      activeCars,
+      activeBikes,
+      activeVans,
+      pendingCars,
+      pendingBikes,
+      pendingVans,
+      soldCars,
+      soldBikes,
+      soldVans,
       totalUsers,
-      recentListings
+      recentCars,
+      recentBikes,
+      recentVans
     ] = await Promise.all([
       Car.countDocuments(),
+      Bike.countDocuments(),
+      Van.countDocuments(),
       Car.countDocuments({ advertStatus: 'active' }),
+      Bike.countDocuments({ advertStatus: 'active' }),
+      Van.countDocuments({ advertStatus: 'active' }),
       Car.countDocuments({ advertStatus: 'pending_payment' }),
+      Bike.countDocuments({ advertStatus: 'pending_payment' }),
+      Van.countDocuments({ advertStatus: 'pending_payment' }),
       Car.countDocuments({ advertStatus: 'sold' }),
+      Bike.countDocuments({ advertStatus: 'sold' }),
+      Van.countDocuments({ advertStatus: 'sold' }),
       User.countDocuments(),
-      Car.find()
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .populate('userId', 'email name')
-        .lean()
+      Car.find().sort({ createdAt: -1 }).limit(5).populate('userId', 'email name').lean(),
+      Bike.find().sort({ createdAt: -1 }).limit(5).populate('userId', 'email name').lean(),
+      Van.find().sort({ createdAt: -1 }).limit(5).populate('userId', 'email name').lean()
     ]);
+
+    const totalListings = totalCars + totalBikes + totalVans;
+    const activeListings = activeCars + activeBikes + activeVans;
+    const pendingListings = pendingCars + pendingBikes + pendingVans;
+    const soldListings = soldCars + soldBikes + soldVans;
+
+    // Combine recent listings
+    const recentListings = [
+      ...recentCars.map(c => ({ ...c, vehicleType: 'car' })),
+      ...recentBikes.map(b => ({ ...b, vehicleType: 'bike' })),
+      ...recentVans.map(v => ({ ...v, vehicleType: 'van' }))
+    ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 10);
 
     res.json({
       success: true,
@@ -206,7 +331,12 @@ const getDashboardStats = async (req, res) => {
           activeListings,
           pendingListings,
           soldListings,
-          totalUsers
+          totalUsers,
+          breakdown: {
+            cars: { total: totalCars, active: activeCars },
+            bikes: { total: totalBikes, active: activeBikes },
+            vans: { total: totalVans, active: activeVans }
+          }
         },
         recentListings
       }

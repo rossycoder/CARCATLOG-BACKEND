@@ -341,14 +341,30 @@ class StripeSubscriptionService {
   async handleSubscriptionUpdated(subscription) {
     const tradeSubscription = await TradeSubscription.findOne({
       stripeSubscriptionId: subscription.id
-    });
+    }).populate('planId dealerId');
 
     if (tradeSubscription) {
+      const oldStatus = tradeSubscription.status;
+      
       tradeSubscription.status = subscription.status;
       tradeSubscription.currentPeriodStart = new Date(subscription.current_period_start * 1000);
       tradeSubscription.currentPeriodEnd = new Date(subscription.current_period_end * 1000);
       tradeSubscription.cancelAtPeriodEnd = subscription.cancel_at_period_end;
       await tradeSubscription.save();
+
+      // Send email if subscription was renewed (status changed from trialing to active, or period updated)
+      if (oldStatus === 'trialing' && subscription.status === 'active') {
+        console.log('📧 Subscription converted from trial to active, sending renewal email');
+        const EmailService = require('./emailService');
+        const emailService = new EmailService();
+        await emailService.sendSubscriptionRenewed(tradeSubscription.dealerId, tradeSubscription);
+      } else if (subscription.status === 'active' && oldStatus === 'active') {
+        // Period was renewed
+        console.log('📧 Subscription renewed, sending confirmation email');
+        const EmailService = require('./emailService');
+        const emailService = new EmailService();
+        await emailService.sendSubscriptionRenewed(tradeSubscription.dealerId, tradeSubscription);
+      }
     }
   }
 
@@ -367,16 +383,38 @@ class StripeSubscriptionService {
   async handlePaymentSucceeded(invoice) {
     // Payment successful - subscription is active
     console.log('Payment succeeded for invoice:', invoice.id);
+    
+    // Send renewal confirmation email
+    if (invoice.subscription) {
+      const tradeSubscription = await TradeSubscription.findOne({
+        stripeSubscriptionId: invoice.subscription
+      }).populate('planId dealerId');
+
+      if (tradeSubscription && tradeSubscription.dealerId && tradeSubscription.planId) {
+        console.log('📧 Sending subscription renewal confirmation email');
+        const EmailService = require('./emailService');
+        const emailService = new EmailService();
+        await emailService.sendSubscriptionRenewed(tradeSubscription.dealerId, tradeSubscription);
+      }
+    }
   }
 
   async handlePaymentFailed(invoice) {
     const subscription = await TradeSubscription.findOne({
       stripeSubscriptionId: invoice.subscription
-    });
+    }).populate('planId dealerId');
 
     if (subscription) {
       subscription.status = 'past_due';
       await subscription.save();
+
+      // Send payment failed email
+      if (subscription.dealerId && subscription.planId) {
+        console.log('📧 Sending payment failed notification email');
+        const EmailService = require('./emailService');
+        const emailService = new EmailService();
+        await emailService.sendSubscriptionPaymentFailed(subscription.dealerId, subscription);
+      }
     }
   }
 }

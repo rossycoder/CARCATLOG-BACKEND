@@ -16,10 +16,14 @@ class ExpirationService {
       const expiredCars = await Car.find({
         advertStatus: 'active',
         'advertisingPackage.expiryDate': { $lte: now },
-        'sellerContact.type': 'private' // Only private sellers
+        $or: [
+          { 'sellerContact.type': 'private' },
+          { 'sellerContact.type': { $exists: false } },
+          { 'sellerContact.type': null }
+        ]
       });
 
-      console.log(`Found ${expiredCars.length} expired listings to delete`);
+      console.log(`Found ${expiredCars.length} expired private seller listings to delete`);
 
       const results = {
         deleted: 0,
@@ -47,7 +51,7 @@ class ExpirationService {
           await Car.findByIdAndDelete(car._id);
           results.deleted++;
 
-          console.log(`Deleted expired listing: ${car.advertId} - ${car.make} ${car.model}`);
+          console.log(`Deleted expired listing: ${car.advertId} - ${car.make} ${car.model} (${car.sellerContact?.type || 'unknown'})`);
         } catch (error) {
           console.error(`Error deleting car ${car._id}:`, error);
           results.errors.push({
@@ -84,10 +88,14 @@ class ExpirationService {
           $gte: warningDate,
           $lte: endOfWarningDay
         },
-        'sellerContact.type': 'private' // Only private sellers
+        $or: [
+          { 'sellerContact.type': 'private' },
+          { 'sellerContact.type': { $exists: false } },
+          { 'sellerContact.type': null }
+        ]
       });
 
-      console.log(`Found ${expiringCars.length} listings expiring in ${daysBeforeExpiry} days`);
+      console.log(`Found ${expiringCars.length} private seller listings expiring in ${daysBeforeExpiry} days`);
 
       const results = {
         warned: 0,
@@ -150,6 +158,112 @@ class ExpirationService {
     };
 
     return stats;
+  }
+
+  /**
+   * Send expiration notification email to seller
+   */
+  async sendExpirationNotification(car) {
+    try {
+      const email = car.sellerContact?.email;
+      if (!email) return;
+
+      const subject = `Your ${car.make} ${car.model} listing has expired`;
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #dc3545;">Your Listing Has Expired</h2>
+          
+          <p>Hello,</p>
+          
+          <p>Your vehicle listing has expired and has been removed from our website:</p>
+          
+          <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="margin-top: 0;">${car.year} ${car.make} ${car.model}</h3>
+            <p style="margin: 5px 0;"><strong>Registration:</strong> ${car.registrationNumber || 'N/A'}</p>
+            <p style="margin: 5px 0;"><strong>Price:</strong> £${car.price?.toLocaleString() || '0'}</p>
+            <p style="margin: 5px 0;"><strong>Package:</strong> ${car.advertisingPackage?.packageName || 'N/A'}</p>
+            <p style="margin: 5px 0;"><strong>Expired on:</strong> ${new Date(car.advertisingPackage?.expiryDate).toLocaleDateString()}</p>
+          </div>
+          
+          <p>Your listing has been automatically removed from our website as the advertising package has expired.</p>
+          
+          <p><strong>Want to list your vehicle again?</strong></p>
+          <p>You can create a new listing anytime by visiting our website.</p>
+          
+          <div style="margin: 30px 0;">
+            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/sell-your-car" 
+               style="background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+              List Your Vehicle Again
+            </a>
+          </div>
+          
+          <p style="color: #666; font-size: 0.9rem; margin-top: 30px;">
+            If you have any questions, please contact our support team.
+          </p>
+        </div>
+      `;
+
+      await sendEmail(email, subject, html);
+      console.log(`Expiration notification sent to ${email} for car ${car.advertId}`);
+    } catch (error) {
+      console.error('Error sending expiration notification:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send expiration warning email
+   */
+  async sendExpirationWarning(car, daysBeforeExpiry) {
+    try {
+      const email = car.sellerContact?.email;
+      if (!email) return;
+
+      const expiryDate = new Date(car.advertisingPackage?.expiryDate);
+      const subject = `Your listing expires in ${daysBeforeExpiry} days`;
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #ed8936;">Your Listing is Expiring Soon</h2>
+          
+          <p>Hello,</p>
+          
+          <p>Your vehicle listing will expire in <strong>${daysBeforeExpiry} days</strong>:</p>
+          
+          <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ed8936;">
+            <h3 style="margin-top: 0;">${car.year} ${car.make} ${car.model}</h3>
+            <p style="margin: 5px 0;"><strong>Registration:</strong> ${car.registrationNumber || 'N/A'}</p>
+            <p style="margin: 5px 0;"><strong>Price:</strong> £${car.price?.toLocaleString() || '0'}</p>
+            <p style="margin: 5px 0;"><strong>Expires on:</strong> ${expiryDate.toLocaleDateString()}</p>
+          </div>
+          
+          <p>After expiration, your listing will be automatically removed from our website.</p>
+          
+          <p><strong>What happens next?</strong></p>
+          <ul>
+            <li>Your listing will remain active until ${expiryDate.toLocaleDateString()}</li>
+            <li>After that date, it will be automatically removed</li>
+            <li>You can create a new listing anytime</li>
+          </ul>
+          
+          <div style="margin: 30px 0;">
+            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/my-listings" 
+               style="background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+              View My Listings
+            </a>
+          </div>
+          
+          <p style="color: #666; font-size: 0.9rem; margin-top: 30px;">
+            If you have any questions, please contact our support team.
+          </p>
+        </div>
+      `;
+
+      await sendEmail(email, subject, html);
+      console.log(`Expiration warning sent to ${email} for car ${car.advertId}`);
+    } catch (error) {
+      console.error('Error sending expiration warning:', error);
+      throw error;
+    }
   }
 }
 

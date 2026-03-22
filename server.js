@@ -190,6 +190,10 @@ app.use((req, res) => {
 const { initializeCronJobs } = require('./jobs/expirationCron');
 initializeCronJobs();
 
+// Initialize subscription cron jobs for renewal reminders and expiration handling
+const { initSubscriptionCron } = require('./jobs/subscriptionCron');
+initSubscriptionCron();
+
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

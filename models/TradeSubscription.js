@@ -83,6 +83,14 @@ const tradeSubscriptionSchema = new mongoose.Schema({
     of: String
   },
   
+  // Email notification tracking
+  lastReminderSent: {
+    type: Date
+  },
+  lastPaymentFailedNotification: {
+    type: Date
+  },
+  
   // Timestamps
   createdAt: {
     type: Date,

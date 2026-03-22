@@ -295,6 +295,463 @@ This is an automated email. Please do not reply to this message.
       return false;
     }
   }
+
+  /**
+   * Send subscription renewal reminder (7 days before expiry)
+   * @param {Object} dealer - Dealer object
+   * @param {Object} subscription - Subscription object
+   * @returns {Promise<boolean>}
+   */
+  async sendSubscriptionRenewalReminder(dealer, subscription) {
+    try {
+      if (!this.enabled) {
+        console.log('📧 Email disabled - Would send renewal reminder to:', dealer.email);
+        return true;
+      }
+
+      const expiryDate = new Date(subscription.currentPeriodEnd).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
+
+      const subject = '⏰ Your CarCatalog Subscription Renews in 7 Days';
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; background: white; }
+            .logo-header { background: white; padding: 15px 20px; text-align: left; border-bottom: 2px solid #e0e0e0; }
+            .logo { max-width: 120px; height: auto; display: block; }
+            .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }
+            .info-box { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #667eea; }
+            .button { display: inline-block; background: #667eea !important; color: #ffffff !important; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; }
+            .footer { text-align: center; padding: 20px; color: #888; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="logo-header">
+              <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+            </div>
+            <div class="header">
+              <h1>⏰ Subscription Renewal Reminder</h1>
+            </div>
+            
+            <div class="content">
+              <p>Hi ${dealer.businessName},</p>
+              
+              <p>This is a friendly reminder that your <strong>${subscription.planId.name}</strong> subscription will automatically renew on <strong>${expiryDate}</strong>.</p>
+              
+              <div class="info-box">
+                <h3>Subscription Details</h3>
+                <p><strong>Plan:</strong> ${subscription.planId.name}</p>
+                <p><strong>Monthly Price:</strong> £${(subscription.planId.price / 100).toFixed(2)} + VAT</p>
+                <p><strong>Listing Limit:</strong> ${subscription.listingsLimit === null ? 'Unlimited' : subscription.listingsLimit + ' cars'}</p>
+                <p><strong>Current Usage:</strong> ${subscription.listingsUsed} / ${subscription.listingsLimit === null ? '∞' : subscription.listingsLimit} listings</p>
+                <p><strong>Renewal Date:</strong> ${expiryDate}</p>
+              </div>
+              
+              <p><strong>What happens next?</strong></p>
+              <ul>
+                <li>Your subscription will automatically renew on ${expiryDate}</li>
+                <li>Your payment method on file will be charged</li>
+                <li>You'll continue to enjoy uninterrupted service</li>
+              </ul>
+              
+              <p>If you wish to cancel or change your subscription, please visit your dashboard before the renewal date.</p>
+              
+              <center>
+                <a href="${process.env.FRONTEND_URL}/trade/subscription" class="button">Manage Subscription</a>
+              </center>
+              
+              <p>Thank you for being a valued CarCatalog dealer!</p>
+              
+              <p>Best regards,<br>The CarCatalog Team</p>
+            </div>
+            
+            <div class="footer">
+              <p>This is an automated reminder. Please do not reply to this message.</p>
+              <p>&copy; ${new Date().getFullYear()} CarCatalog. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const text = `
+Hi ${dealer.businessName},
+
+This is a friendly reminder that your ${subscription.planId.name} subscription will automatically renew on ${expiryDate}.
+
+Subscription Details:
+- Plan: ${subscription.planId.name}
+- Monthly Price: £${(subscription.planId.price / 100).toFixed(2)} + VAT
+- Listing Limit: ${subscription.listingsLimit === null ? 'Unlimited' : subscription.listingsLimit + ' cars'}
+- Current Usage: ${subscription.listingsUsed} / ${subscription.listingsLimit === null ? '∞' : subscription.listingsLimit} listings
+- Renewal Date: ${expiryDate}
+
+What happens next?
+- Your subscription will automatically renew on ${expiryDate}
+- Your payment method on file will be charged
+- You'll continue to enjoy uninterrupted service
+
+If you wish to cancel or change your subscription, please visit your dashboard before the renewal date.
+
+Manage Subscription: ${process.env.FRONTEND_URL}/trade/subscription
+
+Thank you for being a valued CarCatalog dealer!
+
+Best regards,
+The CarCatalog Team
+      `.trim();
+
+      return await this.sendEmail(dealer.email, subject, text, html);
+    } catch (error) {
+      console.error('Error sending renewal reminder:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Send subscription renewed successfully email
+   * @param {Object} dealer - Dealer object
+   * @param {Object} subscription - Subscription object
+   * @returns {Promise<boolean>}
+   */
+  async sendSubscriptionRenewed(dealer, subscription) {
+    try {
+      if (!this.enabled) {
+        console.log('📧 Email disabled - Would send renewal confirmation to:', dealer.email);
+        return true;
+      }
+
+      const nextRenewalDate = new Date(subscription.currentPeriodEnd).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      });
+
+      const subject = '✅ Your CarCatalog Subscription Has Been Renewed';
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; background: white; }
+            .logo-header { background: white; padding: 15px 20px; text-align: left; border-bottom: 2px solid #e0e0e0; }
+            .logo { max-width: 120px; height: auto; display: block; }
+            .header { background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }
+            .info-box { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #4caf50; }
+            .button { display: inline-block; background: #4caf50 !important; color: #ffffff !important; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; }
+            .footer { text-align: center; padding: 20px; color: #888; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="logo-header">
+              <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+            </div>
+            <div class="header">
+              <h1>✅ Subscription Renewed!</h1>
+              <p>Your subscription has been successfully renewed</p>
+            </div>
+            
+            <div class="content">
+              <p>Hi ${dealer.businessName},</p>
+              
+              <p>Great news! Your <strong>${subscription.planId.name}</strong> subscription has been successfully renewed.</p>
+              
+              <div class="info-box">
+                <h3>Subscription Details</h3>
+                <p><strong>Plan:</strong> ${subscription.planId.name}</p>
+                <p><strong>Monthly Price:</strong> £${(subscription.planId.price / 100).toFixed(2)} + VAT</p>
+                <p><strong>Listing Limit:</strong> ${subscription.listingsLimit === null ? 'Unlimited' : subscription.listingsLimit + ' cars'}</p>
+                <p><strong>Next Renewal:</strong> ${nextRenewalDate}</p>
+              </div>
+              
+              <p><strong>Your benefits continue:</strong></p>
+              <ul>
+                <li>List up to ${subscription.listingsLimit === null ? 'unlimited' : subscription.listingsLimit} vehicles</li>
+                <li>Priority placement in search results</li>
+                <li>Advanced analytics and reporting</li>
+                <li>Dedicated account support</li>
+              </ul>
+              
+              <center>
+                <a href="${process.env.FRONTEND_URL}/trade/dashboard" class="button">Go to Dashboard</a>
+              </center>
+              
+              <p>Thank you for continuing with CarCatalog!</p>
+              
+              <p>Best regards,<br>The CarCatalog Team</p>
+            </div>
+            
+            <div class="footer">
+              <p>This is an automated confirmation. Please do not reply to this message.</p>
+              <p>&copy; ${new Date().getFullYear()} CarCatalog. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const text = `
+Hi ${dealer.businessName},
+
+Great news! Your ${subscription.planId.name} subscription has been successfully renewed.
+
+Subscription Details:
+- Plan: ${subscription.planId.name}
+- Monthly Price: £${(subscription.planId.price / 100).toFixed(2)} + VAT
+- Listing Limit: ${subscription.listingsLimit === null ? 'Unlimited' : subscription.listingsLimit + ' cars'}
+- Next Renewal: ${nextRenewalDate}
+
+Your benefits continue:
+- List up to ${subscription.listingsLimit === null ? 'unlimited' : subscription.listingsLimit} vehicles
+- Priority placement in search results
+- Advanced analytics and reporting
+- Dedicated account support
+
+Go to Dashboard: ${process.env.FRONTEND_URL}/trade/dashboard
+
+Thank you for continuing with CarCatalog!
+
+Best regards,
+The CarCatalog Team
+      `.trim();
+
+      return await this.sendEmail(dealer.email, subject, text, html);
+    } catch (error) {
+      console.error('Error sending renewal confirmation:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Send subscription payment failed email
+   * @param {Object} dealer - Dealer object
+   * @param {Object} subscription - Subscription object
+   * @returns {Promise<boolean>}
+   */
+  async sendSubscriptionPaymentFailed(dealer, subscription) {
+    try {
+      if (!this.enabled) {
+        console.log('📧 Email disabled - Would send payment failed to:', dealer.email);
+        return true;
+      }
+
+      const subject = '⚠️ Subscription Payment Failed - Action Required';
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; background: white; }
+            .logo-header { background: white; padding: 15px 20px; text-align: left; border-bottom: 2px solid #e0e0e0; }
+            .logo { max-width: 120px; height: auto; display: block; }
+            .header { background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }
+            .warning-box { background: #fff3cd; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #ffc107; }
+            .button { display: inline-block; background: #f44336 !important; color: #ffffff !important; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; }
+            .footer { text-align: center; padding: 20px; color: #888; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="logo-header">
+              <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+            </div>
+            <div class="header">
+              <h1>⚠️ Payment Failed</h1>
+              <p>We couldn't process your subscription payment</p>
+            </div>
+            
+            <div class="content">
+              <p>Hi ${dealer.businessName},</p>
+              
+              <p>We attempted to charge your payment method for your <strong>${subscription.planId.name}</strong> subscription, but the payment failed.</p>
+              
+              <div class="warning-box">
+                <h3>⚠️ Action Required</h3>
+                <p>Please update your payment method within the next 7 days to avoid service interruption.</p>
+                <p><strong>What happens if payment isn't updated?</strong></p>
+                <ul>
+                  <li>Your listings may be deactivated</li>
+                  <li>You'll lose access to premium features</li>
+                  <li>Your subscription will be cancelled</li>
+                </ul>
+              </div>
+              
+              <p><strong>Common reasons for payment failure:</strong></p>
+              <ul>
+                <li>Insufficient funds</li>
+                <li>Expired card</li>
+                <li>Card declined by bank</li>
+                <li>Incorrect billing information</li>
+              </ul>
+              
+              <center>
+                <a href="${process.env.FRONTEND_URL}/trade/subscription" class="button">Update Payment Method</a>
+              </center>
+              
+              <p>If you need assistance, please contact our support team.</p>
+              
+              <p>Best regards,<br>The CarCatalog Team</p>
+            </div>
+            
+            <div class="footer">
+              <p>This is an automated notification. Please do not reply to this message.</p>
+              <p>&copy; ${new Date().getFullYear()} CarCatalog. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const text = `
+Hi ${dealer.businessName},
+
+We attempted to charge your payment method for your ${subscription.planId.name} subscription, but the payment failed.
+
+⚠️ Action Required
+
+Please update your payment method within the next 7 days to avoid service interruption.
+
+What happens if payment isn't updated?
+- Your listings may be deactivated
+- You'll lose access to premium features
+- Your subscription will be cancelled
+
+Common reasons for payment failure:
+- Insufficient funds
+- Expired card
+- Card declined by bank
+- Incorrect billing information
+
+Update Payment Method: ${process.env.FRONTEND_URL}/trade/subscription
+
+If you need assistance, please contact our support team.
+
+Best regards,
+The CarCatalog Team
+      `.trim();
+
+      return await this.sendEmail(dealer.email, subject, text, html);
+    } catch (error) {
+      console.error('Error sending payment failed email:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Send subscription expired email
+   * @param {Object} dealer - Dealer object
+   * @param {Object} subscription - Subscription object
+   * @returns {Promise<boolean>}
+   */
+  async sendSubscriptionExpired(dealer, subscription) {
+    try {
+      if (!this.enabled) {
+        console.log('📧 Email disabled - Would send expired notification to:', dealer.email);
+        return true;
+      }
+
+      const subject = '❌ Your CarCatalog Subscription Has Expired';
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; background: white; }
+            .logo-header { background: white; padding: 15px 20px; text-align: left; border-bottom: 2px solid #e0e0e0; }
+            .logo { max-width: 120px; height: auto; display: block; }
+            .header { background: linear-gradient(135deg, #757575 0%, #424242 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }
+            .info-box { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #757575; }
+            .button { display: inline-block; background: #667eea !important; color: #ffffff !important; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; }
+            .footer { text-align: center; padding: 20px; color: #888; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="logo-header">
+              <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+            </div>
+            <div class="header">
+              <h1>Subscription Expired</h1>
+            </div>
+            
+            <div class="content">
+              <p>Hi ${dealer.businessName},</p>
+              
+              <p>Your <strong>${subscription.planId.name}</strong> subscription has expired.</p>
+              
+              <div class="info-box">
+                <h3>What This Means</h3>
+                <ul>
+                  <li>Your vehicle listings have been deactivated</li>
+                  <li>You no longer have access to premium features</li>
+                  <li>Your account is now in inactive status</li>
+                </ul>
+              </div>
+              
+              <p><strong>Want to continue selling on CarCatalog?</strong></p>
+              <p>Reactivate your subscription to restore your listings and regain access to all premium features.</p>
+              
+              <center>
+                <a href="${process.env.FRONTEND_URL}/trade/subscription" class="button">Reactivate Subscription</a>
+              </center>
+              
+              <p>We'd love to have you back! If you have any questions, please contact our support team.</p>
+              
+              <p>Best regards,<br>The CarCatalog Team</p>
+            </div>
+            
+            <div class="footer">
+              <p>This is an automated notification. Please do not reply to this message.</p>
+              <p>&copy; ${new Date().getFullYear()} CarCatalog. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const text = `
+Hi ${dealer.businessName},
+
+Your ${subscription.planId.name} subscription has expired.
+
+What This Means:
+- Your vehicle listings have been deactivated
+- You no longer have access to premium features
+- Your account is now in inactive status
+
+Want to continue selling on CarCatalog?
+
+Reactivate your subscription to restore your listings and regain access to all premium features.
+
+Reactivate Subscription: ${process.env.FRONTEND_URL}/trade/subscription
+
+We'd love to have you back! If you have any questions, please contact our support team.
+
+Best regards,
+The CarCatalog Team
+      `.trim();
+
+      return await this.sendEmail(dealer.email, subject, text, html);
+    } catch (error) {
+      console.error('Error sending expired notification:', error);
+      return false;
+    }
+  }
 }
 
 // Create singleton instance
