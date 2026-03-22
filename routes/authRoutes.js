@@ -14,7 +14,6 @@ const {
   resetPassword
 } = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
-const { verifyRecaptcha } = require('../middleware/recaptchaMiddleware');
 
 // Public routes with reCAPTCHA protection (temporarily disabled for deployment)
 router.post('/register', register);

@@ -9,7 +9,6 @@ const {
   preventInjection,
   rateLimitCheck
 } = require('../middleware/inputValidation');
-const { verifyRecaptcha } = require('../middleware/recaptchaMiddleware');
 
 // Configure multer for memory storage
 const storage = multer.memoryStorage();
