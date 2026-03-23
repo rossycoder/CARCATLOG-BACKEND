@@ -1,226 +1,303 @@
+'use strict';
+
 /**
  * Subscription Cron Job
- * Handles subscription expiration checks and email notifications
+ * Handles subscription expiration checks, email notifications,
+ * and trial → full subscription conversion.
  */
 
-const cron = require('node-cron');
+const cron             = require('node-cron');
 const TradeSubscription = require('../models/TradeSubscription');
-const TradeDealer = require('../models/TradeDealer');
-const EmailService = require('../services/emailService');
-const Car = require('../models/Car');
+const TradeDealer       = require('../models/TradeDealer');
+const SubscriptionPlan  = require('../models/SubscriptionPlan');
+const EmailService      = require('../services/emailService');
+const Car               = require('../models/Car');
 
 const emailService = new EmailService();
 
+// ─── Full monthly prices (in pence, excl. VAT) ───────────────────────────────
+const FULL_PRICES = {
+  bronze: 100000, // £1000
+  silver: 150000, // £1500
+  gold:   200000  // £2000
+};
+
+// ─── 1. Convert expired trials to full Stripe subscriptions ──────────────────
 /**
- * Check for subscriptions expiring in 7 days and send reminder emails
+ * When a 30-day trial ends, create a real recurring Stripe subscription
+ * so the dealer is charged the full monthly price going forward.
  */
+async function convertExpiredTrials() {
+  try {
+    console.log('\n🔄 Checking for trials ready to convert...');
+
+    const now = new Date();
+
+    const expiredTrials = await TradeSubscription.find({
+      status:   'trialing',
+      trialEnd: { $lte: now }
+    }).populate('planId dealerId');
+
+    console.log(`📋 Found ${expiredTrials.length} trial(s) to convert`);
+
+    for (const sub of expiredTrials) {
+      if (!sub.dealerId || !sub.planId) {
+        console.warn(`⚠️  Skipping ${sub._id} — missing dealer or plan`);
+        continue;
+      }
+
+      const dealer   = sub.dealerId;
+      const plan     = sub.planId;
+      const planSlug = plan.slug;
+
+      console.log(`\n💳 Converting trial for ${dealer.businessName} (${planSlug})`);
+
+      try {
+        const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
+        // ── Ensure Stripe customer exists ─────────────────────────────────
+        let customerId = dealer.stripeCustomerId || sub.stripeCustomerId;
+
+        if (!customerId || customerId.startsWith('cus_')) {
+          // Real Stripe customer ID starts with "cus_" — check if it's a placeholder
+          if (!customerId || customerId.length < 10) {
+            const customer = await stripe.customers.create({
+              email: dealer.email,
+              name:  dealer.businessName,
+              metadata: { dealerId: dealer._id.toString() }
+            });
+            customerId = customer.id;
+            dealer.stripeCustomerId = customerId;
+            await dealer.save();
+            console.log(`✅ Created Stripe customer: ${customerId}`);
+          }
+        }
+
+        // ── Get or create a Stripe Price for this plan ────────────────────
+        // We store stripePriceId on the plan; if missing, create it once.
+        let stripePriceId = plan.stripePriceId;
+
+        if (!stripePriceId) {
+          const fullPricePence = FULL_PRICES[planSlug] || 100000;
+
+          // Create a recurring price in Stripe
+          const stripePrice = await stripe.prices.create({
+            unit_amount: fullPricePence,
+            currency:    'gbp',
+            recurring:   { interval: 'month' },
+            product_data: { name: `${plan.name} Monthly Subscription` }
+          });
+
+          stripePriceId      = stripePrice.id;
+          plan.stripePriceId = stripePriceId;
+          await plan.save();
+          console.log(`✅ Created Stripe price: ${stripePriceId}`);
+        }
+
+        // ── Create the recurring Stripe subscription ──────────────────────
+        const stripeSub = await stripe.subscriptions.create({
+          customer:   customerId,
+          items:      [{ price: stripePriceId }],
+          metadata:   { dealerId: dealer._id.toString(), planId: plan._id.toString() }
+        });
+
+        console.log(`✅ Stripe subscription created: ${stripeSub.id}`);
+
+        // ── Update our database record ────────────────────────────────────
+        sub.status                = 'active';
+        sub.isTrialing            = false;
+        sub.stripeSubscriptionId  = stripeSub.id;
+        sub.stripeCustomerId      = customerId;
+        sub.currentPeriodStart    = new Date(stripeSub.current_period_start * 1000);
+        sub.currentPeriodEnd      = new Date(stripeSub.current_period_end   * 1000);
+        sub.cancelAtPeriodEnd     = false;
+        await sub.save();
+
+        // ── Notify dealer ─────────────────────────────────────────────────
+        await emailService.sendSubscriptionRenewed(dealer, sub);
+        console.log(`📧 Renewal email sent to ${dealer.email}`);
+
+      } catch (err) {
+        console.error(`❌ Failed to convert trial for ${dealer.businessName}:`, err.message);
+        // Mark as past_due so the payment-failed cron picks it up
+        sub.status = 'past_due';
+        await sub.save();
+        await emailService.sendSubscriptionPaymentFailed(dealer, sub);
+      }
+    }
+
+    console.log('✅ Trial conversion check complete\n');
+  } catch (error) {
+    console.error('❌ Error in convertExpiredTrials:', error);
+  }
+}
+
+// ─── 2. Send 7-day renewal reminders ─────────────────────────────────────────
 async function checkExpiringSubscriptions() {
   try {
     console.log('\n🔍 Checking for expiring subscriptions...');
-    
-    const now = new Date();
+
+    const now             = new Date();
     const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    
-    // Find subscriptions expiring in 7 days
-    const expiringSubscriptions = await TradeSubscription.find({
-      status: { $in: ['active', 'trialing'] },
-      currentPeriodEnd: {
-        $gte: now,
-        $lte: sevenDaysFromNow
-      },
+
+    const expiring = await TradeSubscription.find({
+      status:           { $in: ['active', 'trialing'] },
+      currentPeriodEnd: { $gte: now, $lte: sevenDaysFromNow },
       cancelAtPeriodEnd: false,
-      // Only send reminder once - check if we haven't sent in last 6 days
       $or: [
         { lastReminderSent: { $exists: false } },
         { lastReminderSent: { $lt: new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000) } }
       ]
     }).populate('planId dealerId');
 
-    console.log(`📧 Found ${expiringSubscriptions.length} subscriptions expiring in 7 days`);
+    console.log(`📧 Found ${expiring.length} subscription(s) expiring in 7 days`);
 
-    for (const subscription of expiringSubscriptions) {
-      if (!subscription.dealerId || !subscription.planId) {
-        console.log(`⚠️ Skipping subscription ${subscription._id} - missing dealer or plan`);
-        continue;
-      }
+    for (const sub of expiring) {
+      if (!sub.dealerId || !sub.planId) continue;
 
-      console.log(`📤 Sending renewal reminder to ${subscription.dealerId.businessName}`);
-      
-      const sent = await emailService.sendSubscriptionRenewalReminder(
-        subscription.dealerId,
-        subscription
-      );
-
+      const sent = await emailService.sendSubscriptionRenewalReminder(sub.dealerId, sub);
       if (sent) {
-        // Mark reminder as sent
-        subscription.lastReminderSent = new Date();
-        await subscription.save();
-        console.log(`✅ Reminder sent to ${subscription.dealerId.email}`);
-      } else {
-        console.log(`❌ Failed to send reminder to ${subscription.dealerId.email}`);
+        sub.lastReminderSent = new Date();
+        await sub.save();
+        console.log(`✅ Reminder sent to ${sub.dealerId.email}`);
       }
     }
 
     console.log('✅ Expiring subscriptions check complete\n');
   } catch (error) {
-    console.error('❌ Error checking expiring subscriptions:', error);
+    console.error('❌ Error in checkExpiringSubscriptions:', error);
   }
 }
 
-/**
- * Check for expired subscriptions and deactivate listings
- */
+// ─── 3. Deactivate expired subscriptions ─────────────────────────────────────
 async function checkExpiredSubscriptions() {
   try {
     console.log('\n🔍 Checking for expired subscriptions...');
-    
+
     const now = new Date();
-    
-    // Find subscriptions that have expired
-    const expiredSubscriptions = await TradeSubscription.find({
-      status: { $in: ['active', 'trialing'] },
+
+    const expired = await TradeSubscription.find({
+      status:           { $in: ['active', 'trialing'] },
       currentPeriodEnd: { $lt: now },
       cancelAtPeriodEnd: false
     }).populate('planId dealerId');
 
-    console.log(`📧 Found ${expiredSubscriptions.length} expired subscriptions`);
+    console.log(`📋 Found ${expired.length} expired subscription(s)`);
 
-    for (const subscription of expiredSubscriptions) {
-      if (!subscription.dealerId || !subscription.planId) {
-        console.log(`⚠️ Skipping subscription ${subscription._id} - missing dealer or plan`);
-        continue;
-      }
+    for (const sub of expired) {
+      if (!sub.dealerId || !sub.planId) continue;
 
-      console.log(`⚠️ Processing expired subscription for ${subscription.dealerId.businessName}`);
-      
-      // Update subscription status
-      subscription.status = 'expired';
-      subscription.expiredAt = new Date();
-      await subscription.save();
+      console.log(`⚠️  Expiring: ${sub.dealerId.businessName}`);
 
-      // Deactivate all dealer's listings
+      sub.status    = 'expired';
+      sub.expiredAt = new Date();
+      await sub.save();
+
+      // Deactivate listings
       const result = await Car.updateMany(
-        { dealerId: subscription.dealerId._id, advertStatus: 'active' },
+        { dealerId: sub.dealerId._id, advertStatus: 'active' },
         { $set: { advertStatus: 'expired' } }
       );
+      console.log(`📦 Deactivated ${result.modifiedCount} listing(s)`);
 
-      console.log(`📦 Deactivated ${result.modifiedCount} listings for ${subscription.dealerId.businessName}`);
-
-      // Update dealer status
-      const dealer = await TradeDealer.findById(subscription.dealerId._id);
+      // Update dealer
+      const dealer = await TradeDealer.findById(sub.dealerId._id);
       if (dealer) {
         dealer.hasActiveSubscription = false;
         dealer.status = 'inactive';
         await dealer.save();
       }
 
-      // Send expiration email
-      const sent = await emailService.sendSubscriptionExpired(
-        subscription.dealerId,
-        subscription
-      );
-
-      if (sent) {
-        console.log(`✅ Expiration email sent to ${subscription.dealerId.email}`);
-      } else {
-        console.log(`❌ Failed to send expiration email to ${subscription.dealerId.email}`);
-      }
+      await emailService.sendSubscriptionExpired(sub.dealerId, sub);
+      console.log(`📧 Expiry email sent to ${sub.dealerId.email}`);
     }
 
     console.log('✅ Expired subscriptions check complete\n');
   } catch (error) {
-    console.error('❌ Error checking expired subscriptions:', error);
+    console.error('❌ Error in checkExpiredSubscriptions:', error);
   }
 }
 
-/**
- * Check for past_due subscriptions (payment failed)
- */
+// ─── 4. Notify past-due dealers ───────────────────────────────────────────────
 async function checkPastDueSubscriptions() {
   try {
-    console.log('\n🔍 Checking for past due subscriptions...');
-    
-    const pastDueSubscriptions = await TradeSubscription.find({
+    console.log('\n🔍 Checking for past-due subscriptions...');
+
+    const pastDue = await TradeSubscription.find({
       status: 'past_due',
-      // Only send notification once per day
       $or: [
         { lastPaymentFailedNotification: { $exists: false } },
         { lastPaymentFailedNotification: { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } }
       ]
     }).populate('planId dealerId');
 
-    console.log(`📧 Found ${pastDueSubscriptions.length} past due subscriptions`);
+    console.log(`📋 Found ${pastDue.length} past-due subscription(s)`);
 
-    for (const subscription of pastDueSubscriptions) {
-      if (!subscription.dealerId || !subscription.planId) {
-        console.log(`⚠️ Skipping subscription ${subscription._id} - missing dealer or plan`);
-        continue;
-      }
+    for (const sub of pastDue) {
+      if (!sub.dealerId || !sub.planId) continue;
 
-      console.log(`📤 Sending payment failed notification to ${subscription.dealerId.businessName}`);
-      
-      const sent = await emailService.sendSubscriptionPaymentFailed(
-        subscription.dealerId,
-        subscription
-      );
-
+      const sent = await emailService.sendSubscriptionPaymentFailed(sub.dealerId, sub);
       if (sent) {
-        subscription.lastPaymentFailedNotification = new Date();
-        await subscription.save();
-        console.log(`✅ Payment failed notification sent to ${subscription.dealerId.email}`);
-      } else {
-        console.log(`❌ Failed to send notification to ${subscription.dealerId.email}`);
+        sub.lastPaymentFailedNotification = new Date();
+        await sub.save();
+        console.log(`📧 Payment-failed email sent to ${sub.dealerId.email}`);
       }
     }
 
-    console.log('✅ Past due subscriptions check complete\n');
+    console.log('✅ Past-due subscriptions check complete\n');
   } catch (error) {
-    console.error('❌ Error checking past due subscriptions:', error);
+    console.error('❌ Error in checkPastDueSubscriptions:', error);
   }
 }
 
-/**
- * Initialize subscription cron jobs
- */
+// ─── Init ─────────────────────────────────────────────────────────────────────
 function initSubscriptionCron() {
   console.log('🕐 Initializing subscription cron jobs...');
 
-  // Run every day at 9:00 AM to check expiring subscriptions (7 days before)
+  // Trial → full conversion: every hour
+  cron.schedule('0 * * * *', async () => {
+    console.log('⏰ [Cron] Trial conversion check...');
+    await convertExpiredTrials();
+  });
+
+  // 7-day reminder: daily at 9 AM
   cron.schedule('0 9 * * *', async () => {
-    console.log('⏰ Running daily subscription expiration check...');
+    console.log('⏰ [Cron] Expiring subscriptions check...');
     await checkExpiringSubscriptions();
   });
 
-  // Run every hour to check for expired subscriptions
+  // Expired deactivation: every hour
   cron.schedule('0 * * * *', async () => {
-    console.log('⏰ Running hourly expired subscription check...');
+    console.log('⏰ [Cron] Expired subscriptions check...');
     await checkExpiredSubscriptions();
   });
 
-  // Run every 6 hours to check for past due subscriptions
+  // Past-due notifications: every 6 hours
   cron.schedule('0 */6 * * *', async () => {
-    console.log('⏰ Running past due subscription check...');
+    console.log('⏰ [Cron] Past-due subscriptions check...');
     await checkPastDueSubscriptions();
   });
 
-  console.log('✅ Subscription cron jobs initialized');
-  console.log('   - Expiring check: Daily at 9:00 AM');
-  console.log('   - Expired check: Every hour');
-  console.log('   - Past due check: Every 6 hours');
+  console.log('✅ Cron jobs initialised:');
+  console.log('   Trial → full conversion : Every hour');
+  console.log('   7-day reminder          : Daily at 9 AM');
+  console.log('   Expired deactivation    : Every hour');
+  console.log('   Past-due notifications  : Every 6 hours');
 
-  // Run checks immediately on startup (for testing)
+  // Dev: run immediately
   if (process.env.NODE_ENV === 'development') {
-    console.log('\n🔧 Development mode: Running initial checks...');
     setTimeout(async () => {
+      await convertExpiredTrials();
       await checkExpiringSubscriptions();
       await checkExpiredSubscriptions();
       await checkPastDueSubscriptions();
-    }, 5000); // Wait 5 seconds after startup
+    }, 5000);
   }
 }
 
 module.exports = {
   initSubscriptionCron,
+  convertExpiredTrials,
   checkExpiringSubscriptions,
   checkExpiredSubscriptions,
   checkPastDueSubscriptions
