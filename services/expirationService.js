@@ -168,42 +168,113 @@ class ExpirationService {
       const email = car.sellerContact?.email;
       if (!email) return;
 
+      // Get seller name from sellerContact
+      const sellerName = car.sellerContact?.name || car.sellerContact?.businessName || '';
+      const greeting = sellerName ? `Hello ${sellerName},` : 'Hello,';
+
       const subject = `Your ${car.make} ${car.model} listing has expired`;
       const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #dc3545;">Your Listing Has Expired</h2>
-          
-          <p>Hello,</p>
-          
-          <p>Your vehicle listing has expired and has been removed from our website:</p>
-          
-          <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="margin-top: 0;">${car.year} ${car.make} ${car.model}</h3>
-            <p style="margin: 5px 0;"><strong>Registration:</strong> ${car.registrationNumber || 'N/A'}</p>
-            <p style="margin: 5px 0;"><strong>Price:</strong> £${car.price?.toLocaleString() || '0'}</p>
-            <p style="margin: 5px 0;"><strong>Package:</strong> ${car.advertisingPackage?.packageName || 'N/A'}</p>
-            <p style="margin: 5px 0;"><strong>Expired on:</strong> ${new Date(car.advertisingPackage?.expiryDate).toLocaleDateString()}</p>
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; background: white; }
+            .logo-header { background: white; padding: 15px 20px; text-align: left; border-bottom: 2px solid #e0e0e0; }
+            .logo { max-width: 120px; height: auto; display: block; }
+            .header { background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }
+            .vehicle-box { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #dc3545; }
+            .vehicle-box h3 { margin-top: 0; color: #333; }
+            .vehicle-box p { margin: 8px 0; color: #555; }
+            .button { display: inline-block; background: #007bff !important; color: #ffffff !important; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; }
+            .footer { text-align: center; padding: 20px; color: #888; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="logo-header">
+              <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+            </div>
+            <div class="header">
+              <h1 style="margin: 0;">❌ Your Listing Has Expired</h1>
+              <p style="margin: 10px 0 0 0;">Your vehicle has been removed from our website</p>
+            </div>
+            
+            <div class="content">
+              <p>${greeting}</p>
+              
+              <p>Your vehicle listing has expired and has been automatically removed from our website:</p>
+              
+              <div class="vehicle-box">
+                <h3>${car.year} ${car.make} ${car.model}</h3>
+                <p><strong>Registration:</strong> ${car.registrationNumber || 'N/A'}</p>
+                <p><strong>Price:</strong> £${car.price?.toLocaleString() || '0'}</p>
+                <p><strong>Package:</strong> ${car.advertisingPackage?.packageName || 'N/A'}</p>
+                <p><strong>Expired on:</strong> ${new Date(car.advertisingPackage?.expiryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+              </div>
+              
+              <p><strong>What This Means:</strong></p>
+              <ul>
+                <li>Your listing is no longer visible to buyers</li>
+                <li>The advertising package has reached its expiry date</li>
+                <li>Your vehicle details have been removed from search results</li>
+              </ul>
+              
+              <p><strong>Want to list your vehicle again?</strong></p>
+              <p>You can create a new listing anytime by visiting our website and choosing a new advertising package.</p>
+              
+              <center>
+                <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/sell-your-car" class="button">
+                  List Your Vehicle Again
+                </a>
+              </center>
+              
+              <p style="color: #666; font-size: 0.9rem; margin-top: 30px;">
+                If you have any questions or need assistance, please don't hesitate to contact our support team.
+              </p>
+              
+              <p>Best regards,<br>The CarCatalog Team</p>
+            </div>
+            
+            <div class="footer">
+              <p>This is an automated notification. Please do not reply to this message.</p>
+              <p>&copy; ${new Date().getFullYear()} CarCatalog. All rights reserved.</p>
+            </div>
           </div>
-          
-          <p>Your listing has been automatically removed from our website as the advertising package has expired.</p>
-          
-          <p><strong>Want to list your vehicle again?</strong></p>
-          <p>You can create a new listing anytime by visiting our website.</p>
-          
-          <div style="margin: 30px 0;">
-            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/sell-your-car" 
-               style="background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-              List Your Vehicle Again
-            </a>
-          </div>
-          
-          <p style="color: #666; font-size: 0.9rem; margin-top: 30px;">
-            If you have any questions, please contact our support team.
-          </p>
-        </div>
+        </body>
+        </html>
       `;
 
-      await sendEmail(email, subject, html);
+      // Generate plain text version for email clients that don't support HTML
+      const text = `Your ${car.make} ${car.model} listing has expired
+
+${greeting}
+
+Your vehicle listing has expired and has been removed from our website:
+
+${car.year} ${car.make} ${car.model}
+Registration: ${car.registrationNumber || 'N/A'}
+Price: £${car.price?.toLocaleString() || '0'}
+Package: ${car.advertisingPackage?.packageName || 'N/A'}
+Expired on: ${new Date(car.advertisingPackage?.expiryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+
+What This Means:
+- Your listing is no longer visible to buyers
+- The advertising package has reached its expiry date
+- Your vehicle details have been removed from search results
+
+Want to list your vehicle again?
+You can create a new listing anytime by visiting our website and choosing a new advertising package.
+
+Visit: ${process.env.FRONTEND_URL || 'http://localhost:3000'}/sell-your-car
+
+If you have any questions or need assistance, please don't hesitate to contact our support team.
+
+Best regards,
+The CarCatalog Team`;
+
+      await sendEmail(email, subject, text, html);
       console.log(`Expiration notification sent to ${email} for car ${car.advertId}`);
     } catch (error) {
       console.error('Error sending expiration notification:', error);
@@ -219,46 +290,108 @@ class ExpirationService {
       const email = car.sellerContact?.email;
       if (!email) return;
 
+      // Get seller name from sellerContact
+      const sellerName = car.sellerContact?.name || car.sellerContact?.businessName || '';
+      const greeting = sellerName ? `Hello ${sellerName},` : 'Hello,';
+
       const expiryDate = new Date(car.advertisingPackage?.expiryDate);
-      const subject = `Your listing expires in ${daysBeforeExpiry} days`;
+      const subject = `⏰ Your listing expires in ${daysBeforeExpiry} days`;
       const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #ed8936;">Your Listing is Expiring Soon</h2>
-          
-          <p>Hello,</p>
-          
-          <p>Your vehicle listing will expire in <strong>${daysBeforeExpiry} days</strong>:</p>
-          
-          <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ed8936;">
-            <h3 style="margin-top: 0;">${car.year} ${car.make} ${car.model}</h3>
-            <p style="margin: 5px 0;"><strong>Registration:</strong> ${car.registrationNumber || 'N/A'}</p>
-            <p style="margin: 5px 0;"><strong>Price:</strong> £${car.price?.toLocaleString() || '0'}</p>
-            <p style="margin: 5px 0;"><strong>Expires on:</strong> ${expiryDate.toLocaleDateString()}</p>
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; background: white; }
+            .logo-header { background: white; padding: 15px 20px; text-align: left; border-bottom: 2px solid #e0e0e0; }
+            .logo { max-width: 120px; height: auto; display: block; }
+            .header { background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }
+            .warning-box { background: #fff3cd; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #ed8936; }
+            .warning-box h3 { margin-top: 0; color: #856404; }
+            .warning-box p { margin: 8px 0; color: #856404; }
+            .button { display: inline-block; background: #007bff !important; color: #ffffff !important; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; }
+            .footer { text-align: center; padding: 20px; color: #888; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="logo-header">
+              <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+            </div>
+            <div class="header">
+              <h1 style="margin: 0;">⏰ Your Listing is Expiring Soon</h1>
+              <p style="margin: 10px 0 0 0;">Action may be required</p>
+            </div>
+            
+            <div class="content">
+              <p>${greeting}</p>
+              
+              <p>Your vehicle listing will expire in <strong>${daysBeforeExpiry} days</strong>:</p>
+              
+              <div class="warning-box">
+                <h3>${car.year} ${car.make} ${car.model}</h3>
+                <p><strong>Registration:</strong> ${car.registrationNumber || 'N/A'}</p>
+                <p><strong>Price:</strong> £${car.price?.toLocaleString() || '0'}</p>
+                <p><strong>Expires on:</strong> ${expiryDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+              </div>
+              
+              <p><strong>What happens next?</strong></p>
+              <ul>
+                <li>Your listing will remain active until ${expiryDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</li>
+                <li>After that date, it will be automatically removed from our website</li>
+                <li>You can create a new listing anytime with a new advertising package</li>
+              </ul>
+              
+              <p><strong>Want to keep your listing active?</strong></p>
+              <p>You can purchase a new advertising package before the expiry date to keep your vehicle visible to buyers.</p>
+              
+              <center>
+                <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/my-listings" class="button">
+                  View My Listings
+                </a>
+              </center>
+              
+              <p style="color: #666; font-size: 0.9rem; margin-top: 30px;">
+                If you have any questions or need assistance, please don't hesitate to contact our support team.
+              </p>
+              
+              <p>Best regards,<br>The CarCatalog Team</p>
+            </div>
+            
+            <div class="footer">
+              <p>This is an automated reminder. Please do not reply to this message.</p>
+              <p>&copy; ${new Date().getFullYear()} CarCatalog. All rights reserved.</p>
+            </div>
           </div>
-          
-          <p>After expiration, your listing will be automatically removed from our website.</p>
-          
-          <p><strong>What happens next?</strong></p>
-          <ul>
-            <li>Your listing will remain active until ${expiryDate.toLocaleDateString()}</li>
-            <li>After that date, it will be automatically removed</li>
-            <li>You can create a new listing anytime</li>
-          </ul>
-          
-          <div style="margin: 30px 0;">
-            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/my-listings" 
-               style="background: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-              View My Listings
-            </a>
-          </div>
-          
-          <p style="color: #666; font-size: 0.9rem; margin-top: 30px;">
-            If you have any questions, please contact our support team.
-          </p>
-        </div>
+        </body>
+        </html>
       `;
 
-      await sendEmail(email, subject, html);
+      // Generate plain text version
+      const text = `Your listing expires in ${daysBeforeExpiry} days
+
+${greeting}
+
+Your vehicle listing will expire in ${daysBeforeExpiry} days:
+
+${car.year} ${car.make} ${car.model}
+Registration: ${car.registrationNumber || 'N/A'}
+Price: £${car.price?.toLocaleString() || '0'}
+Expires on: ${expiryDate.toLocaleDateString()}
+
+After expiration, your listing will be automatically removed from our website.
+
+What happens next?
+- Your listing will remain active until ${expiryDate.toLocaleDateString()}
+- After that date, it will be automatically removed
+- You can create a new listing anytime
+
+View My Listings: ${process.env.FRONTEND_URL || 'http://localhost:3000'}/my-listings
+
+If you have any questions, please contact our support team.`;
+
+      await sendEmail(email, subject, text, html);
       console.log(`Expiration warning sent to ${email} for car ${car.advertId}`);
     } catch (error) {
       console.error('Error sending expiration warning:', error);

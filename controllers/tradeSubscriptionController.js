@@ -215,52 +215,26 @@ exports.createCheckoutSession = async (req, res) => {
     
     const trialPrice = trialPrices[plan.slug] || 6000;
 
-    // APPROACH: Create subscription with add_invoice_items for trial payment
-    // This will charge trial price immediately AND set up recurring subscription for after 30 days
-    const billingCycleAnchor = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60); // 30 days from now
+    // APPROACH: Charge trial price upfront, then start subscription after 30 days
+    // We'll use setup mode to collect payment method, then create subscription manually
+    const trialDays = 30;
     
     const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
+      mode: 'payment', // Use payment mode to charge trial price immediately
       payment_method_types: ['card'],
       line_items: [
         {
           price_data: {
             currency: 'gbp',
             product_data: {
-              name: plan.name,
-              description: plan.description,
+              name: `${plan.name} - 30 Day Trial`,
+              description: `First month trial at reduced rate. Full subscription starts after 30 days.`,
             },
-            unit_amount: plan.price, // Full monthly price (charged after 30 days)
-            recurring: {
-              interval: 'month',
-            },
+            unit_amount: trialPrice, // Trial price charged immediately
           },
           quantity: 1,
         },
       ],
-      subscription_data: {
-        billing_cycle_anchor: billingCycleAnchor, // Start billing in 30 days
-        // Add trial payment as one-time invoice item (charged immediately)
-        add_invoice_items: [
-          {
-            price_data: {
-              currency: 'gbp',
-              product: plan.stripeProductId,
-              unit_amount: trialPrice,
-            },
-            quantity: 1,
-          },
-        ],
-        metadata: {
-          dealerId: dealer._id.toString(),
-          planId: plan._id.toString(),
-          planSlug: plan.slug,
-          isTrial: 'true',
-          trialDays: '30',
-          trialPrice: trialPrice.toString(),
-          fullPrice: plan.price.toString()
-        },
-      },
       success_url: `${baseUrl}/trade/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/trade/subscription?cancelled=true`,
       customer_email: dealer.email,
@@ -270,13 +244,17 @@ exports.createCheckoutSession = async (req, res) => {
         planSlug: plan.slug,
         isTrial: 'true',
         trialPrice: trialPrice.toString(),
-        fullPrice: plan.price.toString()
+        fullPrice: plan.price.toString(),
+        trialDays: trialDays.toString()
       },
     });
 
-    console.log('✅ Stripe session created with trial payment and scheduled subscription:', session.id);
-    console.log(`   Trial price (charged now): £${(trialPrice / 100).toFixed(2)} (including VAT)`);
-    console.log(`   Full price (starts in 30 days): £${(plan.price / 100).toFixed(2)} + VAT monthly`);
+    console.log('✅ Stripe session created for trial payment:', session.id);
+    console.log(`   Trial price (charged now): £${(trialPrice / 100).toFixed(2)} including VAT`);
+    console.log(`   Full subscription will start after ${trialDays} days at £${(plan.price / 100).toFixed(2)} + VAT monthly`);
+
+
+
 
     // Return Stripe checkout URL
     res.json({
