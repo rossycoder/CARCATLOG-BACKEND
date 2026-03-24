@@ -12,28 +12,23 @@ class ExpirationService {
       const now = new Date();
       
       // Find all active cars with expiry dates that have passed
-      // Only expire private sellers, not trade sellers
+      // Applies to both private sellers AND trade dealers
       const expiredCars = await Car.find({
         advertStatus: 'active',
-        'advertisingPackage.expiryDate': { $lte: now },
-        $or: [
-          { 'sellerContact.type': 'private' },
-          { 'sellerContact.type': { $exists: false } },
-          { 'sellerContact.type': null }
-        ]
+        'advertisingPackage.expiryDate': { $lte: now }
       });
 
-      console.log(`Found ${expiredCars.length} expired private seller listings to delete`);
+      console.log(`Found ${expiredCars.length} expired listings to move to draft`);
 
       const results = {
-        deleted: 0,
+        movedToDraft: 0,
         notified: 0,
         errors: []
       };
 
       for (const car of expiredCars) {
         try {
-          // Send notification email to seller before deletion
+          // Send notification email to seller before moving to draft
           if (car.sellerContact?.email) {
             await this.sendExpirationNotification(car);
             results.notified++;
@@ -47,13 +42,16 @@ class ExpirationService {
             );
           }
 
-          // Delete the car listing from database
-          await Car.findByIdAndDelete(car._id);
-          results.deleted++;
+          // Move to draft instead of deleting - keeps all data including API info
+          await Car.findByIdAndUpdate(car._id, {
+            advertStatus: 'draft',
+            // Keep all other data intact for relisting
+          });
+          results.movedToDraft++;
 
-          console.log(`Deleted expired listing: ${car.advertId} - ${car.make} ${car.model} (${car.sellerContact?.type || 'unknown'})`);
+          console.log(`Moved to draft: ${car.advertId} - ${car.make} ${car.model} (${car.sellerContact?.type || 'unknown'})`);
         } catch (error) {
-          console.error(`Error deleting car ${car._id}:`, error);
+          console.error(`Error moving car ${car._id} to draft:`, error);
           results.errors.push({
             carId: car._id,
             error: error.message
@@ -182,13 +180,14 @@ class ExpirationService {
             .container { max-width: 600px; margin: 0 auto; padding: 20px; background: white; }
             .logo-header { background: white; padding: 15px 20px; text-align: left; border-bottom: 2px solid #e0e0e0; }
             .logo { max-width: 120px; height: auto; display: block; }
-            .header { background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+            .header { background: linear-gradient(135deg, #6f42c1 0%, #5a32a3 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
             .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }
-            .vehicle-box { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #dc3545; }
+            .vehicle-box { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #6f42c1; }
             .vehicle-box h3 { margin-top: 0; color: #333; }
             .vehicle-box p { margin: 8px 0; color: #555; }
-            .button { display: inline-block; background: #007bff !important; color: #ffffff !important; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; }
+            .button { display: inline-block; background: #6f42c1 !important; color: #ffffff !important; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: bold; }
             .footer { text-align: center; padding: 20px; color: #888; font-size: 12px; }
+            .highlight-box { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 4px; }
           </style>
         </head>
         <body>
@@ -197,14 +196,14 @@ class ExpirationService {
               <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
             </div>
             <div class="header">
-              <h1 style="margin: 0;">❌ Your Listing Has Expired</h1>
-              <p style="margin: 10px 0 0 0;">Your vehicle has been removed from our website</p>
+              <h1 style="margin: 0;">📋 Your Listing Has Been Saved as Draft</h1>
+              <p style="margin: 10px 0 0 0;">Your vehicle is no longer live but remains in your account</p>
             </div>
             
             <div class="content">
               <p>${greeting}</p>
               
-              <p>Your vehicle listing has expired and has been automatically removed from our website:</p>
+              <p>Your vehicle listing has expired and has been moved to your drafts:</p>
               
               <div class="vehicle-box">
                 <h3>${car.year} ${car.make} ${car.model}</h3>
@@ -214,19 +213,24 @@ class ExpirationService {
                 <p><strong>Expired on:</strong> ${new Date(car.advertisingPackage?.expiryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
               </div>
               
+              <div class="highlight-box">
+                <p style="margin: 0;"><strong>✅ Good News!</strong> Your listing data has been saved as a draft in your account. All your vehicle details, photos, and information are safely stored.</p>
+              </div>
+              
               <p><strong>What This Means:</strong></p>
               <ul>
-                <li>Your listing is no longer visible to buyers</li>
-                <li>The advertising package has reached its expiry date</li>
-                <li>Your vehicle details have been removed from search results</li>
+                <li>Your listing is no longer visible to buyers on the website</li>
+                <li>All your vehicle data remains saved in your account as a draft</li>
+                <li>You can relist anytime by choosing a new advertising package</li>
+                <li>Or you can delete the draft if you no longer need it</li>
               </ul>
               
-              <p><strong>Want to list your vehicle again?</strong></p>
-              <p>You can create a new listing anytime by visiting our website and choosing a new advertising package.</p>
+              <p><strong>Ready to Relist?</strong></p>
+              <p>Simply log in to your account, go to "My Listings", and click the "Relist" button on your vehicle. All your data is backed up and ready to go live again!</p>
               
               <center>
-                <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/sell-your-car" class="button">
-                  List Your Vehicle Again
+                <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/my-listings" class="button">
+                  View My Listings
                 </a>
               </center>
               
@@ -247,11 +251,11 @@ class ExpirationService {
       `;
 
       // Generate plain text version for email clients that don't support HTML
-      const text = `Your ${car.make} ${car.model} listing has expired
+      const text = `Your ${car.make} ${car.model} listing has been saved as draft
 
 ${greeting}
 
-Your vehicle listing has expired and has been removed from our website:
+Your vehicle listing has expired and has been moved to your drafts:
 
 ${car.year} ${car.make} ${car.model}
 Registration: ${car.registrationNumber || 'N/A'}
@@ -259,15 +263,18 @@ Price: £${car.price?.toLocaleString() || '0'}
 Package: ${car.advertisingPackage?.packageName || 'N/A'}
 Expired on: ${new Date(car.advertisingPackage?.expiryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
 
+GOOD NEWS! Your listing data has been saved as a draft in your account. All your vehicle details, photos, and information are safely stored.
+
 What This Means:
-- Your listing is no longer visible to buyers
-- The advertising package has reached its expiry date
-- Your vehicle details have been removed from search results
+- Your listing is no longer visible to buyers on the website
+- All your vehicle data remains saved in your account as a draft
+- You can relist anytime by choosing a new advertising package
+- Or you can delete the draft if you no longer need it
 
-Want to list your vehicle again?
-You can create a new listing anytime by visiting our website and choosing a new advertising package.
+Ready to Relist?
+Simply log in to your account, go to "My Listings", and click the "Relist" button on your vehicle. All your data is backed up and ready to go live again!
 
-Visit: ${process.env.FRONTEND_URL || 'http://localhost:3000'}/sell-your-car
+Visit: ${process.env.FRONTEND_URL || 'http://localhost:3000'}/my-listings
 
 If you have any questions or need assistance, please don't hesitate to contact our support team.
 

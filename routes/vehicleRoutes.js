@@ -87,6 +87,13 @@ router.post(
   vehicleController.trackInquiry.bind(vehicleController)
 );
 
+// POST /api/vehicles/:id/relist - Relist a draft/expired vehicle (requires auth)
+router.post(
+  '/:id/relist',
+  protect,
+  vehicleController.relistVehicle.bind(vehicleController)
+);
+
 // DELETE /api/vehicles/:id - Delete vehicle (requires auth)
 router.delete(
   '/:id',

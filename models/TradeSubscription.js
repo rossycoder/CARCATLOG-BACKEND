@@ -18,8 +18,7 @@ const tradeSubscriptionSchema = new mongoose.Schema({
   // Stripe
   stripeSubscriptionId: {
     type: String,
-    required: true,
-    unique: true
+    required: true
   },
   stripeCustomerId: {
     type: String,
@@ -109,7 +108,8 @@ const tradeSubscriptionSchema = new mongoose.Schema({
 
 // Indexes
 tradeSubscriptionSchema.index({ dealerId: 1, status: 1 });
-tradeSubscriptionSchema.index({ stripeSubscriptionId: 1 });
+tradeSubscriptionSchema.index({ stripeSubscriptionId: 1 }, { unique: true });
+tradeSubscriptionSchema.index({ stripeCustomerId: 1 });
 tradeSubscriptionSchema.index({ status: 1, currentPeriodEnd: 1 });
 
 // Virtual for days remaining
