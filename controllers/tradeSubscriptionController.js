@@ -220,8 +220,8 @@ exports.createCheckoutSession = async (req, res) => {
       });
     }
 
-    // PRODUCTION: Create Stripe checkout with 30-day trial + payment method collection
-    console.log('💳 Production mode: Creating trial subscription with payment method');
+    // PRODUCTION: Create Stripe checkout with trial price payment
+    console.log('💳 Production mode: Creating checkout with trial pricing');
     
     const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
     const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
@@ -244,37 +244,30 @@ exports.createCheckoutSession = async (req, res) => {
       console.log('✅ Stripe customer created:', customerId);
     }
 
-    // Get or create Stripe Price
-    let stripePriceId = plan.stripePriceId;
+    // Determine which price to use
+    const useTrialPrice = !hasUsedTrial && plan.trialPriceId;
+    const priceId = useTrialPrice ? plan.trialPriceId : plan.stripePriceId;
+    const priceAmount = useTrialPrice ? plan.trialPrice : plan.price;
     
-    if (!stripePriceId) {
-      console.log('📝 Creating Stripe price for plan...');
-      const stripePrice = await stripe.prices.create({
-        unit_amount: plan.price, // Full monthly price
-        currency: 'gbp',
-        recurring: { interval: 'month' },
-        product_data: { 
-          name: `${plan.name} Monthly Subscription`,
-          description: `${plan.listingLimit} car listings per month`
-        }
+    console.log(`💰 Using ${useTrialPrice ? 'TRIAL' : 'FULL'} price: £${(priceAmount / 100).toFixed(2)}`);
+    console.log(`   Price ID: ${priceId}`);
+
+    if (!priceId) {
+      console.log('❌ No Stripe price ID found for plan');
+      return res.status(500).json({
+        success: false,
+        message: 'Plan pricing not configured. Please contact support.'
       });
-      stripePriceId = stripePrice.id;
-      plan.stripePriceId = stripePriceId;
-      await plan.save();
-      console.log('✅ Stripe price created:', stripePriceId);
     }
 
-    // Create Stripe Checkout Session with or without trial
-    // CRITICAL: Trial only for first-time users
-    const trialDays = hasUsedTrial ? 0 : 30;
-    
+    // Create Stripe Checkout Session
     const sessionConfig = {
-      mode: 'subscription',
+      mode: useTrialPrice ? 'payment' : 'subscription',
       customer: customerId,
       payment_method_types: ['card'],
       line_items: [
         {
-          price: stripePriceId,
+          price: priceId,
           quantity: 1,
         },
       ],
@@ -284,29 +277,33 @@ exports.createCheckoutSession = async (req, res) => {
         dealerId: dealer._id.toString(),
         planId: plan._id.toString(),
         planSlug: plan.slug,
-        isTrial: 'true'
+        isTrial: useTrialPrice.toString(),
+        trialPrice: useTrialPrice ? priceAmount.toString() : '0',
+        fullPrice: plan.price.toString()
       }
     };
 
-    // Add trial configuration if applicable
-    if (trialDays > 0) {
-      sessionConfig.subscription_data = {
-        trial_period_days: trialDays,
-        trial_settings: {
-          end_behavior: {
-            missing_payment_method: 'cancel'
-          }
-        }
+    // For trial payment, we need to set up future subscription
+    if (useTrialPrice) {
+      sessionConfig.payment_intent_data = {
+        metadata: {
+          dealerId: dealer._id.toString(),
+          planId: plan._id.toString(),
+          setupFutureUsage: 'off_session' // Save payment method for future charges
+        },
+        setup_future_usage: 'off_session'
       };
-      sessionConfig.payment_method_collection = 'always';
     }
 
     const session = await stripe.checkout.sessions.create(sessionConfig);
 
     console.log('✅ Stripe checkout session created:', session.id);
-    console.log(`   Trial: ${trialDays} days ${trialDays > 0 ? 'FREE' : 'N/A'}`);
-    console.log(`   Payment method: Will be collected and saved`);
-    console.log(`   After trial: £${(plan.price / 100).toFixed(2)}/month automatically`);
+    if (useTrialPrice) {
+      console.log(`   Trial payment: £${(priceAmount / 100).toFixed(2)} for 30 days`);
+      console.log(`   After trial: £${(plan.price / 100).toFixed(2)}/month automatically`);
+    } else {
+      console.log(`   Full subscription: £${(plan.price / 100).toFixed(2)}/month`);
+    }
 
     // Return Stripe checkout URL
     res.json({
@@ -315,9 +312,9 @@ exports.createCheckoutSession = async (req, res) => {
       url: session.url,
       message: 'Redirecting to Stripe checkout...',
       trial: {
-        enabled: trialDays > 0,
-        days: trialDays,
-        price: 0 // Free trial, but payment method required
+        enabled: useTrialPrice,
+        price: useTrialPrice ? priceAmount : 0,
+        days: useTrialPrice ? 30 : 0
       }
     });
   } catch (error) {
@@ -538,13 +535,14 @@ exports.verifyPayment = async (req, res) => {
 
     // Check if this is a trial payment (mode='payment') or subscription
     if (session.mode === 'payment' && isTrial) {
-      console.log('💳 Trial payment detected - creating subscription manually');
+      console.log('💳 Trial payment detected - creating trial subscription');
       
       // Get payment intent to retrieve payment method
       console.log('🔍 Retrieving payment intent...');
       const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent);
       console.log('✅ Payment intent retrieved:', paymentIntent.id);
       console.log('   Payment method:', paymentIntent.payment_method);
+      console.log('   Amount paid: £', (paymentIntent.amount / 100).toFixed(2));
       
       // Create or get Stripe customer with payment method
       let customerId = dealer.stripeCustomerId;
@@ -590,16 +588,36 @@ exports.verifyPayment = async (req, res) => {
       }).populate('planId');
 
       if (!subscription) {
-        // Create subscription for trial period
-        console.log('📝 Creating new trial subscription for dealer:', dealerId);
+        // Create Stripe subscription that will start after 30 days
+        console.log('📝 Creating Stripe subscription to start after trial...');
         
         const now = new Date();
         const trialEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
         
+        // Create the Stripe subscription with trial end date
+        const stripeSubscription = await stripe.subscriptions.create({
+          customer: customerId,
+          items: [{ price: plan.stripePriceId }], // Use full price ID
+          trial_end: Math.floor(trialEnd.getTime() / 1000), // Unix timestamp
+          default_payment_method: paymentIntent.payment_method,
+          metadata: {
+            dealerId: dealer._id.toString(),
+            planId: plan._id.toString(),
+            trialPaymentIntent: paymentIntent.id,
+            trialAmountPaid: trialPrice.toString()
+          }
+        });
+        
+        console.log('✅ Stripe subscription created:', stripeSubscription.id);
+        console.log(`   Status: ${stripeSubscription.status}`);
+        console.log(`   Trial ends: ${new Date(stripeSubscription.trial_end * 1000).toISOString()}`);
+        console.log(`   First charge: £${(plan.price / 100).toFixed(2)} on ${new Date(stripeSubscription.current_period_end * 1000).toLocaleDateString()}`);
+        
+        // Create subscription in our database
         subscription = new TradeSubscription({
           dealerId: dealer._id,
           planId: plan._id,
-          stripeSubscriptionId: `trial_${session.payment_intent}`, // Use payment intent as reference
+          stripeSubscriptionId: stripeSubscription.id,
           stripeCustomerId: customerId,
           status: 'trialing',
           currentPeriodStart: now,
@@ -637,9 +655,11 @@ exports.verifyPayment = async (req, res) => {
           throw dealerError;
         }
 
-        // TODO: Schedule a job to create actual Stripe subscription after 30 days
-        // For now, we'll handle this via a cron job or manual process
-        console.log('⏰ Note: Stripe subscription should be created after 30 days');
+        console.log('📧 Trial subscription active:');
+        console.log(`   - Paid: £${(trialPrice / 100).toFixed(2)} for 30 days`);
+        console.log(`   - Trial ends: ${trialEnd.toLocaleDateString()}`);
+        console.log(`   - After trial: £${(plan.price / 100).toFixed(2)}/month will be charged automatically`);
+        console.log(`   - If payment fails: Subscription will be cancelled and email sent`);
       } else {
         console.log('ℹ️ Trial subscription already exists:', subscription._id);
       }

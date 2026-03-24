@@ -25,6 +25,10 @@ const subscriptionPlanSchema = new mongoose.Schema({
     required: [true, 'Price is required'],
     min: 0
   },
+  trialPrice: {
+    type: Number,
+    min: 0
+  },
   currency: {
     type: String,
     default: 'gbp',
@@ -53,6 +57,9 @@ const subscriptionPlanSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Stripe price ID is required'],
     unique: true
+  },
+  trialPriceId: {
+    type: String
   },
   stripeProductId: {
     type: String,
@@ -99,6 +106,11 @@ subscriptionPlanSchema.index({ isActive: 1, displayOrder: 1 });
 // Virtual for formatted price
 subscriptionPlanSchema.virtual('priceFormatted').get(function() {
   return `£${(this.price / 100).toFixed(2)}`;
+});
+
+// Virtual for formatted trial price
+subscriptionPlanSchema.virtual('trialPriceFormatted').get(function() {
+  return this.trialPrice ? `£${(this.trialPrice / 100).toFixed(2)}` : null;
 });
 
 // Virtual for listing limit display
