@@ -43,10 +43,20 @@ exports.getCurrentSubscription = async (req, res) => {
   try {
     const subscription = await TradeSubscription.findActiveForDealer(req.dealerId);
 
+    // Check if dealer has ever used trial (even if expired/failed)
+    const hasUsedTrial = await TradeSubscription.findOne({
+      dealerId: req.dealerId,
+      $or: [
+        { isTrialing: true },
+        { trialEnd: { $exists: true, $ne: null } }
+      ]
+    });
+
     if (!subscription) {
       return res.json({
         success: true,
         subscription: null,
+        hasUsedTrial: !!hasUsedTrial,
         message: 'No active subscription'
       });
     }
@@ -68,7 +78,8 @@ exports.getCurrentSubscription = async (req, res) => {
         isTrialing: subscription.isTrialing,
         trialStart: subscription.trialStart,
         trialEnd: subscription.trialEnd,
-        trialDaysLeft: subscription.trialDaysLeft
+        trialDaysLeft: subscription.trialDaysLeft,
+        hasUsedTrial: !!hasUsedTrial
       }
     });
   } catch (error) {
@@ -110,6 +121,19 @@ exports.createCheckoutSession = async (req, res) => {
         success: false,
         message: 'You already have an active subscription'
       });
+    }
+
+    // Check if dealer has used trial before
+    const hasUsedTrial = await TradeSubscription.findOne({
+      dealerId: req.dealerId,
+      $or: [
+        { isTrialing: true },
+        { trialEnd: { $exists: true } }
+      ]
+    });
+
+    if (hasUsedTrial) {
+      console.log('⚠️  Dealer has already used trial period');
     }
 
     // Get plan by slug
@@ -196,65 +220,93 @@ exports.createCheckoutSession = async (req, res) => {
       });
     }
 
-    // PRODUCTION: Create Stripe checkout with trial payment + future subscription
-    console.log('💳 Production mode: Creating Stripe checkout with trial payment and scheduled subscription');
+    // PRODUCTION: Create Stripe checkout with 30-day trial + payment method collection
+    console.log('💳 Production mode: Creating trial subscription with payment method');
     
     const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
     const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-    // Calculate trial prices (in pence, including VAT)
-    // First month pricing: Full car allocation × £2.50 per car + 20% VAT
-    // Bronze: 20 cars × £2.50 = £50 + 20% VAT = £60 (6000 pence)
-    // Silver: 35 cars × £2.50 = £87.50 + 20% VAT = £105 (10500 pence)
-    // Gold: 60 cars × £2.50 = £150 + 20% VAT = £180 (18000 pence)
-    const trialPrices = {
-      'bronze': 6000,  // £60 including VAT (£50 + 20% VAT)
-      'silver': 10500, // £105 including VAT (£87.50 + 20% VAT)
-      'gold': 18000    // £180 including VAT (£150 + 20% VAT)
-    };
+    // Create or get Stripe customer
+    let customerId = dealer.stripeCustomerId;
     
-    const trialPrice = trialPrices[plan.slug] || 6000;
+    if (!customerId || customerId.length < 15 || !customerId.startsWith('cus_')) {
+      console.log('📝 Creating Stripe customer...');
+      const customer = await stripe.customers.create({
+        email: dealer.email,
+        name: dealer.businessName,
+        metadata: {
+          dealerId: dealer._id.toString()
+        }
+      });
+      customerId = customer.id;
+      dealer.stripeCustomerId = customerId;
+      await dealer.save();
+      console.log('✅ Stripe customer created:', customerId);
+    }
 
-    // APPROACH: Charge trial price upfront, then start subscription after 30 days
-    // We'll use setup mode to collect payment method, then create subscription manually
-    const trialDays = 30;
+    // Get or create Stripe Price
+    let stripePriceId = plan.stripePriceId;
     
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment', // Use payment mode to charge trial price immediately
+    if (!stripePriceId) {
+      console.log('📝 Creating Stripe price for plan...');
+      const stripePrice = await stripe.prices.create({
+        unit_amount: plan.price, // Full monthly price
+        currency: 'gbp',
+        recurring: { interval: 'month' },
+        product_data: { 
+          name: `${plan.name} Monthly Subscription`,
+          description: `${plan.listingLimit} car listings per month`
+        }
+      });
+      stripePriceId = stripePrice.id;
+      plan.stripePriceId = stripePriceId;
+      await plan.save();
+      console.log('✅ Stripe price created:', stripePriceId);
+    }
+
+    // Create Stripe Checkout Session with or without trial
+    // CRITICAL: Trial only for first-time users
+    const trialDays = hasUsedTrial ? 0 : 30;
+    
+    const sessionConfig = {
+      mode: 'subscription',
+      customer: customerId,
       payment_method_types: ['card'],
       line_items: [
         {
-          price_data: {
-            currency: 'gbp',
-            product_data: {
-              name: `${plan.name} - 30 Day Trial`,
-              description: `First month trial at reduced rate. Full subscription starts after 30 days.`,
-            },
-            unit_amount: trialPrice, // Trial price charged immediately
-          },
+          price: stripePriceId,
           quantity: 1,
         },
       ],
       success_url: `${baseUrl}/trade/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/trade/subscription?cancelled=true`,
-      customer_email: dealer.email,
       metadata: {
         dealerId: dealer._id.toString(),
         planId: plan._id.toString(),
         planSlug: plan.slug,
-        isTrial: 'true',
-        trialPrice: trialPrice.toString(),
-        fullPrice: plan.price.toString(),
-        trialDays: trialDays.toString()
-      },
-    });
+        isTrial: 'true'
+      }
+    };
 
-    console.log('✅ Stripe session created for trial payment:', session.id);
-    console.log(`   Trial price (charged now): £${(trialPrice / 100).toFixed(2)} including VAT`);
-    console.log(`   Full subscription will start after ${trialDays} days at £${(plan.price / 100).toFixed(2)} + VAT monthly`);
+    // Add trial configuration if applicable
+    if (trialDays > 0) {
+      sessionConfig.subscription_data = {
+        trial_period_days: trialDays,
+        trial_settings: {
+          end_behavior: {
+            missing_payment_method: 'cancel'
+          }
+        }
+      };
+      sessionConfig.payment_method_collection = 'always';
+    }
 
+    const session = await stripe.checkout.sessions.create(sessionConfig);
 
-
+    console.log('✅ Stripe checkout session created:', session.id);
+    console.log(`   Trial: ${trialDays} days ${trialDays > 0 ? 'FREE' : 'N/A'}`);
+    console.log(`   Payment method: Will be collected and saved`);
+    console.log(`   After trial: £${(plan.price / 100).toFixed(2)}/month automatically`);
 
     // Return Stripe checkout URL
     res.json({
@@ -263,10 +315,9 @@ exports.createCheckoutSession = async (req, res) => {
       url: session.url,
       message: 'Redirecting to Stripe checkout...',
       trial: {
-        enabled: true,
-        days: 30,
-        price: trialPrice,
-        perCarCharge: 250 // £2.50 in pence
+        enabled: trialDays > 0,
+        days: trialDays,
+        price: 0 // Free trial, but payment method required
       }
     });
   } catch (error) {
@@ -489,6 +540,48 @@ exports.verifyPayment = async (req, res) => {
     if (session.mode === 'payment' && isTrial) {
       console.log('💳 Trial payment detected - creating subscription manually');
       
+      // Get payment intent to retrieve payment method
+      console.log('🔍 Retrieving payment intent...');
+      const paymentIntent = await stripe.paymentIntents.retrieve(session.payment_intent);
+      console.log('✅ Payment intent retrieved:', paymentIntent.id);
+      console.log('   Payment method:', paymentIntent.payment_method);
+      
+      // Create or get Stripe customer with payment method
+      let customerId = dealer.stripeCustomerId;
+      
+      if (!customerId || customerId.length < 15) {
+        console.log('📝 Creating Stripe customer...');
+        const customer = await stripe.customers.create({
+          email: dealer.email,
+          name: dealer.businessName,
+          payment_method: paymentIntent.payment_method,
+          invoice_settings: {
+            default_payment_method: paymentIntent.payment_method
+          },
+          metadata: {
+            dealerId: dealer._id.toString()
+          }
+        });
+        customerId = customer.id;
+        console.log('✅ Stripe customer created:', customerId);
+      } else {
+        // Attach payment method to existing customer
+        console.log('📝 Attaching payment method to existing customer...');
+        try {
+          await stripe.paymentMethods.attach(paymentIntent.payment_method, {
+            customer: customerId
+          });
+          await stripe.customers.update(customerId, {
+            invoice_settings: {
+              default_payment_method: paymentIntent.payment_method
+            }
+          });
+          console.log('✅ Payment method attached to customer');
+        } catch (err) {
+          console.log('⚠️  Could not attach payment method:', err.message);
+        }
+      }
+      
       // Check if subscription already exists
       let subscription = await TradeSubscription.findOne({
         dealerId: dealer._id,
@@ -507,7 +600,7 @@ exports.verifyPayment = async (req, res) => {
           dealerId: dealer._id,
           planId: plan._id,
           stripeSubscriptionId: `trial_${session.payment_intent}`, // Use payment intent as reference
-          stripeCustomerId: session.customer || `cus_${Date.now()}`,
+          stripeCustomerId: customerId,
           status: 'trialing',
           currentPeriodStart: now,
           currentPeriodEnd: trialEnd,
@@ -534,7 +627,7 @@ exports.verifyPayment = async (req, res) => {
         dealer.currentSubscriptionId = subscription._id;
         dealer.status = 'active';
         dealer.hasActiveSubscription = true;
-        dealer.stripeCustomerId = session.customer;
+        dealer.stripeCustomerId = customerId;
         
         try {
           await dealer.save();

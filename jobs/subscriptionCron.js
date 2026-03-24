@@ -58,9 +58,31 @@ async function convertExpiredTrials() {
         // ── Ensure Stripe customer exists ─────────────────────────────────
         let customerId = dealer.stripeCustomerId || sub.stripeCustomerId;
 
-        if (!customerId || customerId.startsWith('cus_')) {
-          // Real Stripe customer ID starts with "cus_" — check if it's a placeholder
-          if (!customerId || customerId.length < 10) {
+        // Check if customer ID is valid (real Stripe IDs start with "cus_" and are longer)
+        const isValidStripeCustomer = customerId && customerId.startsWith('cus_') && customerId.length > 15;
+
+        if (!isValidStripeCustomer) {
+          console.log(`⚠️  Invalid or missing customer ID: ${customerId}`);
+          console.log(`   Creating new Stripe customer...`);
+          
+          const customer = await stripe.customers.create({
+            email: dealer.email,
+            name:  dealer.businessName,
+            metadata: { dealerId: dealer._id.toString() }
+          });
+          customerId = customer.id;
+          dealer.stripeCustomerId = customerId;
+          await dealer.save();
+          console.log(`✅ Created Stripe customer: ${customerId}`);
+        } else {
+          // Verify customer exists in Stripe
+          try {
+            await stripe.customers.retrieve(customerId);
+            console.log(`✅ Verified existing Stripe customer: ${customerId}`);
+          } catch (err) {
+            console.log(`⚠️  Customer not found in Stripe: ${customerId}`);
+            console.log(`   Creating new Stripe customer...`);
+            
             const customer = await stripe.customers.create({
               email: dealer.email,
               name:  dealer.businessName,
@@ -69,17 +91,31 @@ async function convertExpiredTrials() {
             customerId = customer.id;
             dealer.stripeCustomerId = customerId;
             await dealer.save();
-            console.log(`✅ Created Stripe customer: ${customerId}`);
+            console.log(`✅ Created new Stripe customer: ${customerId}`);
           }
         }
 
         // ── Get or create a Stripe Price for this plan ────────────────────
         // We store stripePriceId on the plan; if missing, create it once.
         let stripePriceId = plan.stripePriceId;
+        const fullPricePence = FULL_PRICES[planSlug] || 100000;
 
-        if (!stripePriceId) {
-          const fullPricePence = FULL_PRICES[planSlug] || 100000;
+        // Always verify price exists in Stripe, create new if not
+        let priceExists = false;
+        if (stripePriceId) {
+          try {
+            await stripe.prices.retrieve(stripePriceId);
+            priceExists = true;
+            console.log(`✅ Using existing Stripe price: ${stripePriceId}`);
+          } catch (err) {
+            console.log(`⚠️  Price not found in Stripe: ${stripePriceId}`);
+            priceExists = false;
+          }
+        }
 
+        if (!priceExists) {
+          console.log(`📝 Creating new Stripe price: £${fullPricePence / 100}/month`);
+          
           // Create a recurring price in Stripe
           const stripePrice = await stripe.prices.create({
             unit_amount: fullPricePence,
@@ -108,10 +144,32 @@ async function convertExpiredTrials() {
         sub.isTrialing            = false;
         sub.stripeSubscriptionId  = stripeSub.id;
         sub.stripeCustomerId      = customerId;
-        sub.currentPeriodStart    = new Date(stripeSub.current_period_start * 1000);
-        sub.currentPeriodEnd      = new Date(stripeSub.current_period_end   * 1000);
+        
+        // Safely convert timestamps
+        const startTime = stripeSub.current_period_start;
+        const endTime = stripeSub.current_period_end;
+        
+        if (startTime && !isNaN(startTime)) {
+          sub.currentPeriodStart = new Date(startTime * 1000);
+        } else {
+          sub.currentPeriodStart = new Date();
+        }
+        
+        if (endTime && !isNaN(endTime)) {
+          sub.currentPeriodEnd = new Date(endTime * 1000);
+        } else {
+          sub.currentPeriodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        }
+        
         sub.cancelAtPeriodEnd     = false;
         await sub.save();
+
+        // ── Reactivate expired listings ────────────────────────────────────
+        const reactivateResult = await Car.updateMany(
+          { dealerId: sub.dealerId._id, advertStatus: 'expired' },
+          { $set: { advertStatus: 'active' } }
+        );
+        console.log(`📦 Reactivated ${reactivateResult.modifiedCount} listing(s)`);
 
         // ── Notify dealer ─────────────────────────────────────────────────
         await emailService.sendSubscriptionRenewed(dealer, sub);
