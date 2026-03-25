@@ -245,12 +245,14 @@ exports.createCheckoutSession = async (req, res) => {
     }
 
     // Determine which price to use
-    const useTrialPrice = !hasUsedTrial && plan.trialPriceId;
+    const useTrialPrice = !hasUsedTrial && !!plan.trialPriceId;
     const priceId = useTrialPrice ? plan.trialPriceId : plan.stripePriceId;
     const priceAmount = useTrialPrice ? plan.trialPrice : plan.price;
     
     console.log(`💰 Using ${useTrialPrice ? 'TRIAL' : 'FULL'} price: £${(priceAmount / 100).toFixed(2)}`);
     console.log(`   Price ID: ${priceId}`);
+    console.log(`   Has used trial: ${!!hasUsedTrial}`);
+    console.log(`   Plan has trialPriceId: ${!!plan.trialPriceId}`);
 
     if (!priceId) {
       console.log('❌ No Stripe price ID found for plan');
@@ -258,6 +260,11 @@ exports.createCheckoutSession = async (req, res) => {
         success: false,
         message: 'Plan pricing not configured. Please contact support.'
       });
+    }
+    
+    // If trial price is not configured, fall back to full price with subscription mode
+    if (!hasUsedTrial && !plan.trialPriceId) {
+      console.log('⚠️  Trial price not configured for this plan, using full subscription price');
     }
 
     // Create Stripe Checkout Session
@@ -544,40 +551,28 @@ exports.verifyPayment = async (req, res) => {
       console.log('   Payment method:', paymentIntent.payment_method);
       console.log('   Amount paid: £', (paymentIntent.amount / 100).toFixed(2));
       
-      // Create or get Stripe customer with payment method
-      let customerId = dealer.stripeCustomerId;
+      // Get customer ID from session (already created during checkout)
+      const customerId = session.customer;
+      console.log('✅ Using existing customer from checkout:', customerId);
       
-      if (!customerId || customerId.length < 15) {
-        console.log('📝 Creating Stripe customer...');
-        const customer = await stripe.customers.create({
-          email: dealer.email,
-          name: dealer.businessName,
-          payment_method: paymentIntent.payment_method,
+      // Update dealer with customer ID if not already set
+      if (!dealer.stripeCustomerId || dealer.stripeCustomerId !== customerId) {
+        dealer.stripeCustomerId = customerId;
+        await dealer.save();
+        console.log('✅ Dealer updated with customer ID');
+      }
+      
+      // Set payment method as default for future charges
+      console.log('📝 Setting payment method as default...');
+      try {
+        await stripe.customers.update(customerId, {
           invoice_settings: {
             default_payment_method: paymentIntent.payment_method
-          },
-          metadata: {
-            dealerId: dealer._id.toString()
           }
         });
-        customerId = customer.id;
-        console.log('✅ Stripe customer created:', customerId);
-      } else {
-        // Attach payment method to existing customer
-        console.log('📝 Attaching payment method to existing customer...');
-        try {
-          await stripe.paymentMethods.attach(paymentIntent.payment_method, {
-            customer: customerId
-          });
-          await stripe.customers.update(customerId, {
-            invoice_settings: {
-              default_payment_method: paymentIntent.payment_method
-            }
-          });
-          console.log('✅ Payment method attached to customer');
-        } catch (err) {
-          console.log('⚠️  Could not attach payment method:', err.message);
-        }
+        console.log('✅ Payment method set as default');
+      } catch (err) {
+        console.log('⚠️  Could not set default payment method:', err.message);
       }
       
       // Check if subscription already exists
@@ -692,6 +687,18 @@ exports.verifyPayment = async (req, res) => {
     }
 
     // Original subscription mode handling (kept for backward compatibility)
+    // Check if session has subscription ID
+    if (!session.subscription) {
+      console.log('⚠️  No subscription ID in session - this appears to be a one-time payment');
+      console.log('   This should have been handled by trial payment logic above');
+      
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid payment session - no subscription found',
+        error: 'This payment session does not contain a subscription. Please contact support.'
+      });
+    }
+
     console.log('🔄 Retrieving Stripe subscription...');
     const stripeSubscription = await stripe.subscriptions.retrieve(session.subscription);
     console.log('✅ Stripe subscription retrieved:', stripeSubscription.id);
