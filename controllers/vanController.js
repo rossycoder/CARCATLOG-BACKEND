@@ -170,6 +170,26 @@ exports.getVanById = async (req, res) => {
 // Create new van
 exports.createVan = async (req, res) => {
   try {
+    // Check listing limit for trade dealers
+    if (req.dealerId && req.subscription) {
+      const canAdd = req.subscription.canAddListing();
+      if (!canAdd.allowed) {
+        const SubscriptionPlan = require('../models/SubscriptionPlan');
+        const plan = await SubscriptionPlan.findById(req.subscription.planId);
+        
+        return res.status(403).json({
+          success: false,
+          message: `Your ${plan?.name || 'current'} plan allows ${req.subscription.listingsLimit} listings. You have reached your limit. Please upgrade your plan to add more vehicles.`,
+          code: 'LISTING_LIMIT_REACHED',
+          subscription: {
+            listingsUsed: req.subscription.listingsUsed,
+            listingsLimit: req.subscription.listingsLimit,
+            planName: plan?.name || 'Unknown'
+          }
+        });
+      }
+    }
+
     // CRITICAL FIX: Set userId from authenticated user
     const vanData = { ...req.body };
     if (req.user && req.user._id) {
@@ -179,6 +199,12 @@ exports.createVan = async (req, res) => {
     
     const van = new Van(vanData);
     await van.save();
+
+    // Increment subscription usage for trade dealers
+    if (req.dealerId && req.subscription) {
+      console.log('[Van Create] Incrementing subscription listing count...');
+      await req.subscription.incrementListingCount();
+    }
 
     res.status(201).json({
       success: true,
@@ -229,13 +255,24 @@ exports.updateVan = async (req, res) => {
 // Delete van
 exports.deleteVan = async (req, res) => {
   try {
-    const van = await Van.findByIdAndDelete(req.params.id);
+    const van = await Van.findById(req.params.id);
 
     if (!van) {
       return res.status(404).json({
         success: false,
         message: 'Van not found'
       });
+    }
+
+    const wasActive = van.advertStatus === 'active';
+
+    // Delete the van
+    await van.deleteOne();
+
+    // Decrement subscription usage if was active and dealer is authenticated
+    if (wasActive && req.dealerId && req.subscription) {
+      console.log('[Van Delete] Decrementing subscription listing count...');
+      await req.subscription.decrementListingCount();
     }
 
     res.json({

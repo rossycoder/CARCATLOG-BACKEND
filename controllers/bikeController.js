@@ -247,6 +247,26 @@ exports.createBike = async (req, res) => {
   try {
     console.log('🏍️ Creating new bike with data:', req.body);
 
+    // Check listing limit for trade dealers
+    if (req.dealerId && req.subscription) {
+      const canAdd = req.subscription.canAddListing();
+      if (!canAdd.allowed) {
+        const SubscriptionPlan = require('../models/SubscriptionPlan');
+        const plan = await SubscriptionPlan.findById(req.subscription.planId);
+        
+        return res.status(403).json({
+          success: false,
+          message: `Your ${plan?.name || 'current'} plan allows ${req.subscription.listingsLimit} listings. You have reached your limit. Please upgrade your plan to add more vehicles.`,
+          code: 'LISTING_LIMIT_REACHED',
+          subscription: {
+            listingsUsed: req.subscription.listingsUsed,
+            listingsLimit: req.subscription.listingsLimit,
+            planName: plan?.name || 'Unknown'
+          }
+        });
+      }
+    }
+
     // Auto-enhance bike data if registration is provided
     let bikeData = { ...req.body };
     
@@ -413,6 +433,12 @@ exports.createBike = async (req, res) => {
         // Save bike with MOT + Valuation data
         await bike.save();
         
+        // Increment subscription usage for trade dealers
+        if (req.dealerId && req.subscription) {
+          console.log('[Bike Create] Incrementing subscription listing count...');
+          await req.subscription.incrementListingCount();
+        }
+        
         res.status(201).json({
           success: true,
           data: bike,
@@ -427,6 +453,12 @@ exports.createBike = async (req, res) => {
     
     // Save bike if UniversalService was not used or failed
     await bike.save();
+
+    // Increment subscription usage for trade dealers
+    if (req.dealerId && req.subscription) {
+      console.log('[Bike Create] Incrementing subscription listing count...');
+      await req.subscription.incrementListingCount();
+    }
 
     res.status(201).json({
       success: true,
@@ -548,7 +580,7 @@ exports.patchBikeDetails = async (req, res) => {
 // Delete bike
 exports.deleteBike = async (req, res) => {
   try {
-    const bike = await Bike.findByIdAndDelete(req.params.id);
+    const bike = await Bike.findById(req.params.id);
 
     if (!bike) {
       return res.status(404).json({
@@ -557,22 +589,34 @@ exports.deleteBike = async (req, res) => {
       });
     }
 
+    const wasActive = bike.advertStatus === 'active';
+    const registrationNumber = bike.registrationNumber;
+
+    // Delete the bike
+    await bike.deleteOne();
+
     // CRITICAL: Also delete VehicleHistory cache for this bike
-    if (bike.registrationNumber) {
+    if (registrationNumber) {
       try {
         const VehicleHistory = require('../models/VehicleHistory');
-        const cleanedReg = bike.registrationNumber.toUpperCase().replace(/\s/g, '');
+        const cleanedReg = registrationNumber.toUpperCase().replace(/\s/g, '');
         const deletedCache = await VehicleHistory.deleteOne({ vrm: cleanedReg });
         
         if (deletedCache.deletedCount > 0) {
-          console.log(`✅ VehicleHistory cache deleted for ${bike.registrationNumber}`);
+          console.log(`✅ VehicleHistory cache deleted for ${registrationNumber}`);
         } else {
-          console.log(`⚠️  No VehicleHistory cache found for ${bike.registrationNumber}`);
+          console.log(`⚠️  No VehicleHistory cache found for ${registrationNumber}`);
         }
       } catch (cacheError) {
         console.error('⚠️  Error deleting VehicleHistory cache:', cacheError.message);
         // Don't fail the bike deletion if cache deletion fails
       }
+    }
+
+    // Decrement subscription usage if was active and dealer is authenticated
+    if (wasActive && req.dealerId && req.subscription) {
+      console.log('[Bike Delete] Decrementing subscription listing count...');
+      await req.subscription.decrementListingCount();
     }
 
     res.json({
