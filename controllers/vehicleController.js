@@ -2851,15 +2851,108 @@ class VehicleController {
         message: 'Inquiry tracked successfully',
         inquiryCount: vehicle.inquiryCount
       });
-
     } catch (error) {
       console.error('[Vehicle Controller] Error tracking inquiry:', error);
       return res.status(500).json({
         success: false,
-        error: error.message || 'Failed to track inquiry'
+        message: 'Failed to track inquiry'
+      });
+    }
+  }
+
+  /**
+   * Relist a draft/expired vehicle
+   * POST /api/vehicles/:id/relist
+   * Redirects user to advertising prices page to purchase new package
+   */
+  async relistVehicle(req, res) {
+    try {
+      const { id } = req.params;
+
+      // Check if user is authenticated
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          error: 'Authentication required'
+        });
+      }
+
+      const userId = req.user._id || req.user.id;
+
+      // Import Bike and Van models
+      const Bike = require('../models/Bike');
+      const Van = require('../models/Van');
+
+      // Try to find the vehicle in all collections
+      let vehicle = await Car.findById(id);
+      let vehicleType = 'car';
+      
+      if (!vehicle) {
+        vehicle = await Bike.findById(id);
+        vehicleType = 'bike';
+      }
+
+      if (!vehicle) {
+        vehicle = await Van.findById(id);
+        vehicleType = 'van';
+      }
+
+      if (!vehicle) {
+        return res.status(404).json({
+          success: false,
+          error: 'Vehicle not found'
+        });
+      }
+
+      // Check if user owns this vehicle
+      if (vehicle.userId && vehicle.userId.toString() !== userId.toString()) {
+        return res.status(403).json({
+          success: false,
+          error: 'You do not have permission to relist this vehicle'
+        });
+      }
+
+      // Check if vehicle is in draft or expired status
+      const currentStatus = vehicleType === 'bike' ? vehicle.status : vehicle.advertStatus;
+      if (currentStatus !== 'draft' && currentStatus !== 'expired') {
+        return res.status(400).json({
+          success: false,
+          error: 'Only draft or expired vehicles can be relisted'
+        });
+      }
+
+      // Update status to pending_payment
+      if (vehicleType === 'bike') {
+        vehicle.status = 'pending_payment';
+      } else {
+        vehicle.advertStatus = 'pending_payment';
+      }
+      
+      // Clear old advertising package data but keep all vehicle data
+      vehicle.advertisingPackage = undefined;
+      
+      await vehicle.save();
+
+      console.log('[Vehicle Controller] Vehicle prepared for relisting:', id, vehicleType);
+
+      return res.json({
+        success: true,
+        message: 'Vehicle ready for relisting',
+        vehicleId: vehicle._id,
+        advertId: vehicle.advertId,
+        vehicleType: vehicleType
+      });
+
+    } catch (error) {
+      console.error('[Vehicle Controller] Error relisting vehicle:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to relist vehicle'
       });
     }
   }
 }
+
+module.exports = new VehicleController();
 
 module.exports = new VehicleController();
