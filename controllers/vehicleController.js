@@ -2778,20 +2778,18 @@ class VehicleController {
         });
       }
 
-      // Delete the vehicle from the appropriate collection
-      if (vehicleType === 'bike') {
-        await Bike.findByIdAndDelete(id);
-      } else {
-        await Car.findByIdAndDelete(id);
-      }
+      // DELETION DISABLED - Vehicle will NOT be deleted from database
+      // if (vehicleType === 'bike') {
+      //   await Bike.findByIdAndDelete(id);
+      // } else {
+      //   await Car.findByIdAndDelete(id);
+      // }
 
-      console.log('[Vehicle Controller] Deleted', vehicleType, ':', id);
-
-      console.log('[Vehicle Controller] Deleted vehicle:', id);
+      console.log('[Vehicle Controller] Delete request received but DISABLED for', vehicleType, ':', id);
 
       return res.json({
         success: true,
-        message: 'Vehicle deleted successfully'
+        message: 'Delete functionality is currently disabled'
       });
 
     } catch (error) {
