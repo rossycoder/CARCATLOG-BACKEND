@@ -2,6 +2,7 @@ const Car = require('../models/Car');
 const Bike = require('../models/Bike');
 const Van = require('../models/Van');
 const User = require('../models/User');
+const TradeDealer = require('../models/TradeDealer');
 
 /**
  * Get all listings (admin only) - Cars, Bikes, and Vans
@@ -553,6 +554,255 @@ const getVansWithPaymentIssues = async (req, res) => {
   }
 };
 
+
+/**
+ * Get all users with their car counts (admin only)
+ * Returns: User info + total cars count + subscription info
+ */
+const getAllUsers = async (req, res) => {
+  try {
+    const { search, userType } = req.query;
+
+    // Build query for users
+    const userQuery = {};
+    if (search) {
+      userQuery.$or = [
+        { email: { $regex: search, $options: 'i' } },
+        { name: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Fetch all users
+    const users = await User.find(userQuery)
+      .select('email name phone createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Fetch all trade dealers
+    const TradeDealer = require('../models/TradeDealer');
+    const dealers = await TradeDealer.find(search ? {
+      $or: [
+        { email: { $regex: search, $options: 'i' } },
+        { businessName: { $regex: search, $options: 'i' } }
+      ]
+    } : {})
+      .select('email businessName phone businessLogo businessWebsite createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Get car counts for each user
+    const [cars, bikes, vans, tradeSubscriptions] = await Promise.all([
+      Car.find({}).select('userId dealerId').lean(),
+      Bike.find({}).select('userId').lean(),
+      Van.find({}).select('userId').lean(),
+      require('../models/TradeSubscription').find({})
+        .populate('planId')
+        .lean()
+    ]);
+
+    // Build user list with car counts
+    const userList = [];
+
+    // Add regular users
+    for (const user of users) {
+      const userId = user._id.toString();
+      const userCars = cars.filter(c => c.userId?.toString() === userId).length;
+      const userBikes = bikes.filter(b => b.userId?.toString() === userId).length;
+      const userVans = vans.filter(v => v.userId?.toString() === userId).length;
+      const totalVehicles = userCars + userBikes + userVans;
+
+      // Only include users with vehicles or if no filter
+      if (!userType || userType === 'all' || totalVehicles > 0) {
+        userList.push({
+          _id: user._id,
+          type: 'private',
+          name: user.name || user.email,
+          email: user.email,
+          phone: user.phone || 'N/A',
+          totalVehicles,
+          cars: userCars,
+          bikes: userBikes,
+          vans: userVans,
+          createdAt: user.createdAt,
+          subscription: null // Private users don't have subscriptions
+        });
+      }
+    }
+
+    // Add trade dealers with subscription info
+    for (const dealer of dealers) {
+      const dealerId = dealer._id.toString();
+      const dealerCars = cars.filter(c => c.dealerId?.toString() === dealerId).length;
+      const totalVehicles = dealerCars;
+      
+      // Find dealer's subscription - try both string and ObjectId comparison
+      let subscription = tradeSubscriptions.find(s => {
+        const subDealerId = s.dealerId?._id ? s.dealerId._id.toString() : s.dealerId?.toString();
+        return subDealerId === dealerId;
+      });
+      
+      console.log(`[Admin] Dealer: ${dealer.businessName}, ID: ${dealerId}`);
+      console.log(`[Admin] Subscription found:`, subscription ? 'YES' : 'NO');
+      if (subscription) {
+        console.log(`[Admin] Plan: ${subscription.planId?.name}, Status: ${subscription.status}`);
+      }
+
+      // Only include dealers with vehicles or if no filter
+      if (!userType || userType === 'all' || totalVehicles > 0) {
+        userList.push({
+          _id: dealer._id,
+          type: 'trade',
+          name: dealer.businessName || dealer.email,
+          email: dealer.email,
+          phone: dealer.phone || 'N/A',
+          businessLogo: dealer.businessLogo,
+          businessWebsite: dealer.businessWebsite,
+          totalVehicles,
+          cars: dealerCars,
+          bikes: 0,
+          vans: 0,
+          createdAt: dealer.createdAt,
+          subscription: subscription ? {
+            planName: subscription.planId?.name || 'Unknown',
+            status: subscription.status,
+            currentPeriodEnd: subscription.currentPeriodEnd,
+            isTrialing: subscription.isTrialing,
+            listingsUsed: subscription.listingsUsed,
+            listingsLimit: subscription.listingsLimit
+          } : null
+        });
+      }
+    }
+
+    // Sort by total vehicles (descending)
+    userList.sort((a, b) => b.totalVehicles - a.totalVehicles);
+
+    // Calculate stats
+    const stats = {
+      totalUsers: users.length,
+      totalDealers: dealers.length,
+      totalPrivateUsers: userList.filter(u => u.type === 'private').length,
+      totalTradeUsers: userList.filter(u => u.type === 'trade').length,
+      usersWithVehicles: userList.filter(u => u.totalVehicles > 0).length
+    };
+
+    return res.json({
+      success: true,
+      users: userList,
+      stats,
+      count: userList.length
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error fetching users:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch users'
+    });
+  }
+};
+
+/**
+ * Get all vehicles for a specific user
+ * Returns: All cars, bikes, and vans for the user
+ */
+const getUserVehicles = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { dealerId } = req.query;
+
+    console.log('[Admin] Fetching vehicles for userId:', userId, 'dealerId:', dealerId);
+
+    let vehicles = [];
+    let dealerSubscription = null;
+
+    if (dealerId) {
+      // Fetch trade dealer vehicles
+      const [cars, bikes, vans, subscription] = await Promise.all([
+        Car.find({ dealerId: dealerId }).lean(),
+        Bike.find({ dealerId: dealerId }).lean(),
+        Van.find({ dealerId: dealerId }).lean(),
+        require('../models/TradeSubscription').findOne({ dealerId: dealerId })
+          .populate('planId')
+          .lean()
+      ]);
+
+      console.log('[Admin] Found dealer vehicles - Cars:', cars.length, 'Bikes:', bikes.length, 'Vans:', vans.length);
+      console.log('[Admin] Dealer subscription:', subscription);
+
+      dealerSubscription = subscription;
+
+      // Add subscription info to each vehicle
+      vehicles = [
+        ...cars.map(c => ({ 
+          ...c, 
+          vehicleType: 'car',
+          dealerSubscription: subscription ? {
+            planName: subscription.planId?.name || 'Unknown Plan',
+            status: subscription.status,
+            expiryDate: subscription.currentPeriodEnd,
+            isTrialing: subscription.isTrialing
+          } : null
+        })),
+        ...bikes.map(b => ({ 
+          ...b, 
+          vehicleType: 'bike',
+          dealerSubscription: subscription ? {
+            planName: subscription.planId?.name || 'Unknown Plan',
+            status: subscription.status,
+            expiryDate: subscription.currentPeriodEnd,
+            isTrialing: subscription.isTrialing
+          } : null
+        })),
+        ...vans.map(v => ({ 
+          ...v, 
+          vehicleType: 'van',
+          dealerSubscription: subscription ? {
+            planName: subscription.planId?.name || 'Unknown Plan',
+            status: subscription.status,
+            expiryDate: subscription.currentPeriodEnd,
+            isTrialing: subscription.isTrialing
+          } : null
+        }))
+      ];
+    } else {
+      // Fetch private user vehicles
+      const [cars, bikes, vans] = await Promise.all([
+        Car.find({ userId: userId }).lean(),
+        Bike.find({ userId: userId }).lean(),
+        Van.find({ userId: userId }).lean()
+      ]);
+
+      console.log('[Admin] Found user vehicles - Cars:', cars.length, 'Bikes:', bikes.length, 'Vans:', vans.length);
+
+      vehicles = [
+        ...cars.map(c => ({ ...c, vehicleType: 'car' })),
+        ...bikes.map(b => ({ ...b, vehicleType: 'bike' })),
+        ...vans.map(v => ({ ...v, vehicleType: 'van' }))
+      ];
+    }
+
+    // Sort by creation date (newest first)
+    vehicles.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    console.log('[Admin] Returning', vehicles.length, 'total vehicles');
+
+    return res.json({
+      success: true,
+      vehicles,
+      count: vehicles.length,
+      dealerSubscription
+    });
+
+  } catch (error) {
+    console.error('[Admin] Error fetching user vehicles:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch user vehicles'
+    });
+  }
+};
+
 module.exports = {
   getAllListings,
   getListingDetails,
@@ -563,5 +813,7 @@ module.exports = {
   getVehicleAPIStats,
   getExcessiveAPICalls,
   activateVan,
-  getVansWithPaymentIssues
+  getVansWithPaymentIssues,
+  getAllUsers,
+  getUserVehicles
 };
