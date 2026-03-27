@@ -4,11 +4,11 @@ const { runDailyCleanup } = require('./cleanupPendingCars');
 
 /**
  * Cron job to check and expire listings
- * Runs every day at 2:00 AM
+ * Runs every hour to immediately move expired cars to draft
  */
 const startExpirationCron = () => {
-  // Run daily at 2:00 AM
-  cron.schedule('0 2 * * *', async () => {
+  // Run every hour at minute 0
+  cron.schedule('0 * * * *', async () => {
     console.log('Running expiration check cron job...');
     try {
       const results = await expirationService.expireListings();
@@ -18,7 +18,7 @@ const startExpirationCron = () => {
     }
   });
 
-  console.log('Expiration cron job scheduled (daily at 2:00 AM)');
+  console.log('Expiration cron job scheduled (every hour)');
 };
 
 /**

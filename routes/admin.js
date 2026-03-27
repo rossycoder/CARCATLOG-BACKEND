@@ -1,11 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const passport = require('passport');
+const { protect } = require('../middleware/authMiddleware');
 const adminAuth = require('../middleware/adminAuth');
 const adminController = require('../controllers/adminController');
 
-// Protect all admin routes
-router.use(passport.authenticate('jwt', { session: false }));
+// Protect all admin routes with JWT authentication
+router.use(protect);
+// Then check if user is admin
 router.use(adminAuth);
 
 /**
@@ -21,6 +22,20 @@ router.get('/dashboard', adminController.getDashboardStats);
  * @access  Admin only
  */
 router.get('/listings', adminController.getAllListings);
+
+/**
+ * @route   GET /api/admin/users
+ * @desc    Get all users with their vehicle counts
+ * @access  Admin only
+ */
+router.get('/users', adminController.getAllUsers);
+
+/**
+ * @route   GET /api/admin/users/:userId/vehicles
+ * @desc    Get all vehicles for a specific user
+ * @access  Admin only
+ */
+router.get('/users/:userId/vehicles', adminController.getUserVehicles);
 
 /**
  * @route   GET /api/admin/listings/:id

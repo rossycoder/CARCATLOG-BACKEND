@@ -65,6 +65,8 @@ const register = async (req, res) => {
           id: user._id,
           email: user.email,
           name: user.name,
+          isAdmin: user.isAdmin || false,
+          role: user.role || 'user',
           isEmailVerified: false
         },
         requiresVerification: true
@@ -163,6 +165,8 @@ const login = async (req, res) => {
           id: user._id,
           email: user.email,
           name: user.name,
+          isAdmin: user.isAdmin || false,
+          role: user.role || 'user',
           isEmailVerified: user.isEmailVerified
         },
         token
@@ -226,6 +230,8 @@ const getMe = async (req, res) => {
           id: user._id,
           email: user.email,
           name: user.name,
+          isAdmin: user.isAdmin || false,
+          role: user.role || 'user',
           createdAt: user.createdAt
         }
       }
