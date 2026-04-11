@@ -592,9 +592,9 @@ const getAllUsers = async (req, res) => {
 
     // Get car counts for each user
     const [cars, bikes, vans, tradeSubscriptions] = await Promise.all([
-      Car.find({}).select('userId dealerId').lean(),
-      Bike.find({}).select('userId').lean(),
-      Van.find({}).select('userId').lean(),
+      Car.find({}).select('userId dealerId createdAt').lean(),
+      Bike.find({}).select('userId createdAt').lean(),
+      Van.find({}).select('userId createdAt').lean(),
       require('../models/TradeSubscription').find({})
         .populate('planId')
         .lean()
@@ -606,10 +606,25 @@ const getAllUsers = async (req, res) => {
     // Add regular users
     for (const user of users) {
       const userId = user._id.toString();
-      const userCars = cars.filter(c => c.userId?.toString() === userId).length;
-      const userBikes = bikes.filter(b => b.userId?.toString() === userId).length;
-      const userVans = vans.filter(v => v.userId?.toString() === userId).length;
+      const userCarsData = cars.filter(c => c.userId?.toString() === userId);
+      const userBikesData = bikes.filter(b => b.userId?.toString() === userId);
+      const userVansData = vans.filter(v => v.userId?.toString() === userId);
+      
+      const userCars = userCarsData.length;
+      const userBikes = userBikesData.length;
+      const userVans = userVansData.length;
       const totalVehicles = userCars + userBikes + userVans;
+
+      // Find most recent vehicle listing date
+      const allVehicleDates = [
+        ...userCarsData.map(c => c.createdAt),
+        ...userBikesData.map(b => b.createdAt),
+        ...userVansData.map(v => v.createdAt)
+      ].filter(Boolean);
+      
+      const mostRecentVehicleDate = allVehicleDates.length > 0 
+        ? new Date(Math.max(...allVehicleDates.map(d => new Date(d).getTime())))
+        : null;
 
       // Only include users with vehicles or if no filter
       if (!userType || userType === 'all' || totalVehicles > 0) {
@@ -624,6 +639,7 @@ const getAllUsers = async (req, res) => {
           bikes: userBikes,
           vans: userVans,
           createdAt: user.createdAt,
+          mostRecentVehicleDate: mostRecentVehicleDate,
           subscription: null // Private users don't have subscriptions
         });
       }
@@ -632,8 +648,15 @@ const getAllUsers = async (req, res) => {
     // Add trade dealers with subscription info
     for (const dealer of dealers) {
       const dealerId = dealer._id.toString();
-      const dealerCars = cars.filter(c => c.dealerId?.toString() === dealerId).length;
+      const dealerCarsData = cars.filter(c => c.dealerId?.toString() === dealerId);
+      const dealerCars = dealerCarsData.length;
       const totalVehicles = dealerCars;
+      
+      // Find most recent vehicle listing date for dealer
+      const allVehicleDates = dealerCarsData.map(c => c.createdAt).filter(Boolean);
+      const mostRecentVehicleDate = allVehicleDates.length > 0 
+        ? new Date(Math.max(...allVehicleDates.map(d => new Date(d).getTime())))
+        : null;
       
       // Find dealer's subscription - try both string and ObjectId comparison
       let subscription = tradeSubscriptions.find(s => {
@@ -662,6 +685,7 @@ const getAllUsers = async (req, res) => {
           bikes: 0,
           vans: 0,
           createdAt: dealer.createdAt,
+          mostRecentVehicleDate: mostRecentVehicleDate,
           subscription: subscription ? {
             planName: subscription.planId?.name || 'Unknown',
             status: subscription.status,
@@ -774,6 +798,11 @@ const getUserVehicles = async (req, res) => {
       ]);
 
       console.log('[Admin] Found user vehicles - Cars:', cars.length, 'Bikes:', bikes.length, 'Vans:', vans.length);
+      
+      // Debug: Check sellerContact in first car
+      if (cars.length > 0) {
+        console.log('[Admin] Sample car sellerContact:', cars[0].sellerContact);
+      }
 
       vehicles = [
         ...cars.map(c => ({ ...c, vehicleType: 'car' })),
@@ -802,6 +831,22 @@ const getUserVehicles = async (req, res) => {
     });
   }
 };
+
+module.exports = {
+  getAllListings,
+  getListingDetails,
+  updateListing,
+  deleteListing,
+  getDashboardStats,
+  getAPIStats,
+  getVehicleAPIStats,
+  getExcessiveAPICalls,
+  activateVan,
+  getVansWithPaymentIssues,
+  getAllUsers,
+  getUserVehicles
+};
+
 
 module.exports = {
   getAllListings,
