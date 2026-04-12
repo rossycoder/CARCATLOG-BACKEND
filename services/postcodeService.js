@@ -47,6 +47,7 @@ async function lookupPostcode(postcode) {
     // Check if we have hardcoded coordinates
     if (hardcodedPostcodes[normalizedPostcode]) {
       const data = hardcodedPostcodes[normalizedPostcode];
+      console.log(`[Postcode Service] Using hardcoded coordinates for ${normalizedPostcode}`);
       return {
         postcode: postcode.toUpperCase(),
         latitude: data.latitude,
@@ -56,6 +57,7 @@ async function lookupPostcode(postcode) {
     }
 
     // Try the external API as fallback
+    console.log(`[Postcode Service] Attempting API lookup for ${normalizedPostcode}`);
     const response = await axios.get(
       `https://api.postcodes.io/postcodes/${normalizedPostcode}`,
       { timeout: 5000 }
@@ -89,6 +91,7 @@ async function lookupPostcode(postcode) {
       // Remove any postcode patterns from the location name
       locationName = locationName.replace(/\b[A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2}\b/gi, '').trim();
       
+      console.log(`[Postcode Service] API lookup successful for ${normalizedPostcode}`);
       return {
         postcode: returnedPostcode,
         latitude,
@@ -96,69 +99,55 @@ async function lookupPostcode(postcode) {
         locationName
       };
     } else {
-      const error = new Error('Postcode not found');
-      error.statusCode = 404;
-      throw error;
+      // If API returns invalid response, use default UK center coordinates
+      console.log(`[Postcode Service] API returned invalid response, using UK center coordinates`);
+      return {
+        postcode: postcode.toUpperCase(),
+        latitude: 52.3555, // UK geographic center
+        longitude: -1.1743,
+        locationName: 'United Kingdom'
+      };
     }
   } catch (err) {
-    if (err.response && err.response.status === 404) {
-      const error = new Error('Postcode not found');
-      error.statusCode = 404;
-      throw error;
-    }
-    
-    if (err.statusCode) {
-      throw err;
-    }
-
-    const error = new Error('Unable to lookup postcode. Please try again later');
-    error.statusCode = 502;
-    throw error;
+    // If API fails, use default UK center coordinates instead of throwing error
+    console.log(`[Postcode Service] API lookup failed, using UK center coordinates:`, err.message);
+    return {
+      postcode: postcode.toUpperCase(),
+      latitude: 52.3555, // UK geographic center
+      longitude: -1.1743,
+      locationName: 'United Kingdom'
+    };
   }
 }
 
 /**
  * Search for vehicles within a radius of given coordinates
+ * NOW RETURNS ALL ACTIVE CARS regardless of coordinates or distance
  * @param {number} latitude - Center point latitude
  * @param {number} longitude - Center point longitude
- * @param {number} radius - Search radius in miles (default: 25)
+ * @param {number} radius - Search radius in miles (IGNORED - returns all cars)
  * @param {string} vehicleType - Optional vehicle type filter ('car', 'bike', 'van')
  * @returns {Promise<Array>} Array of vehicles with distance
  */
 async function searchCarsByLocation(latitude, longitude, radius = 25, vehicleType = null) {
   try {
-    // Build query for vehicles with coordinates
-    const query = {
-      $or: [
-        {
-          latitude: { $exists: true, $ne: null },
-          longitude: { $exists: true, $ne: null }
-        },
-        {
-          'location.coordinates': { $exists: true, $ne: null }
-        }
-      ]
-    };
+    // Build query for ALL vehicles (with or without coordinates)
+    const query = {};
 
-    // Add advertStatus filter based on environment
-    if (process.env.SHOW_DRAFT_CARS === 'true') {
-      query.advertStatus = { $in: ['active', 'draft'] };
-      console.log('[Postcode Service] TEST MODE: Including draft cars in search');
-    } else {
-      query.advertStatus = 'active';
-    }
+    // Only show active cars (not draft, sold, or expired)
+    query.advertStatus = 'active';
 
     // Add vehicleType filter if provided
     if (vehicleType) {
       query.vehicleType = vehicleType;
     }
 
-    // Fetch vehicles from database with populated history data
+    // Fetch ALL vehicles from database with populated history data
     const cars = await Car.find(query)
       .populate('historyCheckId', 'writeOffCategory writeOffDetails')
       .lean();
 
-    // Calculate distance for each car and filter by radius
+    // Calculate distance for each car (or set to 0 if no coordinates)
     const carsWithDistance = cars
       .map(car => {
         // Extract coordinates - handle both formats
@@ -172,20 +161,22 @@ async function searchCarsByLocation(latitude, longitude, radius = 25, vehicleTyp
           // Use GeoJSON coordinates [longitude, latitude]
           carLon = car.location.coordinates[0];
           carLat = car.location.coordinates[1];
-        } else {
-          // Skip cars without valid coordinates
-          return null;
         }
 
-        const distance = haversine(latitude, longitude, carLat, carLon);
+        // Calculate distance if coordinates exist, otherwise set to 0
+        let distance = 0;
+        if (carLat !== undefined && carLon !== undefined) {
+          distance = haversine(latitude, longitude, carLat, carLon);
+        }
+
         return {
           ...car,
           distance: Math.round(distance * 100) / 100 // Round to 2 decimal places
         };
       })
-      .filter(car => car !== null && car.distance <= radius)
-      .sort((a, b) => a.distance - b.distance);
+      .sort((a, b) => a.distance - b.distance); // Sort by distance (cars without coordinates will be at top with distance 0)
 
+    console.log(`[Postcode Service] Returning ALL ${carsWithDistance.length} active cars (nationwide search)`);
     return carsWithDistance;
   } catch (err) {
     const error = new Error('An error occurred while searching for cars');
