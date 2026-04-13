@@ -33,9 +33,11 @@ const getAllListings = async (req, res) => {
       query.advertStatus = statusMap[status] || status;
     }
     
-    // Search by registration, make, model, VIN, owner name, owner email
+    // Search by registration, make, model, VIN
+    // NOTE: Owner name/email search is done AFTER fetching because they're in populated fields
+    let vehicleQuery = {};
     if (search) {
-      query.$or = [
+      vehicleQuery.$or = [
         { registrationNumber: { $regex: search, $options: 'i' } },
         { make: { $regex: search, $options: 'i' } },
         { model: { $regex: search, $options: 'i' } },
@@ -45,23 +47,23 @@ const getAllListings = async (req, res) => {
 
     // Fetch all vehicle types
     const [cars, bikes, vans] = await Promise.all([
-      Car.find(query)
+      Car.find(vehicleQuery)
         .populate('userId', 'email name')
         .populate('dealerId', 'businessName email')
         .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 })
         .lean(),
-      Bike.find(query)
+      Bike.find(vehicleQuery)
         .populate('userId', 'email name')
         .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 })
         .lean(),
-      Van.find(query)
+      Van.find(vehicleQuery)
         .populate('userId', 'email name')
         .sort({ [sortBy]: sortOrder === 'desc' ? -1 : 1 })
         .lean()
     ]);
 
     // Combine and format all listings
-    const allListings = [
+    let allListings = [
       ...cars.map(car => ({
         ...car,
         vehicleType: 'car',
@@ -81,6 +83,22 @@ const getAllListings = async (req, res) => {
         ownerName: van.userId?.name || 'N/A'
       }))
     ];
+
+    // Filter by owner name/email if search query provided
+    // This is done AFTER populating because owner info comes from populated fields
+    if (search) {
+      const searchLower = search.toLowerCase();
+      allListings = allListings.filter(listing => {
+        return (
+          listing.ownerEmail?.toLowerCase().includes(searchLower) ||
+          listing.ownerName?.toLowerCase().includes(searchLower) ||
+          listing.registrationNumber?.toLowerCase().includes(searchLower) ||
+          listing.make?.toLowerCase().includes(searchLower) ||
+          listing.model?.toLowerCase().includes(searchLower) ||
+          listing.vin?.toLowerCase().includes(searchLower)
+        );
+      });
+    }
 
     // Sort combined listings
     allListings.sort((a, b) => {
