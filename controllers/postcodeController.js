@@ -51,15 +51,10 @@ async function searchByPostcode(req, res) {
     // Return response
     return res.status(200).json({
       success: true,
-      count: results.length,
       data: {
         postcode: postcodeData.postcode,
-        coordinates: {
-          latitude: postcodeData.latitude,
-          longitude: postcodeData.longitude
-        },
         radius: searchRadius,
-        vehicleType: vehicleType || 'all',
+        count: results.length,
         results
       }
     });

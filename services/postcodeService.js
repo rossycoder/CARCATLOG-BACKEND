@@ -122,61 +122,43 @@ async function lookupPostcode(postcode) {
 
 /**
  * Search for vehicles within a radius of given coordinates
- * NOW RETURNS ALL ACTIVE CARS regardless of coordinates or distance
  * @param {number} latitude - Center point latitude
  * @param {number} longitude - Center point longitude
- * @param {number} radius - Search radius in miles (IGNORED - returns all cars)
- * @param {string} vehicleType - Optional vehicle type filter ('car', 'bike', 'van')
- * @returns {Promise<Array>} Array of vehicles with distance
+ * @param {number} radius - Search radius in miles
+ * @param {string} vehicleType - Optional vehicle type filter
+ * @returns {Promise<Array>} Array of vehicles within radius, sorted by distance
  */
 async function searchCarsByLocation(latitude, longitude, radius = 25, vehicleType = null) {
   try {
-    // Build query for ALL vehicles (with or without coordinates)
-    const query = {};
+    const query = { advertStatus: 'active' };
+    if (vehicleType) query.vehicleType = vehicleType;
 
-    // Only show active cars (not draft, sold, or expired)
-    query.advertStatus = 'active';
-
-    // Add vehicleType filter if provided
-    if (vehicleType) {
-      query.vehicleType = vehicleType;
-    }
-
-    // Fetch ALL vehicles from database with populated history data
     const cars = await Car.find(query)
       .populate('historyCheckId', 'writeOffCategory writeOffDetails')
       .lean();
 
-    // Calculate distance for each car (or set to 0 if no coordinates)
     const carsWithDistance = cars
       .map(car => {
-        // Extract coordinates - handle both formats
         let carLat, carLon;
-        
+
         if (car.latitude !== undefined && car.longitude !== undefined) {
-          // Use top-level coordinates
           carLat = car.latitude;
           carLon = car.longitude;
-        } else if (car.location && car.location.coordinates && car.location.coordinates.length === 2) {
-          // Use GeoJSON coordinates [longitude, latitude]
+        } else if (car.location?.coordinates?.length === 2) {
           carLon = car.location.coordinates[0];
           carLat = car.location.coordinates[1];
         }
 
-        // Calculate distance if coordinates exist, otherwise set to 0
-        let distance = 0;
-        if (carLat !== undefined && carLon !== undefined) {
-          distance = haversine(latitude, longitude, carLat, carLon);
-        }
+        // Skip cars with no coordinates
+        if (carLat === undefined || carLon === undefined) return null;
 
-        return {
-          ...car,
-          distance: Math.round(distance * 100) / 100 // Round to 2 decimal places
-        };
+        const distance = haversine(latitude, longitude, carLat, carLon);
+        return { ...car, distance: Math.round(distance * 100) / 100 };
       })
-      .sort((a, b) => a.distance - b.distance); // Sort by distance (cars without coordinates will be at top with distance 0)
+      .filter(car => car !== null && car.distance <= radius)
+      .sort((a, b) => a.distance - b.distance);
 
-    console.log(`[Postcode Service] Returning ALL ${carsWithDistance.length} active cars (nationwide search)`);
+    console.log(`[Postcode Service] Found ${carsWithDistance.length} cars within ${radius} miles`);
     return carsWithDistance;
   } catch (err) {
     const error = new Error('An error occurred while searching for cars');
