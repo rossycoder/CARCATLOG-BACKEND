@@ -1033,15 +1033,14 @@ class VehicleController {
         vehicleType
       } = req.query;
 
-      // Build query - count active cars (and draft in test mode)
-      const query = {};
-      
-      // In production, only count active cars. In test mode, count both active and draft
-      if (process.env.SHOW_DRAFT_CARS === 'true') {
-        query.advertStatus = { $in: ['active', 'draft'] };
-      } else {
-        query.advertStatus = 'active';
-      }
+      // Build query - ONLY count active cars that have coordinates (matches search results)
+      const query = {
+        advertStatus: 'active',
+        $or: [
+          { latitude: { $exists: true }, longitude: { $exists: true } },
+          { 'location.coordinates': { $exists: true, $ne: [] } }
+        ]
+      };
 
       if (make) query.make = new RegExp(make, 'i');
       if (model) query.model = new RegExp(model, 'i');
@@ -1179,16 +1178,10 @@ class VehicleController {
         fuelType
       });
 
-      // Build query - show active cars (and draft in test mode)
-      const query = {};
-      
-      // In production, only show active cars. In test mode, show both active and draft
-      if (process.env.SHOW_DRAFT_CARS === 'true') {
-        query.advertStatus = { $in: ['active', 'draft'] };
-        console.log('[Vehicle Controller] TEST MODE: Showing both active and draft cars');
-      } else {
-        query.advertStatus = 'active';
-      }
+      // Build query - ONLY show active cars (public search should only show active listings)
+      const query = {
+        advertStatus: 'active'
+      };
 
       // Make, Model, and Submodel filters (case-insensitive exact match)
       if (make) query.make = new RegExp(`^${make}$`, 'i');
@@ -2778,18 +2771,18 @@ class VehicleController {
         });
       }
 
-      // DELETION DISABLED - Vehicle will NOT be deleted from database
-      // if (vehicleType === 'bike') {
-      //   await Bike.findByIdAndDelete(id);
-      // } else {
-      //   await Car.findByIdAndDelete(id);
-      // }
+      // Delete the vehicle from the database
+      if (vehicleType === 'bike') {
+        await Bike.findByIdAndDelete(id);
+      } else {
+        await Car.findByIdAndDelete(id);
+      }
 
-      console.log('[Vehicle Controller] Delete request received but DISABLED for', vehicleType, ':', id);
+      console.log('[Vehicle Controller] Deleted', vehicleType, ':', id);
 
       return res.json({
         success: true,
-        message: 'Delete functionality is currently disabled'
+        message: 'Vehicle deleted successfully'
       });
 
     } catch (error) {

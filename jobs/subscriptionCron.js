@@ -262,7 +262,7 @@ async function checkExpiredSubscriptions() {
       const dealer = await TradeDealer.findById(sub.dealerId._id);
       if (dealer) {
         dealer.hasActiveSubscription = false;
-        dealer.status = 'inactive';
+        dealer.status = 'suspended';
         await dealer.save();
       }
 

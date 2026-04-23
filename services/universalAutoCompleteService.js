@@ -150,6 +150,8 @@ class UniversalAutoCompleteService {
         await this.applyVehicleSpecificEnhancements(updatedVehicle);
         
         // Step 8: Save updated vehicle - within transaction
+        // CRITICAL: Set flag to prevent Car.js pre-save hook from calling History/MOT APIs again
+        updatedVehicle.$locals.skipPreSave = true;
         await updatedVehicle.save({ session });
         
         // Commit transaction - all operations succeeded

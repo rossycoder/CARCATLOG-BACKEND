@@ -22,7 +22,7 @@ const welcomeEmail = (name, email) => {
       <body>
         <div class="container">
           <div class="logo-header">
-            <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+            <span style="font-family: Arial, sans-serif; font-size: 22px; font-weight: bold; color: #333; letter-spacing: -0.5px;"><span style="color: #dc3545;">Car</span><span style="color: #0066cc;">Cat</span><span style="color: #ff9800;">alog</span></span>
           </div>
           <div class="header">
             <h1>Welcome to <span style=\"color: #dc3545;\">Car</span><span style=\"color: #0066cc;\">Cat</span><span style=\"color: #ff9800;\">alog</span>!</h1>
@@ -82,7 +82,7 @@ const loginNotificationEmail = (name, email, ipAddress, userAgent) => {
       <body>
         <div class="container">
           <div class="logo-header">
-            <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+            <span style="font-family: Arial, sans-serif; font-size: 22px; font-weight: bold; color: #333; letter-spacing: -0.5px;"><span style="color: #dc3545;">Car</span><span style="color: #0066cc;">Cat</span><span style="color: #ff9800;">alog</span></span>
           </div>
           <div class="header">
             <h1>New Sign-in Detected</h1>
@@ -155,7 +155,7 @@ const passwordResetEmail = (name, email, resetToken) => {
         <div class="email-wrapper">
           <div class="container">
             <div class="logo-header">
-              <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+              <span style="font-family: Arial, sans-serif; font-size: 22px; font-weight: bold; color: #333; letter-spacing: -0.5px;"><span style="color: #dc3545;">Car</span><span style="color: #0066cc;">Cat</span><span style="color: #ff9800;">alog</span></span>
             </div>
             
             <div class="header">
@@ -256,7 +256,7 @@ const emailVerificationEmail = (name, email, verificationToken) => {
         <div class="email-wrapper">
           <div class="container">
             <div class="logo-header">
-              <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+              <span style="font-family: Arial, sans-serif; font-size: 22px; font-weight: bold; color: #333; letter-spacing: -0.5px;"><span style="color: #dc3545;">Car</span><span style="color: #0066cc;">Cat</span><span style="color: #ff9800;">alog</span></span>
             </div>
             
             <div class="header">

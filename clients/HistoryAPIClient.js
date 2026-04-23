@@ -439,9 +439,14 @@ class HistoryAPIClient {
       
       // Finance details
       financeDetails: (vehicleHistory.financeRecord && vehicleHistory.finance) ? {
-        amount: vehicleHistory.finance.amount || 0,
-        lender: vehicleHistory.finance.lender || 'Unknown',
-        type: vehicleHistory.finance.type || 'unknown'
+        amount:             vehicleHistory.finance.amount             || 0,
+        lender:             vehicleHistory.finance.lender             || vehicleHistory.finance.Company || 'Unknown',
+        type:               vehicleHistory.finance.type               || vehicleHistory.finance.AgreementType || 'unknown',
+        agreementNumber:    vehicleHistory.finance.agreementNumber    || vehicleHistory.finance.AgreementNumber || null,
+        startDate:          vehicleHistory.finance.startDate          || vehicleHistory.finance.StartDate || null,
+        term:               vehicleHistory.finance.term               || vehicleHistory.finance.Term || null,
+        contactNumber:      vehicleHistory.finance.contactNumber      || vehicleHistory.finance.ContactNumber || null,
+        vehicleDescription: vehicleHistory.finance.vehicleDescription || vehicleHistory.finance.VehicleDescription || null,
       } : {
         amount: 0,
         lender: 'Unknown',

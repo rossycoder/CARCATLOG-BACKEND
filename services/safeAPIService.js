@@ -71,7 +71,26 @@ class SafeAPIService {
       
       console.log(`✅ [Safe API] Vehicle API limit check passed for ${endpoint} - ${cleanVrm}`);
       
-      // Step 2: Check rate limit
+      // Step 2: Check daily/monthly spend caps
+      const dailyCap = parseFloat(process.env.API_DAILY_SPEND_CAP || '0');
+      const monthlyCap = parseFloat(process.env.API_MONTHLY_SPEND_CAP || '0');
+      if (dailyCap > 0 || monthlyCap > 0) {
+        const todayCosts = await auditService.getTodayCosts();
+        const monthCosts = await auditService.getMonthCosts();
+        const todaySpend = todayCosts?.summary?.totalCost || 0;
+        const monthSpend = monthCosts?.summary?.totalCost || 0;
+
+        if (dailyCap > 0 && todaySpend >= dailyCap) {
+          console.log(`🚨 [Safe API] Daily spend cap reached: £${todaySpend.toFixed(2)} / £${dailyCap}`);
+          throw new Error(`SPEND_CAP_EXCEEDED: Daily cap of £${dailyCap} reached (spent £${todaySpend.toFixed(2)})`);
+        }
+        if (monthlyCap > 0 && monthSpend >= monthlyCap) {
+          console.log(`🚨 [Safe API] Monthly spend cap reached: £${monthSpend.toFixed(2)} / £${monthlyCap}`);
+          throw new Error(`SPEND_CAP_EXCEEDED: Monthly cap of £${monthlyCap} reached (spent £${monthSpend.toFixed(2)})`);
+        }
+      }
+
+      // Step 3: Check rate limit
       const rateCheck = rateLimiter.checkLimit(endpoint, userId);
       if (!rateCheck.allowed) {
         console.log(`🚫 [Safe API] Rate limit exceeded for ${endpoint}`);
@@ -90,21 +109,21 @@ class SafeAPIService {
         throw new Error(`RATE_LIMIT_EXCEEDED: ${rateCheck.reason}`);
       }
       
-      // Step 3: Make API call
+      // Step 4: Make API call
       console.log(`📞 [Safe API] Making API call to ${endpoint} for ${cleanVrm}...`);
       const data = await apiCallFn();
       const responseTime = Date.now() - startTime;
       
-      // Step 4: Cache the result
+      // Step 5: Cache the result
       if (!options.skipCache) {
         await apiCache.cacheVehicleData(cleanVrm, data);
         console.log(`💾 [Safe API] Cached result for ${cleanVrm} (valid for 30 days)`);
       }
       
-      // Step 5: Record rate limit
+      // Step 6: Record rate limit
       rateLimiter.recordCall(endpoint, userId);
       
-      // Step 6: Log the call
+      // Step 7: Log the call
       await auditService.logCall({
         endpoint,
         vrm: cleanVrm,
@@ -171,13 +190,21 @@ class SafeAPIService {
     const rateLimitStats = rateLimiter.getStats();
     const todayCosts = await auditService.getTodayCosts();
     const monthCosts = await auditService.getMonthCosts();
+    const todaySpend = todayCosts?.summary?.totalCost || 0;
+    const monthSpend = monthCosts?.summary?.totalCost || 0;
+    const dailyCap = parseFloat(process.env.API_DAILY_SPEND_CAP || '0');
+    const monthlyCap = parseFloat(process.env.API_MONTHLY_SPEND_CAP || '0');
     
     return {
       cache: cacheStats,
       rateLimit: rateLimitStats,
       costs: {
-        today: todayCosts?.summary?.totalCost || 0,
-        month: monthCosts?.summary?.totalCost || 0
+        today: todaySpend,
+        month: monthSpend,
+        dailyCap: dailyCap || 'none',
+        monthlyCap: monthlyCap || 'none',
+        dailyCapReached: dailyCap > 0 && todaySpend >= dailyCap,
+        monthlyCapReached: monthlyCap > 0 && monthSpend >= monthlyCap
       }
     };
   }

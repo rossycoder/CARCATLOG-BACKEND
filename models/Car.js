@@ -1,35 +1,22 @@
 const mongoose = require('mongoose');
-const vehicleDataNormalizer = require('../utils/vehicleDataNormalizer');
 
 const carSchema = new mongoose.Schema({
   make: {
     type: String,
     required: function() {
-      // Make is required unless it's from CheckCarDetails API (will be fetched)
       return this.dataSource !== 'DVLA' || this.dataSources?.checkCarDetails === true;
     },
     trim: true
-    // Removed index: true - using compound index below
   },
   model: {
     type: String,
     required: function() {
-      // Model is required unless it's from CheckCarDetails API (will be fetched)
       return this.dataSource !== 'DVLA' || this.dataSources?.checkCarDetails === true;
     },
     trim: true
-    // Removed index: true - using compound index below
   },
-  submodel: {
-    type: String,
-    trim: true,
-    index: true
-  },
-  variant: {
-    type: String,
-    trim: true,
-    index: true
-  },
+  submodel: { type: String, trim: true, index: true },
+  variant: { type: String, trim: true, index: true },
   year: {
     type: Number,
     required: [true, 'Year is required'],
@@ -38,15 +25,10 @@ const carSchema = new mongoose.Schema({
   },
   price: {
     type: Number,
-    required: function() {
-      return this.dataSource !== 'DVLA';
-    },
+    required: function() { return this.dataSource !== 'DVLA'; },
     min: [0, 'Price must be positive']
   },
-  estimatedValue: {
-    type: Number,
-    min: [0, 'Estimated value must be positive']
-  },
+  estimatedValue: { type: Number, min: [0, 'Estimated value must be positive'] },
   mileage: {
     type: Number,
     required: [true, 'Mileage is required'],
@@ -55,7 +37,6 @@ const carSchema = new mongoose.Schema({
   color: {
     type: String,
     required: function() {
-      // Color is required for manual entries, but can be fetched from API
       return this.dataSource === 'manual' && !this.dataSources?.checkCarDetails;
     },
     trim: true
@@ -63,16 +44,11 @@ const carSchema = new mongoose.Schema({
   transmission: {
     type: String,
     required: function() {
-      // Transmission is required for manual entries, but can be fetched from API
       return this.dataSource === 'manual' && !this.dataSources?.checkCarDetails;
     },
     enum: ['automatic', 'manual', 'semi-automatic']
   },
-  driveType: {
-    type: String,
-    trim: true,
-    enum: ['FWD', 'RWD', 'AWD', '4WD', null]
-  },
+  driveType: { type: String, trim: true, enum: ['FWD', 'RWD', 'AWD', '4WD', null] },
   fuelType: {
     type: String,
     required: [true, 'Fuel type is required'],
@@ -80,231 +56,88 @@ const carSchema = new mongoose.Schema({
   },
   description: {
     type: String,
-    required: function() {
-      return this.dataSource !== 'DVLA';
-    },
+    required: function() { return this.dataSource !== 'DVLA'; },
     trim: true
   },
   images: {
-    type: [{
-      type: String,
-      trim: true
-    }],
+    type: [{ type: String, trim: true }],
     validate: {
-      validator: function(images) {
-        return images.length <= 100;
-      },
+      validator: function(images) { return images.length <= 100; },
       message: 'Maximum 100 images allowed per vehicle'
     }
   },
   postcode: {
     type: String,
-    required: function() {
-      return this.dataSource !== 'DVLA';
-    },
+    required: function() { return this.dataSource !== 'DVLA'; },
     trim: true,
     uppercase: true
   },
-  locationName: {
-    type: String,
-    trim: true
-  },
-  latitude: {
-    type: Number,
-    min: -90,
-    max: 90
-  },
-  longitude: {
-    type: Number,
-    min: -180,
-    max: 180
-  },
+  locationName: { type: String, trim: true },
+  latitude: { type: Number, min: -90, max: 90 },
+  longitude: { type: Number, min: -180, max: 180 },
   location: {
-    type: {
-      type: String,
-      enum: ['Point']
-    },
-    coordinates: {
-      type: [Number], // [longitude, latitude]
-      index: '2dsphere'
-    }
+    type: { type: String, enum: ['Point'] },
+    coordinates: { type: [Number], index: '2dsphere' }
   },
-  condition: {
-    type: String,
-    enum: ['new', 'used'],
-    default: 'used'
-  },
-  vehicleType: {
-    type: String,
-    enum: ['car', 'bike', 'van'],
-    default: 'car',
-    index: true
-  },
-  // Bike-specific fields
-  engineCC: {
-    type: Number,
-    min: 0
-  },
+  condition: { type: String, enum: ['new', 'used'], default: 'used' },
+  vehicleType: { type: String, enum: ['car', 'bike', 'van'], default: 'car', index: true },
+  engineCC: { type: Number, min: 0 },
   bikeType: {
     type: String,
     enum: ['Sport', 'Cruiser', 'Adventure', 'Touring', 'Naked', 'Scooter', 'Off-road', 'Classic', 'Other'],
     trim: true
   },
-  bodyType: {
-    type: String,
-    trim: true
-  },
-  doors: {
-    type: Number,
-    min: 2,
-    max: 5
-  },
-  seats: {
-    type: Number,
-    min: 2,
-    max: 9
-  },
-  engineSize: {
-    type: Number,
-    min: 0
-  },
-  // DVLA-specific fields
-  registrationNumber: {
-    type: String,
-    trim: true,
-    uppercase: true,
-    sparse: true
-    // Removed index: true - using single index below
-  },
-  displayTitle: {
-    type: String,
-    trim: true
-  },
-  dataSource: {
-    type: String,
-    enum: ['DVLA', 'manual'],
-    default: 'manual'
-  },
-  co2Emissions: {
-    type: Number,
-    min: 0
-  },
-  emissionClass: {
-    type: String,
-    trim: true
-  },
-  taxStatus: {
-    type: String,
-    trim: true
-  },
-  motStatus: {
-    type: String,
-    trim: true
-  },
-  motDue: {
-    type: Date
-  },
-  motExpiry: {
-    type: Date
-  },
-  // MOT History Array - Complete test history
+  bodyType: { type: String, trim: true },
+  doors: { type: Number, min: 2, max: 5 },
+  seats: { type: Number, min: 2, max: 9 },
+  engineSize: { type: Number, min: 0 },
+  registrationNumber: { type: String, trim: true, uppercase: true, sparse: true },
+  displayTitle: { type: String, trim: true },
+  dataSource: { type: String, enum: ['DVLA', 'manual'], default: 'manual' },
+  co2Emissions: { type: Number, min: 0 },
+  emissionClass: { type: String, trim: true },
+  taxStatus: { type: String, trim: true },
+  motStatus: { type: String, trim: true },
+  motDue: { type: Date },
+  motExpiry: { type: Date },
   motHistory: [{
-    testDate: {
-      type: Date,
-      required: true
-    },
-    expiryDate: {
-      type: Date
-    },
-    testResult: {
-      type: String,
-      enum: ['PASSED', 'FAILED', 'REFUSED'],
-      required: true
-    },
-    odometerValue: {
-      type: Number,
-      min: 0
-    },
-    odometerUnit: {
-      type: String,
-      enum: ['mi', 'km'],
-      default: 'mi'
-    },
-    testNumber: {
-      type: String,
-      trim: true
-    },
-    testCertificateNumber: {
-      type: String,
-      trim: true
-    },
+    testDate: { type: Date, required: true },
+    expiryDate: { type: Date },
+    testResult: { type: String, enum: ['PASSED', 'FAILED', 'REFUSED'], required: true },
+    odometerValue: { type: Number, min: 0 },
+    odometerUnit: { type: String, enum: ['mi', 'km'], default: 'mi' },
+    testNumber: { type: String, trim: true },
+    testCertificateNumber: { type: String, trim: true },
     defects: [{
-      type: {
-        type: String,
-        enum: ['ADVISORY', 'MINOR', 'MAJOR', 'DANGEROUS', 'FAIL', 'PRS', 'USER ENTERED']
-      },
+      type: { type: String, enum: ['ADVISORY', 'MINOR', 'MAJOR', 'DANGEROUS', 'FAIL', 'PRS', 'USER ENTERED'] },
       text: String,
-      dangerous: {
-        type: Boolean,
-        default: false
-      }
+      dangerous: { type: Boolean, default: false }
     }],
     advisoryText: [String],
-    testClass: {
-      type: String,
-      trim: true
-    },
-    testType: {
-      type: String,
-      trim: true
-    },
-    completedDate: {
-      type: Date
-    },
-    testStation: {
-      name: String,
-      number: String,
-      address: String,
-      postcode: String
-    }
+    testClass: { type: String, trim: true },
+    testType: { type: String, trim: true },
+    completedDate: { type: Date },
+    testStation: { name: String, number: String, address: String, postcode: String }
   }],
-  dvlaLastUpdated: {
-    type: Date
-  },
-  // History check fields
+  dvlaLastUpdated: { type: Date },
   historyCheckStatus: {
     type: String,
     enum: ['pending', 'verified', 'failed', 'not_required'],
     default: 'pending'
   },
-  historyCheckDate: {
-    type: Date
-  },
-  historyCheckId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'VehicleHistory'
-  },
-  // Seller contact details
-  // CRITICAL FIX: Mongoose interprets {type: {type: String}} incorrectly
-  // We need to use Schema.Types.Mixed or define it differently
+  historyCheckDate: { type: Date },
+  historyCheckId: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleHistory' },
   sellerContact: {
     type: mongoose.Schema.Types.Mixed,
     default: {
       type: 'private',
       allowEmailContact: false,
       reviewCount: 0,
-      stats: {
-        carsInStock: 0,
-        yearsInBusiness: 0
-      }
+      stats: { carsInStock: 0, yearsInBusiness: 0 }
     }
   },
-  // Advertising package details
   advertisingPackage: {
-    packageId: {
-      type: String,
-      enum: ['bronze', 'silver', 'gold']
-    },
+    packageId: { type: String, enum: ['bronze', 'silver', 'gold'] },
     packageName: String,
     duration: String,
     price: Number,
@@ -313,62 +146,20 @@ const carSchema = new mongoose.Schema({
     stripeSessionId: String,
     stripePaymentIntentId: String
   },
-  // Trade Dealer Fields
-  dealerId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'TradeDealer',
-    index: true
-  },
-  isDealerListing: {
-    type: Boolean,
-    default: false,
-    index: true
-  },
-  
-  // Private Seller Fields
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    index: true
-  },
-  
-  // Analytics
-  viewCount: {
-    type: Number,
-    default: 0,
-    min: 0
-  },
-  uniqueViewCount: {
-    type: Number,
-    default: 0,
-    min: 0
-  },
-  lastViewedAt: {
-    type: Date
-  },
-  inquiryCount: {
-    type: Number,
-    default: 0,
-    min: 0
-  },
-  lastInquiryAt: {
-    type: Date
-  },
-  
-  // Vehicle features
-  features: {
-    type: [String],
-    default: []
-  },
-  
-  // Service history
+  dealerId: { type: mongoose.Schema.Types.ObjectId, ref: 'TradeDealer', index: true },
+  isDealerListing: { type: Boolean, default: false, index: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
+  viewCount: { type: Number, default: 0, min: 0 },
+  uniqueViewCount: { type: Number, default: 0, min: 0 },
+  lastViewedAt: { type: Date },
+  inquiryCount: { type: Number, default: 0, min: 0 },
+  lastInquiryAt: { type: Date },
+  features: { type: [String], default: [] },
   serviceHistory: {
     type: String,
     enum: ['Contact seller', 'Full service history', 'Partial service history', 'No service history'],
     default: 'Contact seller'
   },
-  
-  // Enhanced running costs data (from CheckCarDetails API)
   runningCosts: {
     fuelEconomy: {
       urban: { type: Number, default: null },
@@ -378,125 +169,77 @@ const carSchema = new mongoose.Schema({
     co2Emissions: { type: Number, default: null },
     insuranceGroup: { type: String, default: null },
     annualTax: { type: Number, default: null },
-    // Electric vehicle specific fields
-    electricRange: { type: Number, default: null }, // Range in miles for electric vehicles
-    chargingTime: { type: Number, default: null }, // Charging time in hours (0-100%)
-    batteryCapacity: { type: Number, default: null }, // Battery capacity in kWh
-    // Charging speeds and capabilities
-    homeChargingSpeed: { type: Number, default: null }, // Home charging speed in kW
-    publicChargingSpeed: { type: Number, default: null }, // Public charging speed in kW
-    rapidChargingSpeed: { type: Number, default: null }, // Rapid charging speed in kW
-    chargingTime10to80: { type: Number, default: null }, // Charging time 10-80% in minutes
-    // Additional electric vehicle fields
-    electricMotorPower: { type: Number, default: null }, // Electric motor power in kW
-    electricMotorTorque: { type: Number, default: null }, // Electric motor torque in Nm
-    chargingPortType: { type: String, default: null }, // Type of charging port
-    fastChargingCapability: { type: String, default: null } // Fast charging capability
+    electricRange: { type: Number, default: null },
+    chargingTime: { type: Number, default: null },
+    batteryCapacity: { type: Number, default: null },
+    homeChargingSpeed: { type: Number, default: null },
+    publicChargingSpeed: { type: Number, default: null },
+    rapidChargingSpeed: { type: Number, default: null },
+    chargingTime10to80: { type: Number, default: null },
+    electricMotorPower: { type: Number, default: null },
+    electricMotorTorque: { type: Number, default: null },
+    chargingPortType: { type: String, default: null },
+    fastChargingCapability: { type: String, default: null }
   },
-  
-  // Individual running cost fields (for backward compatibility)
   fuelEconomyUrban: { type: Number, default: null },
   fuelEconomyExtraUrban: { type: Number, default: null },
   fuelEconomyCombined: { type: Number, default: null },
-  co2Emissions: { type: Number, default: null },
   insuranceGroup: { type: String, default: null },
   annualTax: { type: Number, default: null },
-  
-  // Electric vehicle specific fields (individual)
-  electricRange: { type: Number, default: null }, // Range in miles for electric vehicles
-  chargingTime: { type: Number, default: null }, // Charging time in hours (0-100%)
-  batteryCapacity: { type: Number, default: null }, // Battery capacity in kWh
-  // Charging speeds and capabilities
-  homeChargingSpeed: { type: Number, default: null }, // Home charging speed in kW (e.g., 7.4kW)
-  publicChargingSpeed: { type: Number, default: null }, // Public charging speed in kW (e.g., 50kW)
-  rapidChargingSpeed: { type: Number, default: null }, // Rapid charging speed in kW (e.g., 150kW)
-  chargingTime10to80: { type: Number, default: null }, // Charging time from 10% to 80% in minutes
-  // Additional electric vehicle fields
-  electricMotorPower: { type: Number, default: null }, // Electric motor power in kW
-  electricMotorTorque: { type: Number, default: null }, // Electric motor torque in Nm
-  chargingPortType: { type: String, default: null }, // Type of charging port (e.g., "Type 2", "CCS")
-  fastChargingCapability: { type: String, default: null }, // Fast charging capability description
-  
-  // Performance data (from CheckCarDetails API)
+  electricRange: { type: Number, default: null },
+  chargingTime: { type: Number, default: null },
+  batteryCapacity: { type: Number, default: null },
+  homeChargingSpeed: { type: Number, default: null },
+  publicChargingSpeed: { type: Number, default: null },
+  rapidChargingSpeed: { type: Number, default: null },
+  chargingTime10to80: { type: Number, default: null },
+  electricMotorPower: { type: Number, default: null },
+  electricMotorTorque: { type: Number, default: null },
+  chargingPortType: { type: String, default: null },
+  fastChargingCapability: { type: String, default: null },
   performance: {
-    power: { type: Number, default: null }, // bhp
-    torque: { type: Number, default: null }, // Nm
-    acceleration: { type: Number, default: null }, // 0-60 seconds
-    topSpeed: { type: Number, default: null } // mph
+    power: { type: Number, default: null },
+    torque: { type: Number, default: null },
+    acceleration: { type: Number, default: null },
+    topSpeed: { type: Number, default: null }
   },
-  
-  // Valuation/pricing data (from CheckCarDetails API)
   valuation: {
-    dealerPrice: { type: Number, default: null }, // GBP
-    privatePrice: { type: Number, default: null }, // GBP
-    partExchangePrice: { type: Number, default: null }, // GBP
+    dealerPrice: { type: Number, default: null },
+    privatePrice: { type: Number, default: null },
+    partExchangePrice: { type: Number, default: null },
     valuationDate: { type: Date, default: null }
   },
-  
-  // Data source tracking
   dataSources: {
     dvla: { type: Boolean, default: false },
     checkCarDetails: { type: Boolean, default: false },
     lastUpdated: { type: Date, default: Date.now }
   },
-  
-  // Field source tracking (for display purposes)
-  fieldSources: {
-    type: mongoose.Schema.Types.Mixed,
-    default: {}
-  },
-  
-  // Video URL
+  fieldSources: { type: mongoose.Schema.Types.Mixed, default: {} },
   videoUrl: {
     type: String,
     trim: true,
     validate: {
       validator: function(v) {
-        if (!v) return true; // Allow empty
-        // Validate YouTube URL format
+        if (!v) return true;
         return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+$/.test(v);
       },
       message: 'Please provide a valid YouTube URL'
     }
   },
-  
-  // Advert status
   advertStatus: {
     type: String,
     enum: ['draft', 'incomplete', 'pending_payment', 'active', 'sold', 'expired', 'removed'],
-    default: 'draft' // Cars start as draft, become active after publish
+    default: 'draft'
   },
-  advertId: {
-    type: String,
-    unique: true,
-    sparse: true
-  },
-  publishedAt: {
-    type: Date
-  },
-  soldAt: {
-    type: Date
-  },
-  
-  // Track user-edited fields to prevent API overwrites
-  userEditedFields: {
-    type: [String],
-    default: []
-  },
-  
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
-  }
-}, {
-  timestamps: true
-});
+  advertId: { type: String, unique: true, sparse: true },
+  publishedAt: { type: Date },
+  soldAt: { type: Date },
+  userEditedFields: { type: [String], default: [] },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+}, { timestamps: true });
 
-// Indexes for faster queries
+// ─── Indexes ────────────────────────────────────────────────────────────────
 carSchema.index({ make: 1, model: 1 });
 carSchema.index({ make: 1, model: 1, submodel: 1 });
 carSchema.index({ year: 1 });
@@ -511,1341 +254,500 @@ carSchema.index({ isDealerListing: 1 });
 carSchema.index({ vehicleType: 1 });
 carSchema.index({ vehicleType: 1, condition: 1 });
 
-// 🔒 SAFE Pre-save hook - NO PAID API CALLS
-// Only validation, normalization, and data formatting
-carSchema.pre('save', async function(next) {
-  console.log(`🔧 [Pre-Save Hook] Starting SAFE mode for ${this.make} ${this.model} (${this.registrationNumber})`);
-  
-  // CRITICAL: Normalize model and variant for BMW i-series cars
-  // BMW i3, i4, i8 etc. should have model="i3/i4/i8" and variant="trim level"
-  // Sometimes API returns them reversed: model="I4 M50", variant="i4"
-  if (this.make && this.make.toUpperCase() === 'BMW') {
-    const modelUpper = this.model ? this.model.toUpperCase() : '';
-    const variantLower = this.variant ? this.variant.toLowerCase() : '';
-    
-    // Check if model contains variant-like pattern (e.g., "I4 M50", "I3 S", "I8 ROADSTER")
-    // and variant is the actual model (e.g., "i4", "i3", "i8")
-    const iSeriesPattern = /^I[0-9]/i; // Matches I3, I4, I8, etc.
-    
-    if (iSeriesPattern.test(modelUpper) && iSeriesPattern.test(variantLower)) {
-      // Model and variant are swapped - fix them
-      console.log(`🔄 [Car Model] Normalizing BMW i-series: model="${this.model}", variant="${this.variant}"`);
-      
-      const tempModel = this.model;
-      const tempVariant = this.variant;
-      
-      // Swap: variant becomes model, model becomes variant
-      this.model = tempVariant;
-      this.variant = tempModel;
-      
-      console.log(`✅ [Car Model] Normalized to: model="${this.model}", variant="${this.variant}"`);
+// ─── Helper: build AutoTrader-style displayTitle ─────────────────────────────
+function buildDisplayTitle(doc) {
+  const parts = [];
+  if (doc.engineSize) {
+    const size = parseFloat(doc.engineSize);
+    if (!isNaN(size) && size > 0) parts.push(size.toFixed(1));
+  }
+  if (doc.variant && doc.variant !== 'null' && doc.variant !== 'undefined' && doc.variant.trim() !== '') {
+    parts.push(doc.variant.trim());
+  } else if (doc.fuelType) {
+    parts.push(doc.fuelType);
+  }
+  if (doc.emissionClass && doc.emissionClass.includes('Euro')) {
+    parts.push(doc.emissionClass);
+  }
+  if (doc.doors && doc.doors >= 2 && doc.doors <= 5) {
+    parts.push(`${doc.doors}dr`);
+  } else if (doc.bodyType) {
+    const bt = doc.bodyType.toLowerCase();
+    if (bt.includes('estate')) parts.push('Estate');
+    else if (bt.includes('saloon') || bt.includes('sedan')) parts.push('Saloon');
+    else if (bt.includes('coupe')) parts.push('Coupe');
+    else if (bt.includes('convertible') || bt.includes('cabriolet')) parts.push('Convertible');
+    else if (bt.includes('suv')) parts.push('SUV');
+    else if (bt.includes('mpv')) parts.push('MPV');
+  }
+  return parts.length > 0 ? parts.join(' ') : null;
+}
+
+// ─── Helper: normalize make/model/variant ────────────────────────────────────
+function normalizeMakeModel(doc) {
+  if (!doc.make || !doc.model) return;
+  const makeUpper = doc.make.toUpperCase();
+
+  // BMW i-series swap
+  if (makeUpper === 'BMW') {
+    const iSeriesPattern = /^I[0-9]/i;
+    if (iSeriesPattern.test(doc.model) && doc.variant && iSeriesPattern.test(doc.variant)) {
+      console.log(`🔄 [Normalize] BMW i-series swap: model="${doc.model}" ↔ variant="${doc.variant}"`);
+      [doc.model, doc.variant] = [doc.variant, doc.model];
     }
-    
-    // CRITICAL: Normalize BMW series models (3 Series, 4 Series, 5 Series, etc.)
-    // API returns model as variant number (e.g., "320d", "520i", "428i", "118i M", "M135")
-    // We need to extract series from first digit and set proper model name
-    // IMPORTANT: Skip electric models like "i4", "i8", "iX", "iX3"
-    console.log(`🔍 [BMW Series Check] make="${this.make}", model="${this.model}", variant="${this.variant}"`);
-    const modelStr = this.model || '';
-    const variantStr = this.variant || '';
-    
-    // Skip electric models (i4, i8, iX, iX3, etc.)
-    const isElectricModel = /^i[X0-9]/i.test(modelStr) || /^i[X0-9]/i.test(variantStr);
-    if (isElectricModel) {
-      console.log(`⚡ [BMW Series Check] Electric model detected, skipping normalization: ${modelStr || variantStr}`);
-    } else {
-      // Check model OR variant for series pattern
-      // Matches: "320d", "520i", "118i M", "320d M Sport", "M135", etc.
-      // Pattern: first digit (1-8) + two digits + anything else (letters, spaces, etc.)
+    // BMW numeric series (320d → "3 Series", variant="320d")
+    const modelStr = doc.model || '';
+    const variantStr = doc.variant || '';
+    const isElectric = /^i[X0-9]/i.test(modelStr) || /^i[X0-9]/i.test(variantStr);
+    if (!isElectric) {
       const modelMatch = modelStr.match(/^([1-8])(\d{2})(.*)$/i);
       const variantMatch = variantStr.match(/^([1-8])(\d{2})(.*)$/i);
-      
-      const seriesMatch = modelMatch || variantMatch;
-      console.log(`🔍 [BMW Series Check] seriesMatch:`, seriesMatch);
-      
-      if (seriesMatch) {
-        const seriesNumber = seriesMatch[1]; // First digit (1, 2, 3, 4, 5, 6, 7, 8)
-        const fullVariant = (modelMatch ? modelStr : variantStr).trim(); // Full variant like "320d" or "118i M" or "M135"
-        
-        // Set model to "X Series" format
-        const seriesModel = `${seriesNumber} Series`;
-        
-        console.log(`🔄 [Car Model] Normalizing BMW series: model="${this.model}" → "${seriesModel}", variant="${fullVariant}"`);
-        
-        this.model = seriesModel;
-        // Keep the full variant (320d, 520i, 118i M, M135, etc.) as variant
-        if (!this.variant || this.variant === modelStr || this.variant === 'null' || this.variant === 'undefined') {
-          this.variant = fullVariant;
+      const hit = modelMatch || variantMatch;
+      if (hit) {
+        const seriesModel = `${hit[1]} Series`;
+        const fullVariant = (modelMatch ? modelStr : variantStr).trim();
+        console.log(`🔄 [Normalize] BMW series: "${doc.model}" → "${seriesModel}", variant="${fullVariant}"`);
+        doc.model = seriesModel;
+        if (!doc.variant || doc.variant === modelStr || doc.variant === 'null') {
+          doc.variant = fullVariant;
         }
-        
-        console.log(`✅ [Car Model] BMW normalized to: model="${this.model}", variant="${this.variant}"`);
       }
     }
   }
-  
-  // CRITICAL: Normalize model and variant for FIAT cars
-  // FIAT 500, 500X, 500L etc. should have model="500" and variant="POP RHD/LOUNGE/SPORT"
-  // Sometimes API returns them reversed: model="500 POP RHD", variant="500"
-  if (this.make && this.make.toUpperCase() === 'FIAT') {
-    const modelStr = this.model ? this.model.trim() : '';
-    const variantStr = this.variant ? this.variant.trim() : '';
-    
-    // Check if model contains variant info (e.g., "500 POP RHD", "500X CROSS")
-    // and variant is just the model number (e.g., "500", "500X")
-    const fiatModelPattern = /^(500X?L?)\s+(.+)$/i; // Matches "500 POP", "500X CROSS", etc.
-    const match = modelStr.match(fiatModelPattern);
-    
-    if (match && variantStr && variantStr.match(/^500X?L?$/i)) {
-      // Model and variant are swapped - fix them
-      console.log(`🔄 [Car Model] Normalizing FIAT: model="${this.model}", variant="${this.variant}"`);
-      
-      const actualModel = match[1]; // "500" or "500X" or "500L"
-      const actualVariant = match[2]; // "POP RHD" or "CROSS" etc.
-      
-      // Swap: set correct model and variant
-      this.model = actualModel;
-      this.variant = actualVariant;
-      
-      console.log(`✅ [Car Model] Normalized to: model="${this.model}", variant="${this.variant}"`);
+
+  // FIAT 500 swap
+  if (makeUpper === 'FIAT') {
+    const match = (doc.model || '').match(/^(500X?L?)\s+(.+)$/i);
+    if (match && doc.variant && doc.variant.match(/^500X?L?$/i)) {
+      console.log(`🔄 [Normalize] FIAT swap: "${doc.model}" → "${match[1]}", variant="${match[2]}"`);
+      doc.model = match[1];
+      doc.variant = match[2];
     }
   }
-  
-  // CRITICAL: Auto-fetch coordinates from postcode if missing
-  // This ensures ALL cars can be found in postcode searches
-  if (this.postcode && this.isNew) {
-    const needsCoordinates = !this.coordinates?.latitude || !this.latitude;
-    const needsLocationName = !this.locationName;
-    
-    if (needsCoordinates || needsLocationName) {
+
+  // VW Golf / Polo
+  if (makeUpper === 'VOLKSWAGEN') {
+    for (const base of ['Golf', 'Polo']) {
+      if (doc.model.startsWith(`${base} `) && doc.model !== base) {
+        const variantPart = doc.model.replace(`${base} `, '').trim();
+        console.log(`🔄 [Normalize] VW ${base}: "${doc.model}" → "${base}", variant="${variantPart}"`);
+        doc.model = base;
+        doc.variant = variantPart || doc.variant;
+        break;
+      }
+    }
+  }
+
+  // Audi A1-A8 / Q2-Q8 / TT / R8
+  if (makeUpper === 'AUDI') {
+    const match = (doc.model || '').match(/^(A[1-8]|Q[2-8]|TT|R8)\s+(.+)$/i);
+    if (match) {
+      console.log(`🔄 [Normalize] Audi: "${doc.model}" → "${match[1]}", variant="${match[2]}"`);
+      doc.model = match[1];
+      doc.variant = match[2] || doc.variant;
+    }
+  }
+
+  // Mercedes-Benz C/E/S/A/B/G/M class
+  if (makeUpper === 'MERCEDES-BENZ' || makeUpper === 'MERCEDES') {
+    if (!doc.model.includes('-Class')) {
+      const match = (doc.model || '').match(/^([ABCEGMS])\s*(\d{3})/i);
+      if (match) {
+        const baseModel = `${match[1].toUpperCase()}-Class`;
+        console.log(`🔄 [Normalize] Mercedes: "${doc.model}" → "${baseModel}"`);
+        if (!doc.variant || doc.variant === doc.model) doc.variant = doc.model;
+        doc.model = baseModel;
+      }
+    }
+  }
+
+  // Body type capitalization
+  if (doc.bodyType) {
+    doc.bodyType = doc.bodyType.charAt(0).toUpperCase() + doc.bodyType.slice(1).toLowerCase();
+  }
+}
+
+// ─── Helper: clear EV fields from non-EV vehicles ───────────────────────────
+function clearEVFieldsIfNeeded(doc) {
+  const isRegularHybrid = ['Hybrid', 'Petrol Hybrid', 'Diesel Hybrid'].includes(doc.fuelType);
+  const isPluginHybrid = doc.fuelType && (
+    doc.fuelType.includes('Plug-in') ||
+    doc.fuelType.toLowerCase().includes('phev') ||
+    (doc.model || '').toUpperCase().includes('PHEV')
+  );
+
+  if (isRegularHybrid && !isPluginHybrid) {
+    const evFields = ['electricRange', 'batteryCapacity', 'chargingTime', 'homeChargingSpeed',
+      'publicChargingSpeed', 'rapidChargingSpeed', 'chargingTime10to80',
+      'electricMotorPower', 'electricMotorTorque', 'chargingPortType', 'fastChargingCapability'];
+    let cleared = false;
+    evFields.forEach(f => {
+      if (doc[f]) { doc[f] = null; cleared = true; }
+      if (doc.runningCosts && doc.runningCosts[f]) { doc.runningCosts[f] = null; cleared = true; }
+    });
+    if (cleared) console.log(`✅ [EV Cleanup] Removed EV fields from regular hybrid (${doc.fuelType})`);
+  }
+
+  const isPureICE = doc.fuelType === 'Petrol' || doc.fuelType === 'Diesel';
+  if (isPureICE && (doc.batteryCapacity || doc.electricRange)) {
+    ['batteryCapacity', 'electricRange', 'homeChargingSpeed', 'rapidChargingSpeed',
+      'chargingPortType', 'electricMotorPower', 'electricMotorTorque'].forEach(f => { doc[f] = null; });
+    console.log(`✅ [EV Cleanup] Removed EV fields from pure ${doc.fuelType}`);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SINGLE PRE-SAVE HOOK — all logic in one place, with loop guard at the top
+// ════════════════════════════════════════════════════════════════════════════
+carSchema.pre('save', async function(next) {
+
+  // ── LOOP GUARD ────────────────────────────────────────────────────────────
+  // If this save was triggered by code INSIDE this hook (e.g. a service that
+  // calls car.save() internally), skip all hook logic to prevent infinite loops.
+  if (this.$locals.inPreSaveHook) {
+    console.log(`⏭️  [Pre-Save] Loop guard triggered — skipping hook for ${this.registrationNumber || 'no-reg'}`);
+    return next();
+  }
+  // Set the guard immediately — before ANY await
+  this.$locals.inPreSaveHook = true;
+
+  const reg = this.registrationNumber;
+  console.log(`🔧 [Pre-Save] START — ${this.make} ${this.model} (${reg || 'no-reg'})`);
+
+  try {
+
+    // ── STEP 1: Validate status ─────────────────────────────────────────────
+    if (this.advertStatus === 'incomplete') {
+      const err = new Error('Cannot save cars with "incomplete" status. Use "draft" or "active".');
+      err.code = 'INVALID_STATUS';
+      return next(err);
+    }
+
+    // ── STEP 2: Duplicate active advert check ──────────────────────────────
+    if (reg && this.advertStatus === 'active') {
+      const duplicate = await this.constructor.findOne({
+        registrationNumber: reg,
+        advertStatus: 'active',
+        _id: { $ne: this._id }
+      });
+      if (duplicate) {
+        const err = new Error(`Active advert already exists for registration ${reg}`);
+        err.code = 'DUPLICATE_REGISTRATION';
+        return next(err);
+      }
+    }
+
+    // ── STEP 3: Make/model/variant normalization ────────────────────────────
+    normalizeMakeModel(this);
+
+    // ── STEP 4: Postcode → coordinates (new cars only, or when missing) ─────
+    const needsCoords = this.postcode && (!this.latitude || !this.longitude || !this.locationName);
+    if (needsCoords) {
       try {
-        console.log(`📍 [Car Model] Fetching coordinates for postcode: ${this.postcode}`);
+        console.log(`📍 [Pre-Save] Fetching coordinates for: ${this.postcode}`);
         const postcodeService = require('../services/postcodeService');
         const postcodeData = await postcodeService.lookupPostcode(this.postcode);
-        
         if (postcodeData) {
-          // Set coordinates in multiple formats for compatibility
-          this.coordinates = {
-            latitude: postcodeData.latitude,
-            longitude: postcodeData.longitude
-          };
-          this.latitude = postcodeData.latitude;
-          this.longitude = postcodeData.longitude;
-          
-          // Set GeoJSON location for geospatial queries
-          this.location = {
-            type: 'Point',
-            coordinates: [postcodeData.longitude, postcodeData.latitude]
-          };
-          
-          // Set location name
+          this.latitude    = postcodeData.latitude;
+          this.longitude   = postcodeData.longitude;
           this.locationName = postcodeData.locationName;
-          
-          console.log(`✅ [Car Model] Coordinates set: ${postcodeData.latitude}, ${postcodeData.longitude}`);
-          console.log(`✅ [Car Model] Location name set: ${postcodeData.locationName}`);
-        } else {
-          console.log(`⚠️  [Car Model] Could not fetch coordinates for postcode: ${this.postcode}`);
-          // Set a default location name based on postcode area
-          if (!this.locationName) {
-            const postcodeArea = this.postcode.substring(0, 2).toUpperCase();
-            const areaNames = {
-              'SW': 'London',
-              'SE': 'London',
-              'NW': 'London',
-              'NE': 'London',
-              'E': 'London',
-              'W': 'London',
-              'N': 'London',
-              'EC': 'London',
-              'WC': 'London',
-              'M': 'Manchester',
-              'B': 'Birmingham',
-              'L': 'Liverpool',
-              'LS': 'Leeds',
-              'S': 'Sheffield',
-              'BS': 'Bristol',
-              'G': 'Glasgow',
-              'EH': 'Edinburgh',
-              'CF': 'Cardiff',
-              'SS': 'Essex'
-            };
-            this.locationName = areaNames[postcodeArea] || 'UK';
-            console.log(`✅ [Car Model] Set default location name: ${this.locationName}`);
+          this.location    = { type: 'Point', coordinates: [postcodeData.longitude, postcodeData.latitude] };
+          if (this.sellerContact && !this.sellerContact.city) {
+            this.sellerContact.city = postcodeData.locationName;
           }
+          console.log(`✅ [Pre-Save] Coordinates set: ${this.latitude}, ${this.longitude} — ${this.locationName}`);
+        } else if (!this.locationName) {
+          const areaMap = { SW:'London',SE:'London',NW:'London',NE:'London',E:'London',W:'London',
+            N:'London',EC:'London',WC:'London',M:'Manchester',B:'Birmingham',L:'Liverpool',
+            LS:'Leeds',S:'Sheffield',BS:'Bristol',G:'Glasgow',EH:'Edinburgh',CF:'Cardiff',SS:'Essex' };
+          this.locationName = areaMap[this.postcode.substring(0, 2).toUpperCase()] || 'UK';
         }
-      } catch (error) {
-        console.log(`⚠️  [Car Model] Error fetching coordinates: ${error.message}`);
-        // Set default location name if fetch fails
-        if (!this.locationName) {
-          this.locationName = 'UK';
+      } catch (err) {
+        console.warn(`⚠️  [Pre-Save] Postcode lookup failed: ${err.message}`);
+        if (!this.locationName) this.locationName = 'UK';
+      }
+    }
+
+    // ── STEP 5: DVLA — color, MOT expiry, tax status ────────────────────────
+    // Only called when specific fields are genuinely missing.
+    // NEVER saves the document inside — just sets fields on `this`.
+    // SKIP if this is a RELIST (car already existed and has data)
+    const isRelist = !this.isNew && 
+                     this.isModified('advertStatus') && 
+                     (this.advertStatus === 'active' || this.advertStatus === 'pending_payment');
+    
+    if (reg && !this.$locals.skipPreSave && !isRelist) {
+      const needsColor = !this.color || this.color === 'null';
+      const needsTax   = !this.taxStatus;
+      const hasMOTHistory = this.motHistory && this.motHistory.length > 0;
+      const motSuspicious = this.motDue && new Date(this.motDue) > new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+      const needsMOT = !hasMOTHistory && (this.isNew || !this.motDue || motSuspicious || this.isModified('motDue'));
+
+      if (needsColor || needsTax || needsMOT) {
+        try {
+          const axios = require('axios');
+          const dvlaApiKey = process.env.DVLA_API_KEY;
+          if (dvlaApiKey) {
+            console.log(`🔍 [Pre-Save] DVLA fetch for ${reg} (color=${needsColor}, tax=${needsTax}, mot=${needsMOT})`);
+            const { data } = await axios.post(
+              'https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles',
+              { registrationNumber: reg },
+              { headers: { 'x-api-key': dvlaApiKey, 'Content-Type': 'application/json' }, timeout: 5000 }
+            );
+            if (needsColor && data.colour) {
+              const { formatColor } = require('../utils/colorFormatter');
+              this.color = formatColor(data.colour);
+              console.log(`✅ [DVLA] Color: ${this.color}`);
+            }
+            if (needsMOT && data.motExpiryDate) {
+              const motDate = new Date(data.motExpiryDate);
+              this.motDue    = motDate;
+              this.motExpiry = motDate;
+              this.motStatus = data.motStatus || 'Valid';
+              console.log(`✅ [DVLA] MOT expiry: ${motDate.toDateString()}, status: ${this.motStatus}`);
+            }
+            if (needsTax && data.taxStatus) {
+              this.taxStatus = data.taxStatus;
+              if (data.taxDueDate) this.taxDueDate = new Date(data.taxDueDate);
+              console.log(`✅ [DVLA] Tax status: ${this.taxStatus}`);
+            }
+          }
+        } catch (err) {
+          console.warn(`⚠️  [Pre-Save] DVLA fetch failed: ${err.message}`);
         }
       }
     }
-  }
-  
-  // Auto-fetch color, MOT, and tax from DVLA when needed
-  // Skip if explicitly disabled (e.g., when syncing from VehicleHistory)
-  if (this.registrationNumber && !this.$locals.skipPreSave) {
-    const needsColor = !this.color || this.color === 'null';
-    const needsTax = !this.taxStatus;
-    
-    // CRITICAL: Fetch MOT from DVLA in these cases:
-    // 1. New car (this.isNew) AND no MOT history from CheckCarDetails
-    // 2. MOT is missing (!this.motDue)
-    // 3. MOT date is suspicious (>1 year in future)
-    // 4. MOT was just modified by user (needs validation)
-    const hasMOTHistory = this.motHistory && this.motHistory.length > 0;
-    const motDateSuspicious = this.motDue && new Date(this.motDue) > new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
-    const motWasModified = this.isModified('motDue');
-    // Don't fetch from DVLA if we already have MOT history from CheckCarDetails API
-    const shouldFetchMOT = !hasMOTHistory && (this.isNew || !this.motDue || motDateSuspicious || motWasModified);
-    
-    if (needsColor || shouldFetchMOT || needsTax) {
+
+    // ── STEP 6: Color formatting ────────────────────────────────────────────
+    if (this.color && typeof this.color === 'string') {
+      const { formatColor } = require('../utils/colorFormatter');
+      const formatted = formatColor(this.color);
+      if (formatted) this.color = formatted;
+    }
+
+    // ── STEP 7: Variant fetch (only when missing) ───────────────────────────
+    // Uses updateOne() pattern internally — no nested save() calls.
+    // SKIP if this is a RELIST (car already existed and has data)
+    if (reg && (!this.variant || this.variant === 'null' || this.variant === 'undefined' || this.variant.trim() === '') && !isRelist) {
       try {
-        console.log(`🔍 [Car Model] Fetching data from DVLA for ${this.registrationNumber}...`);
-        if (shouldFetchMOT) {
-          console.log(`   Reason: ${this.isNew ? 'New car' : !this.motDue ? 'MOT missing' : motDateSuspicious ? 'Suspicious date' : 'MOT modified'}`);
-        }
-        if (hasMOTHistory) {
-          console.log(`   ℹ️  Skipping DVLA MOT fetch - already have ${this.motHistory.length} tests from CheckCarDetails`);
-        }
-        
-        const axios = require('axios');
-        const dvlaApiKey = process.env.DVLA_API_KEY;
-        
-        if (dvlaApiKey) {
-          const response = await axios.post(
-            'https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles',
-            { registrationNumber: this.registrationNumber },
-            {
-              headers: {
-                'x-api-key': dvlaApiKey,
-                'Content-Type': 'application/json'
-              },
-              timeout: 5000
-            }
-          );
-          
-          // Fetch color if missing
-          if (needsColor && response.data.colour) {
-            const { formatColor } = require('../utils/colorFormatter');
-            this.color = formatColor(response.data.colour);
-            console.log(`✅ [Car Model] Color fetched: ${this.color}`);
-          }
-          
-          // CRITICAL: Fetch and update MOT from DVLA when needed
-          // This ensures MOT is ALWAYS correct from official source
-          if (shouldFetchMOT && response.data.motExpiryDate) {
-            const motDate = new Date(response.data.motExpiryDate);
-            this.motDue = motDate;
-            this.motExpiry = motDate;
-            this.motStatus = response.data.motStatus || 'Valid';
-            console.log(`✅ [Car Model] MOT expiry fetched from DVLA: ${motDate.toDateString()}`);
-            console.log(`✅ [Car Model] MOT status: ${this.motStatus}`);
-          } else if (shouldFetchMOT) {
-            console.log(`⚠️  [Car Model] No MOT expiry date in DVLA response`);
-          }
-          
-          // Fetch tax status if missing
-          if (needsTax && response.data.taxStatus) {
-            this.taxStatus = response.data.taxStatus;
-            if (response.data.taxDueDate) {
-              this.taxDueDate = new Date(response.data.taxDueDate);
-            }
-            console.log(`✅ [Car Model] Tax status fetched: ${this.taxStatus}`);
-          }
-        }
-      } catch (error) {
-        // Don't fail the save if fetch fails
-        console.log(`⚠️  [Car Model] Could not fetch data from DVLA: ${error.message}`);
-      }
-    }
-  }
-  
-  // Format color to proper case (Title Case)
-  if (this.color && typeof this.color === 'string') {
-    const { formatColor } = require('../utils/colorFormatter');
-    const formattedColor = formatColor(this.color);
-    if (formattedColor) {
-      this.color = formattedColor;
-    }
-  }
+        console.log(`🔍 [Pre-Save] Variant missing — fetching for ${reg}`);
+        const variantOnlyService = require('../services/variantOnlyService');
 
-  // Prevent saving incomplete cars - they should be draft or active
-  if (this.advertStatus === 'incomplete') {
-    console.log(`⚠️  Preventing save of incomplete car: ${this.registrationNumber}`);
-    const error = new Error('Cannot save cars with "incomplete" status. Use "draft" or "active" instead.');
-    error.code = 'INVALID_STATUS';
-    return next(error);
-  }
+        // CRITICAL: Tell the service NOT to call car.save() internally.
+        // Pass { noSave: true } so it only returns data, never persists.
+        const vehicleData = await variantOnlyService.getVariantOnly(reg, true, { noSave: true });
 
-  // Check for duplicate active adverts with same registration
-  if (this.registrationNumber && this.advertStatus === 'active') {
-    const duplicate = await this.constructor.findOne({
-      registrationNumber: this.registrationNumber,
-      advertStatus: 'active',
-      _id: { $ne: this._id }
-    });
-    
-    if (duplicate) {
-      const error = new Error(`Active advert already exists for registration ${this.registrationNumber}`);
-      error.code = 'DUPLICATE_REGISTRATION';
-      return next(error);
-    }
-  }
-  
-  // CRITICAL: Validate hybrid vehicles don't have electric-only fields
-  // BUT: Plug-in hybrids SHOULD have electric fields!
-  const isRegularHybrid = this.fuelType && (
-    this.fuelType === 'Hybrid' || 
-    this.fuelType === 'Petrol Hybrid' || 
-    this.fuelType === 'Diesel Hybrid'
-  );
-  
-  // Plug-in hybrids are NOT regular hybrids - they need electric fields
-  const isPluginHybrid = this.fuelType && (
-    this.fuelType === 'Plug-in Hybrid' ||
-    this.fuelType === 'Petrol Plug-in Hybrid' ||
-    this.fuelType === 'Diesel Plug-in Hybrid' ||
-    this.fuelType.toLowerCase().includes('plug-in') || 
-    this.fuelType.toLowerCase().includes('phev') ||
-    this.model?.toUpperCase().includes('PHEV')
-  );
-  
-  // ONLY remove electric fields from REGULAR hybrids (not plug-in hybrids)
-  if (isRegularHybrid && !isPluginHybrid) {
-    // Regular hybrids (non-plugin) should NOT have electric range or charging fields
-    if (this.electricRange || this.batteryCapacity || this.chargingTime) {
-      console.log(`⚠️  REGULAR HYBRID DETECTED (${this.fuelType}) - Removing electric-only fields for ${this.registrationNumber}`);
-      this.electricRange = null;
-      this.batteryCapacity = null;
-      this.chargingTime = null;
-      this.homeChargingSpeed = null;
-      this.publicChargingSpeed = null;
-      this.rapidChargingSpeed = null;
-      this.chargingTime10to80 = null;
-      this.electricMotorPower = null;
-      this.electricMotorTorque = null;
-      this.chargingPortType = null;
-      this.fastChargingCapability = null;
-      
-      // Also clear from runningCosts
-      if (this.runningCosts) {
-        this.runningCosts.electricRange = null;
-        this.runningCosts.batteryCapacity = null;
-        this.runningCosts.chargingTime = null;
-        this.runningCosts.homeChargingSpeed = null;
-        this.runningCosts.publicChargingSpeed = null;
-        this.runningCosts.rapidChargingSpeed = null;
-        this.runningCosts.chargingTime10to80 = null;
-        this.runningCosts.electricMotorPower = null;
-        this.runningCosts.electricMotorTorque = null;
-        this.runningCosts.chargingPortType = null;
-        this.runningCosts.fastChargingCapability = null;
-      }
-      console.log(`✅ Electric-only fields removed from regular hybrid vehicle`);
-    }
-  } else if (isPluginHybrid) {
-    console.log(`🔌 PLUG-IN HYBRID DETECTED (${this.fuelType}) - Keeping charging fields for ${this.registrationNumber}`);
-    // Plugin hybrids SHOULD have charging info - don't remove it!
-  }
-  
-  // Auto-generate displayTitle if missing (AutoTrader format: "EngineSize Variant BodyStyle")
-  if (!this.displayTitle && this.make && this.model) {
-    const parts = [];
-    
-    // Engine size (without 'L' suffix for AutoTrader style)
-    if (this.engineSize) {
-      const size = parseFloat(this.engineSize);
-      if (!isNaN(size) && size > 0) {
-        parts.push(size.toFixed(1));
-      }
-    }
-    
-    // Variant (should include fuel type + trim like "TDI S" or "320d M Sport")
-    if (this.variant && this.variant !== 'null' && this.variant !== 'undefined' && this.variant.trim() !== '') {
-      parts.push(this.variant);
-    } else if (this.fuelType) {
-      // Fallback: use fuel type if no variant
-      parts.push(this.fuelType);
-    }
-    
-    // Body style - convert to AutoTrader short form (e.g., "5dr", "Estate")
-    if (this.doors && this.doors >= 2 && this.doors <= 5) {
-      parts.push(`${this.doors}dr`);
-    } else if (this.bodyType) {
-      const bodyType = this.bodyType.toLowerCase();
-      if (bodyType.includes('estate')) {
-        parts.push('Estate');
-      } else if (bodyType.includes('saloon') || bodyType.includes('sedan')) {
-        parts.push('Saloon');
-      } else if (bodyType.includes('coupe')) {
-        parts.push('Coupe');
-      } else if (bodyType.includes('convertible') || bodyType.includes('cabriolet')) {
-        parts.push('Convertible');
-      } else if (bodyType.includes('suv')) {
-        parts.push('SUV');
-      } else if (bodyType.includes('mpv')) {
-        parts.push('MPV');
-      }
-    }
-    
-    // Generate displayTitle
-    if (parts.length > 0) {
-      this.displayTitle = parts.join(' ');
-      console.log(`🎯 Auto-generated displayTitle: "${this.displayTitle}" for ${this.make} ${this.model}`);
-    }
-  }
-  
-  // CRITICAL: Auto-fetch variant from API if missing (for ANY car with registration)
-  // This runs on EVERY save to ensure variant is always populated
-  if (this.registrationNumber && (!this.variant || this.variant === 'null' || this.variant === 'undefined' || this.variant.trim() === '')) {
-    try {
-      console.log(`🔍 VARIANT MISSING - Checking cache first for: ${this.registrationNumber}`);
-      console.log(`   Current variant value: "${this.variant}"`);
-      
-      const variantOnlyService = require('../services/variantOnlyService');
-      
-      // ONLY fetch variant data (cheap API call - no expensive history/MOT/valuation)
-      const vehicleData = await variantOnlyService.getVariantOnly(this.registrationNumber, true);
-      
-      console.log(`🔍 Data source for ${this.registrationNumber}:`, {
-        variant: vehicleData.variant,
-        make: vehicleData.make,
-        model: vehicleData.model,
-        engineSize: vehicleData.engineSize,
-        cached: vehicleData.dataSources?.cached,
-        historyCheckId: vehicleData.historyCheckId
-      });
-      
-      // Extract variant from wrapped API response (handle both direct and wrapped formats)
-      let extractedVariant = null;
-      
-      if (vehicleData.variant) {
-        // Handle wrapped format: { value: "TDI", source: "checkcardetails" }
-        if (typeof vehicleData.variant === 'object' && vehicleData.variant.value) {
-          extractedVariant = vehicleData.variant.value;
-        } 
-        // Handle direct format: "TDI"
-        else if (typeof vehicleData.variant === 'string') {
-          extractedVariant = vehicleData.variant;
+        let extractedVariant = null;
+        if (vehicleData.variant) {
+          extractedVariant = typeof vehicleData.variant === 'object'
+            ? vehicleData.variant.value
+            : vehicleData.variant;
         }
-      }
-      
-      console.log(`🔍 Extracted variant: "${extractedVariant}"`);
-      
-      if (extractedVariant && extractedVariant !== 'null' && extractedVariant !== 'undefined' && extractedVariant.trim() !== '') {
-        // CRITICAL: Clean variant - remove transmission info for AutoTrader style
-        // "Type S i-VTec Semi-Auto" -> "Type S i-VTec"
-        // "530D XDRIVE M SPORT EDITION TOURING AUTO" -> "530D XDRIVE M SPORT EDITION TOURING"
-        let cleanedVariant = extractedVariant.trim();
-        cleanedVariant = cleanedVariant
-          .replace(/\s*(semi-auto|semi auto|automatic|manual|auto|cvt|dsg|tiptronic|powershift)\s*$/gi, '')
-          .trim();
-        
-        // ALWAYS use the cleaned API variant
-        this.variant = cleanedVariant;
-        console.log(`✅ REAL API VARIANT SAVED: "${this.variant}" (from ${vehicleData.dataSources?.cached ? 'CACHE' : 'API'})`);
-        if (cleanedVariant !== extractedVariant.trim()) {
-          console.log(`   🧹 Cleaned transmission info from variant`);
+
+        if (extractedVariant && extractedVariant !== 'null' && extractedVariant.trim() !== '') {
+          // Strip trailing transmission words
+          this.variant = extractedVariant.trim()
+            .replace(/\s*(semi-auto|semi auto|automatic|manual|auto|cvt|dsg|tiptronic|powershift)\s*$/gi, '')
+            .trim();
+          console.log(`✅ [Pre-Save] Variant set: "${this.variant}"`);
+        } else {
+          // Fallback variant from local data
+          this.variant = this.engineSize && this.fuelType
+            ? `${this.engineSize}L ${this.fuelType}`
+            : (this.fuelType || 'Standard');
+          console.log(`✅ [Pre-Save] Fallback variant: "${this.variant}"`);
         }
-        
-        // Link to vehicle history if available and not already linked
+
+        // Link history if available (just set the reference — no extra save)
         if (vehicleData.historyCheckId && !this.historyCheckId) {
           this.historyCheckId = vehicleData.historyCheckId;
           this.historyCheckStatus = 'verified';
-          this.historyCheckDate = new Date();
-          console.log(`✅ LINKED TO EXISTING HISTORY: ${vehicleData.historyCheckId}`);
+          this.historyCheckDate   = new Date();
         }
-        
-        // Also update other missing fields from API if available
+
+        // Engine size from API if missing
         if (!this.engineSize && vehicleData.engineSize) {
-          const engineSize = typeof vehicleData.engineSize === 'object' ? vehicleData.engineSize.value : vehicleData.engineSize;
-          if (engineSize) {
-            this.engineSize = parseFloat(engineSize);
-            console.log(`✅ Engine size updated from ${vehicleData.dataSources?.cached ? 'cache' : 'API'}: ${this.engineSize}L`);
-          }
+          const es = typeof vehicleData.engineSize === 'object' ? vehicleData.engineSize.value : vehicleData.engineSize;
+          if (es) this.engineSize = parseFloat(es);
         }
-        
-        // For displayTitle, use AutoTrader format: "EngineSize Variant EuroStatus Doors"
-        // Example: "2.0 TDI GT DSG Euro 5 3dr"
-        const parts = [];
-        
-        // 1. Engine size (without 'L' suffix for AutoTrader style)
-        if (this.engineSize) {
-          const size = parseFloat(this.engineSize);
-          if (!isNaN(size) && size > 0) {
-            parts.push(size.toFixed(1));
-          }
-        }
-        
-        // 2. Real API variant (convert to proper case for AutoTrader style)
-        // Convert "530D XDRIVE M SPORT EDITION TOURING" to "530d xDrive M Sport Edition Touring"
-        const formattedVariant = this.variant
-          .split(' ')
-          .map((word, index) => {
-            // Keep BMW model codes in specific format (e.g., "530d", "320i")
-            if (index === 0 && /^\d+[a-z]$/i.test(word)) {
-              // "530D" -> "530d"
-              return word.slice(0, -1) + word.slice(-1).toLowerCase();
-            }
-            // Keep xDrive, sDrive in specific format
-            if (word.toLowerCase() === 'xdrive') return 'xDrive';
-            if (word.toLowerCase() === 'sdrive') return 'sDrive';
-            // Keep M Sport as is
-            if (word.toUpperCase() === 'M') return 'M';
-            // Title case for other words
-            return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-          })
-          .join(' ');
-        
-        parts.push(formattedVariant);
-        
-        // 3. Euro status if available (like "Euro 5", "Euro 6")
-        if (this.emissionClass && this.emissionClass.includes('Euro')) {
-          parts.push(this.emissionClass);
-        }
-        
-        // 4. Doors (like "3dr", "5dr")
-        if (this.doors && this.doors >= 2 && this.doors <= 5) {
-          parts.push(`${this.doors}dr`);
-        }
-        
-        if (parts.length > 0) {
-          this.displayTitle = parts.join(' ');
-          console.log(`🎯 AUTOTRADER STYLE DISPLAY TITLE: "${this.displayTitle}"`);
-          console.log(`🎯 DATABASE VARIANT: "${this.variant}" (real API variant saved)`);
-        }
-      } else {
-        console.log(`⚠️  NO VARIANT FOUND IN ${vehicleData.dataSources?.cached ? 'CACHE' : 'API'} DATA - Generating fallback variant`);
-        
-        // Generate fallback variant from available data
-        let fallbackVariant = '';
-        
-        if (this.engineSize && this.fuelType) {
-          fallbackVariant = `${this.engineSize}L ${this.fuelType}`;
-        } else if (this.fuelType) {
-          fallbackVariant = this.fuelType;
-        } else {
-          fallbackVariant = 'Standard';
-        }
-        
-        this.variant = fallbackVariant;
-        console.log(`✅ FALLBACK VARIANT GENERATED: "${this.variant}"`);
-        
-        // Update displayTitle with fallback variant in AutoTrader format
-        const parts = [];
-        
-        // 1. Engine size (without 'L' suffix)
-        if (this.engineSize) {
-          const size = parseFloat(this.engineSize);
-          if (!isNaN(size) && size > 0) {
-            parts.push(size.toFixed(1));
-          }
-        }
-        
-        // 2. Variant (fallback generated)
-        parts.push(this.variant);
-        
-        // 3. Euro status if available
-        if (this.emissionClass && this.emissionClass.includes('Euro')) {
-          parts.push(this.emissionClass);
-        }
-        
-        // 4. Doors
-        if (this.doors && this.doors >= 2 && this.doors <= 5) {
-          parts.push(`${this.doors}dr`);
-        }
-        
-        if (parts.length > 0) {
-          this.displayTitle = parts.join(' ');
-          console.log(`🎯 AUTOTRADER STYLE DISPLAY TITLE (FALLBACK): "${this.displayTitle}"`);
-        }
+
+      } catch (err) {
+        console.error(`❌ [Pre-Save] Variant fetch failed: ${err.message}`);
+        this.variant = this.engineSize && this.fuelType
+          ? `${this.engineSize}L ${this.fuelType}`
+          : (this.fuelType || 'Standard');
+        console.log(`🚨 [Pre-Save] Emergency variant: "${this.variant}"`);
       }
-    } catch (error) {
-      console.error(`❌ VARIANT FETCH FAILED for ${this.registrationNumber}:`, error.message);
-      
-      // Generate emergency fallback variant even if API fails
-      let emergencyVariant = '';
-      
-      if (this.engineSize && this.fuelType) {
-        emergencyVariant = `${this.engineSize}L ${this.fuelType}`;
-      } else if (this.fuelType) {
-        emergencyVariant = this.fuelType;
-      } else {
-        emergencyVariant = 'Standard';
-      }
-      
-      this.variant = emergencyVariant;
-      console.log(`🚨 EMERGENCY VARIANT SET: "${this.variant}"`);
-      
-      // Update displayTitle with emergency variant in AutoTrader format
-      const parts = [];
-      
-      // 1. Engine size
-      if (this.engineSize) {
-        const size = parseFloat(this.engineSize);
-        if (!isNaN(size) && size > 0) {
-          parts.push(size.toFixed(1));
-        }
-      }
-      
-      // 2. Emergency variant
-      parts.push(this.variant);
-      
-      // 3. Euro status if available
-      if (this.emissionClass && this.emissionClass.includes('Euro')) {
-        parts.push(this.emissionClass);
-      }
-      
-      // 4. Doors
-      if (this.doors && this.doors >= 2 && this.doors <= 5) {
-        parts.push(`${this.doors}dr`);
-      }
-      
-      if (parts.length > 0) {
-        this.displayTitle = parts.join(' ');
-        console.log(`🚨 AUTOTRADER STYLE EMERGENCY DISPLAY TITLE: "${this.displayTitle}"`);
-      }
+    } else if (!this.variant && !reg) {
+      // No registration and no variant — generate from specs
+      this.variant = this.engineSize && this.fuelType
+        ? `${this.engineSize}L ${this.fuelType}`
+        : (this.fuelType || 'Standard');
+      console.log(`✅ [Pre-Save] No-reg variant: "${this.variant}"`);
     }
-  } else if (this.variant) {
-    console.log(`✅ Variant already exists: "${this.variant}"`);
-  } else {
-    // Cars without registration number - generate variant from engine + fuel
-    console.log(`🔍 No registration number - generating variant from engine + fuel type`);
-    
-    let generatedVariant = '';
-    
-    if (this.engineSize && this.fuelType) {
-      generatedVariant = `${this.engineSize}L ${this.fuelType}`;
-    } else if (this.fuelType) {
-      generatedVariant = this.fuelType;
-    } else {
-      generatedVariant = 'Standard';
+
+    // ── STEP 8: Re-run normalization now that variant is populated ───────────
+    normalizeMakeModel(this);
+
+    // ── STEP 9: displayTitle ────────────────────────────────────────────────
+    if (!this.displayTitle) {
+      this.displayTitle = buildDisplayTitle(this);
+      if (this.displayTitle) console.log(`🎯 [Pre-Save] displayTitle: "${this.displayTitle}"`);
     }
-    
-    this.variant = generatedVariant;
-    console.log(`✅ VARIANT GENERATED FOR NO-REG CAR: "${this.variant}"`);
-    
-    // Update displayTitle with generated variant in AutoTrader format
-    const parts = [];
-    
-    // 1. Engine size
-    if (this.engineSize) {
-      const size = parseFloat(this.engineSize);
-      if (!isNaN(size) && size > 0) {
-        parts.push(size.toFixed(1));
-      }
-    }
-    
-    // 2. Generated variant
-    parts.push(this.variant);
-    
-    // 3. Euro status if available
-    if (this.emissionClass && this.emissionClass.includes('Euro')) {
-      parts.push(this.emissionClass);
-    }
-    
-    // 4. Doors
-    if (this.doors && this.doors >= 2 && this.doors <= 5) {
-      parts.push(`${this.doors}dr`);
-    }
-    
-    if (parts.length > 0) {
-      this.displayTitle = parts.join(' ');
-      console.log(`🎯 AUTOTRADER STYLE DISPLAY TITLE (NO-REG): "${this.displayTitle}"`);
-    }
-  }
-  
-  // CRITICAL: Comprehensive Model/Variant Normalization
-  // Automatically fix model/variant organization for all makes
-  // This runs AFTER variant has been set from API or generated
-  console.log(`🔍 [Normalization Check] make="${this.make}", model="${this.model}", variant="${this.variant}", bodyType="${this.bodyType}"`);
-  
-  if (this.make && this.model) {
-    const makeUpper = this.make.toUpperCase();
-    const modelStr = this.model.trim();
-    const variantStr = this.variant ? this.variant.trim() : '';
-    
-    console.log(`🔍 [Normalization] Checking ${makeUpper} - modelStr="${modelStr}"`);
-    
-    // Volkswagen: Golf GTE → Golf, Polo Match → Polo
-    if (makeUpper === 'VOLKSWAGEN') {
-      if (modelStr.startsWith('Golf ') && modelStr !== 'Golf') {
-        const variantPart = modelStr.replace('Golf ', '').trim();
-        console.log(`🔄 [Car Model] Normalizing VW Golf: "${modelStr}" → "Golf", variant: "${variantPart}"`);
-        this.model = 'Golf';
-        this.variant = variantPart || variantStr;
-      } else if (modelStr.startsWith('Polo ') && modelStr !== 'Polo') {
-        const variantPart = modelStr.replace('Polo ', '').trim();
-        console.log(`🔄 [Car Model] Normalizing VW Polo: "${modelStr}" → "Polo", variant: "${variantPart}"`);
-        this.model = 'Polo';
-        this.variant = variantPart || variantStr;
-      }
-    }
-    
-    // Audi: A3 Black 35 TFSI → A3
-    if (makeUpper === 'AUDI') {
-      const audiModelPattern = /^(A[1-8]|Q[2-8]|TT|R8)\s+(.+)$/i;
-      const match = modelStr.match(audiModelPattern);
-      if (match) {
-        const baseModel = match[1];
-        const variantPart = match[2];
-        console.log(`🔄 [Car Model] Normalizing Audi: "${modelStr}" → "${baseModel}", variant: "${variantPart}"`);
-        this.model = baseModel;
-        this.variant = variantPart || variantStr;
-      }
-    }
-    
-    // Mercedes-Benz: C 300 AMG → C-Class, E 300 → E-Class
-    if (makeUpper === 'MERCEDES-BENZ' || makeUpper === 'MERCEDES') {
-      // Match C 300, E 300, etc. (not already C-Class or E-Class)
-      if (!modelStr.includes('-Class')) {
-        const mercedesPattern = /^([ABCEGMS])\s*(\d{3})/i;
-        const match = modelStr.match(mercedesPattern);
-        if (match) {
-          const classLetter = match[1].toUpperCase();
-          const baseModel = `${classLetter}-Class`;
-          console.log(`🔄 [Car Model] Normalizing Mercedes: "${modelStr}" → "${baseModel}"`);
-          this.model = baseModel;
-          // Keep existing variant or use full model string as variant
-          if (!variantStr || variantStr === modelStr) {
-            this.variant = modelStr;
-          }
-        }
-      }
-    }
-  }
-  
-  // CRITICAL: Body Type Capitalization Normalization
-  // Ensure consistent capitalization: "Hatchback" not "HATCHBACK" or "hatchback"
-  if (this.bodyType) {
-    const normalized = this.bodyType.charAt(0).toUpperCase() + this.bodyType.slice(1).toLowerCase();
-    if (this.bodyType !== normalized) {
-      console.log(`🔄 [Car Model] Normalizing body type: "${this.bodyType}" → "${normalized}"`);
-      this.bodyType = normalized;
-    }
-  }
-  
-  // History check for new listings with registration numbers
-  if (this.isNew && this.registrationNumber && this.historyCheckStatus === 'pending') {
-    // Skip API calls if flag is set AND it's NOT a trade dealer listing
-    // Trade dealers need history fetched immediately since they bypass payment controller
-    const shouldSkip = this._skipAPICallsInHooks && !this.isDealerListing;
-    
-    if (shouldSkip) {
-      console.log(`⏭️  Skipping history check and MOT fetch in pre-save hook (will be handled by payment controller)`);
-      // Don't return early - let other pre-save logic run (coordinates, etc.)
-      // Just skip the API calls below
-    } else {
-      if (this.isDealerListing) {
-        console.log(`🏢 Trade dealer listing detected - fetching history immediately`);
-      }
+
+    // ── STEP 10: EV / hybrid field cleanup ──────────────────────────────────
+    clearEVFieldsIfNeeded(this);
+
+    // ── STEP 11: EV enhancement (new/fuelType changed only) ─────────────────
+    const isEVorPHEV = ['Electric', 'Plug-in Hybrid', 'Petrol Plug-in Hybrid', 'Diesel Plug-in Hybrid'].includes(this.fuelType);
+    if (isEVorPHEV && (this.isNew || this.isModified('fuelType'))) {
       try {
-        // 🔥 CRITICAL FIX: Check if history already exists BEFORE calling API
-        const VehicleHistory = require('./VehicleHistory');
-        const existingHistory = await VehicleHistory.findOne({ 
-          vrm: this.registrationNumber.toUpperCase() 
-        }).sort({ checkDate: -1 });
-        
-        if (existingHistory) {
-          // ✅ Reuse existing history - NO API CALL
-          const daysSinceCheck = (Date.now() - existingHistory.checkDate.getTime()) / (1000 * 60 * 60 * 24);
-          console.log(`✅ Reusing existing history for ${this.registrationNumber} (${Math.floor(daysSinceCheck)} days old) - Saved £1.82`);
-          
-          this.historyCheckId = existingHistory._id;
-          this.historyCheckStatus = 'verified';
-          this.historyCheckDate = existingHistory.checkDate;
-          
-          // Skip API call - history already exists
-        } else {
-          // No existing history - call API
-          const HistoryService = require('../services/historyService');
-          const historyService = new HistoryService();
-          
-          console.log(`🔍 No existing history found - Triggering NEW history check for: ${this.registrationNumber} (£1.82)`);
-          
-          // Perform history check
-          const historyResult = await historyService.checkVehicleHistory(this.registrationNumber);
-          
-          // Update listing with history check results
-          this.historyCheckStatus = 'verified';
-          this.historyCheckDate = new Date();
-          this.historyCheckId = historyResult._id;
-          
-          console.log(`✅ History check completed for ${this.registrationNumber}: ${historyResult.checkStatus}`);
-        }
-      } catch (error) {
-        console.error(`❌ History check failed for ${this.registrationNumber}:`, error.message);
-        
-        // Check if it's a daily limit error (403)
-        if (error.isDailyLimitError || error.details?.status === 403 || error.message.includes('daily limit')) {
-          console.log(`⏰ API daily limit exceeded - skipping history check for now`);
-          console.log(`   History can be added later when API limit resets`);
-          this.historyCheckStatus = 'pending'; // Keep as pending so it can be retried later
-        } else {
-          // Mark as failed for other errors
-          this.historyCheckStatus = 'failed';
-        }
-        this.historyCheckDate = new Date();
+        const ElectricVehicleEnhancementService = require('../services/electricVehicleEnhancementService');
+        const AutoDataPopulationService         = require('../services/autoDataPopulationService');
+        const enhanced  = ElectricVehicleEnhancementService.enhanceWithEVData(this.toObject());
+        const populated = AutoDataPopulationService.populateMissingData(enhanced);
+        Object.keys(populated).forEach(k => { if (k !== '_id' && k !== '__v') this[k] = populated[k]; });
+        console.log(`✅ [Pre-Save] EV enhanced: ${this.electricRange}mi, ${this.batteryCapacity}kWh`);
+      } catch (err) {
+        console.error(`❌ [Pre-Save] EV enhancement failed: ${err.message}`);
       }
     }
+
+    // ── STEP 12 & 13: REMOVED ────────────────────────────────────────────────
+    // History (£1.82) aur MOT (£0.02) API calls REMOVED from Car.js pre-save hook.
+    // 
+    // WHY REMOVED:
+    // - Payment controller already calls fetchVehicleAPIs() which fetches history/MOT
+    // - Duplicate API calls waste money (£1.84 per car)
+    // - VehicleHistory cache handles reuse across multiple cars
+    // 
+    // NEW FLOW:
+    // 1. Draft car save → Car.js → NO history/MOT API (saves £1.84)
+    // 2. Payment complete → fetchVehicleAPIs() → VehicleHistory save
+    // 3. car.advertStatus = 'active' → car.save() → Car.js → DVLA/variant only
+    // 
+    // RESULT: History/MOT fetched once per registration, reused via VehicleHistory cache
+
+    // ── STEP 12: MOT due date sync from motHistory ──────────────────────────
+    if (this.motHistory && this.motHistory.length > 0) {
+      const latest = this.motHistory[0];
+      if (latest.expiryDate) {
+        if (!this.motDue)    this.motDue    = latest.expiryDate;
+        if (!this.motExpiry) this.motExpiry = latest.expiryDate;
+        if (!this.motStatus) this.motStatus = latest.testResult === 'PASSED' ? 'Valid' : 'Invalid';
+      }
+    }
+
+    // ── STEP 13: Valuation (new listings only) ──────────────────────────────
+    // SKIP if this is a RELIST (car already existed and has valuation data)
+    if (this.isNew && reg && this.mileage && !isRelist) {
+      const needsVal = !this.valuation?.privatePrice || !this.price || this.price === 0;
+      if (needsVal) {
+        try {
+          const ValuationService = require('../services/valuationService');
+          const valuationService = new ValuationService();
+          console.log(`💰 [Pre-Save] Fetching valuation for ${reg}`);
+          const val = await valuationService.getValuation(reg, this.mileage);
+          this.valuation = {
+            privatePrice:     val.estimatedValue.private,
+            dealerPrice:      val.estimatedValue.retail,
+            partExchangePrice: val.estimatedValue.trade,
+            confidence:       val.confidence,
+            valuationDate:    new Date()
+          };
+          this.price          = val.estimatedValue.private;
+          this.estimatedValue = val.estimatedValue.private;
+          console.log(`✅ [Pre-Save] Price set to £${this.price} (private valuation)`);
+        } catch (err) {
+          console.warn(`⚠️  [Pre-Save] Valuation fetch failed: ${err.message}`);
+        }
+      }
+    }
+
+    // ── STEP 16: userId from sellerContact email ────────────────────────────
+    if (!this.userId && this.sellerContact?.email) {
+      try {
+        const User = require('./User');
+        const user = await User.findOne({ email: this.sellerContact.email });
+        if (user) {
+          this.userId = user._id;
+          console.log(`✅ [Pre-Save] userId set: ${this.userId}`);
+        } else {
+          console.warn(`⚠️  [Pre-Save] No user found for ${this.sellerContact.email} — car won't appear in My Listings`);
+        }
+      } catch (err) {
+        console.warn(`⚠️  [Pre-Save] userId lookup failed: ${err.message}`);
+      }
+    } else if (!this.userId) {
+      console.warn(`⚠️  [Pre-Save] No userId and no email — car won't appear in My Listings (id=${this._id})`);
+    }
+
+    // ── STEP 17: sellerContact defaults ────────────────────────────────────
+    if (this.sellerContact && !this.sellerContact.type) {
+      this.sellerContact.type = 'private';
+    }
+
+    // ── STEP 18: publishedAt for new active listings ────────────────────────
+    if (this.isNew && this.advertStatus === 'active' && !this.publishedAt) {
+      this.publishedAt = new Date();
+      console.log(`✅ [Pre-Save] publishedAt: ${this.publishedAt}`);
+    }
+
+  } catch (err) {
+    // Catch-all — never let a hook error silently prevent saving
+    console.error(`❌ [Pre-Save] Unhandled error: ${err.message}`, err);
   }
 
-  // MOT History check for new listings with registration numbers
-  // Skip if payment controller will handle it (but NOT for trade dealers)
-  const shouldSkipMOT = this._skipAPICallsInHooks && !this.isDealerListing;
-  
-  if (this.isNew && this.registrationNumber && (!this.motHistory || this.motHistory.length === 0) && !shouldSkipMOT) {
-    try {
-      console.log(`🔍 Triggering MOT history check for new listing: ${this.registrationNumber}`);
-      
-      // Try to use CheckCarDetailsClient directly (more reliable)
-      const CheckCarDetailsClient = require('../clients/CheckCarDetailsClient');
-      
-      // Validate API key is available
-      if (!process.env.CHECKCARD_API_KEY) {
-        console.log(`⚠️  CHECKCARD_API_KEY not found - skipping MOT history fetch for ${this.registrationNumber}`);
-        // Don't add fake sample data - MOT will be fetched from DVLA in pre-save hook
-        return;
-      }
-      
-      console.log(`🔍 Fetching MOT history from CheckCarDetails API for: ${this.registrationNumber}`);
-      
-      // Create client instance
-      const apiKey = process.env.CHECKCARD_API_KEY;
-      const baseUrl = process.env.CHECKCARD_API_BASE_URL || 'https://api.checkcardetails.co.uk';
-      const client = new CheckCarDetailsClient(apiKey, baseUrl, false);
-      
-      const motData = await client.getMOTHistory(this.registrationNumber);
-      
-      if (motData && motData.tests && motData.tests.length > 0) {
-        console.log(`✅ MOT history fetched from API: ${motData.tests.length} tests for ${this.registrationNumber}`);
-        
-        // Convert API response to our schema format
-        const motHistory = motData.tests.map(test => ({
-          testDate: test.testDate ? new Date(test.testDate) : null,
-          expiryDate: test.expiryDate ? new Date(test.expiryDate) : null,
-          testResult: test.result || test.testResult || 'UNKNOWN',
-          odometerValue: parseInt(test.odometerValue) || 0,
-          odometerUnit: test.odometerUnit?.toLowerCase() === 'mi' ? 'mi' : 'km',
-          testNumber: test.testNumber || '',
-          testCertificateNumber: test.testCertificateNumber || '',
-          defects: (test.defects || test.rfrAndComments || []).map(item => ({
-            type: item.type || 'ADVISORY',
-            text: item.text || '',
-            dangerous: item.dangerous === true || item.type === 'DANGEROUS'
-          })),
-          advisoryText: (test.defects || test.rfrAndComments || [])
-            .filter(item => item.type === 'ADVISORY')
-            .map(item => item.text)
-            .filter(text => text && text.trim().length > 0),
-          testClass: test.testClass || '',
-          testType: test.testType || '',
-          completedDate: test.testDate ? new Date(test.testDate) : null,
-          testStation: {
-            name: test.testStationName || '',
-            number: test.testStationNumber || '',
-            address: test.testStationAddress || '',
-            postcode: test.testStationPostcode || ''
-          }
-        })).filter(test => test.testDate); // Only include tests with valid dates
-        
-        // Save MOT history to car
-        this.motHistory = motHistory;
-        
-        // Update MOT status from latest test
-        const latestTest = motHistory[0]; // Most recent test
-        if (latestTest) {
-          this.motStatus = latestTest.testResult === 'PASSED' ? 'Valid' : 'Invalid';
-          this.motExpiry = latestTest.expiryDate;
-          this.motDue = latestTest.expiryDate;
-          console.log(`✅ Updated MOT status: ${this.motStatus}, expires: ${this.motExpiry}`);
-        }
-        
-        console.log(`✅ MOT history automatically saved for new car: ${this.registrationNumber}`);
-      } else {
-        console.log(`ℹ️  No MOT history found in API response for ${this.registrationNumber}`);
-        // Don't add fake sample data - MOT will be fetched from DVLA in pre-save hook
-      }
-    } catch (error) {
-      console.error(`❌ MOT history API call failed for ${this.registrationNumber}:`, error.message);
-      
-      // Check if it's a daily limit error (403)
-      if (error.isDailyLimitError || error.details?.status === 403 || error.message.includes('daily limit')) {
-        console.log(`⏰ API daily limit exceeded - MOT will be fetched from DVLA instead`);
-      } else {
-        console.log(`🔧 API error - MOT will be fetched from DVLA for ${this.registrationNumber}`);
-      }
-      
-      // Don't add fake sample data - MOT will be fetched from DVLA in pre-save hook
-    }
-  }
-  
-  // Auto-fetch coordinates from postcode if missing (works for both new and updated cars)
-  if (this.postcode && (!this.latitude || !this.longitude || !this.locationName)) {
-    try {
-      const postcodeService = require('../services/postcodeService');
-      console.log(`📍 Fetching coordinates for postcode: ${this.postcode}`);
-      
-      const postcodeData = await postcodeService.lookupPostcode(this.postcode);
-      
-      this.latitude = postcodeData.latitude;
-      this.longitude = postcodeData.longitude;
-      this.locationName = postcodeData.locationName; // Set location name
-      this.location = {
-        type: 'Point',
-        coordinates: [postcodeData.longitude, postcodeData.latitude]
-      };
-      
-      // Also set city in sellerContact if not already set
-      if (!this.sellerContact) {
-        this.sellerContact = {};
-      }
-      if (!this.sellerContact.city) {
-        this.sellerContact.city = postcodeData.locationName;
-      }
-      
-      console.log(`✅ Coordinates and location set: ${this.latitude}, ${this.longitude} - ${this.locationName}`);
-    } catch (error) {
-      console.error(`⚠️  Could not fetch coordinates for postcode ${this.postcode}:`, error.message);
-      // Continue without coordinates
-    }
-  }
-  
-  // Ensure sellerContact.type is set (default to 'private' if missing)
-  if (this.sellerContact && !this.sellerContact.type) {
-    this.sellerContact.type = 'private';
-    console.log(`✅ Set default seller type to 'private'`);
-  }
-  
-  // Auto-fetch valuation and set PRIVATE sale price if missing or incorrect
-  if (this.isNew && this.registrationNumber && this.mileage) {
-    // Check if valuation is missing or price is not set correctly
-    const needsValuation = !this.valuation?.privatePrice || 
-                          !this.price || 
-                          this.price === 0 ||
-                          (this.valuation?.privatePrice && this.price !== this.valuation.privatePrice);
-    
-    if (needsValuation) {
-      try {
-        const ValuationService = require('../services/valuationService');
-        const valuationService = new ValuationService();
-        
-        console.log(`💰 Fetching valuation for: ${this.registrationNumber} (${this.mileage} miles)`);
-        
-        const valuation = await valuationService.getValuation(this.registrationNumber, this.mileage);
-        
-        // Store all valuation data
-        this.valuation = {
-          privatePrice: valuation.estimatedValue.private,
-          dealerPrice: valuation.estimatedValue.retail,
-          partExchangePrice: valuation.estimatedValue.trade,
-          confidence: valuation.confidence,
-          valuationDate: new Date()
-        };
-        
-        // Set price to PRIVATE sale price (for private sellers)
-        this.price = valuation.estimatedValue.private;
-        this.estimatedValue = valuation.estimatedValue.private;
-        
-        console.log(`✅ Valuation fetched and price set to £${this.price} (Private Sale)`);
-        console.log(`   Private: £${valuation.estimatedValue.private}, Retail: £${valuation.estimatedValue.retail}, Trade: £${valuation.estimatedValue.trade}`);
-      } catch (error) {
-        console.error(`⚠️  Could not fetch valuation for ${this.registrationNumber}:`, error.message);
-        // Continue without valuation - use existing price or default
-        if (!this.price || this.price === 0) {
-          console.warn(`⚠️  No price set and valuation failed - car may have incorrect price`);
-        }
-      }
-    } else {
-      console.log(`ℹ️  Valuation already exists for ${this.registrationNumber}: £${this.valuation.privatePrice}`);
-    }
-  }
-  
-  // Auto-set userId from seller contact email if missing
-  // Check on EVERY save (not just new cars) to ensure userId is always set
-  if (!this.userId && this.sellerContact?.email) {
-    try {
-      const User = require('./User');
-      console.log(`👤 Looking up user for email: ${this.sellerContact.email}`);
-      
-      const user = await User.findOne({ email: this.sellerContact.email });
-      
-      if (user) {
-        this.userId = user._id;
-        console.log(`✅ User ID set: ${this.userId} (from email: ${this.sellerContact.email})`);
-      } else {
-        console.log(`⚠️  No user found for email: ${this.sellerContact.email}`);
-        console.log(`⚠️  Car will be saved WITHOUT userId - it won't appear in My Listings!`);
-      }
-    } catch (error) {
-      console.error(`⚠️  Could not set userId:`, error.message);
-      // Continue without userId
-    }
-  } else if (!this.userId) {
-    console.warn(`⚠️  WARNING: Car being saved without userId and no email provided!`);
-    console.warn(`⚠️  This car will NOT appear in My Listings page!`);
-    console.warn(`⚠️  Car ID: ${this._id}, Registration: ${this.registrationNumber}`);
-  }
-  
-  // Auto-set publishedAt date for active cars
-  if (this.isNew && this.advertStatus === 'active' && !this.publishedAt) {
-    this.publishedAt = new Date();
-    console.log(`✅ Published date set: ${this.publishedAt}`);
-  }
-  
+  console.log(`✅ [Pre-Save] DONE — ${this.make} ${this.model} (${reg || 'no-reg'})`);
   next();
 });
 
-// Pre-remove hook to cleanup associated Vehicle History
+// ─── Pre-remove: cleanup VehicleHistory ─────────────────────────────────────
 carSchema.pre(['deleteOne', 'findOneAndDelete', 'findByIdAndDelete'], async function() {
   try {
-    console.log('🗑️ [Car Delete] Cleaning up associated data...');
-    
-    // Get the car document that's being deleted
     const car = await this.model.findOne(this.getQuery());
-    
     if (car && car.historyCheckId) {
       const VehicleHistory = require('./VehicleHistory');
-      
-      console.log(`🗑️ [Car Delete] Deleting Vehicle History: ${car.historyCheckId}`);
       await VehicleHistory.findByIdAndDelete(car.historyCheckId);
-      console.log('✅ [Car Delete] Vehicle History deleted successfully');
+      console.log(`🗑️  [Delete] Removed VehicleHistory ${car.historyCheckId}`);
     }
-    
-    if (car) {
-      console.log(`🗑️ [Car Delete] Cleanup complete for car: ${car.make} ${car.model} (${car.registrationNumber})`);
-    }
-    
-  } catch (error) {
-    console.error('❌ [Car Delete] Error during cleanup:', error);
-    // Don't throw error to prevent deletion from failing
+  } catch (err) {
+    console.error('❌ [Delete] Cleanup error:', err);
   }
 });
 
-// Static method for safe car deletion with cleanup
-carSchema.statics.deleteCarWithCleanup = async function(carId) {
-  try {
-    console.log(`🗑️ [Safe Delete] Starting deletion process for car: ${carId}`);
-    
-    // Find the car first
-    const car = await this.findById(carId);
-    if (!car) {
-      throw new Error('Car not found');
-    }
-    
-    console.log(`🗑️ [Safe Delete] Found car: ${car.make} ${car.model} (${car.registrationNumber})`);
-    
-    // Delete associated Vehicle History if exists
-    if (car.historyCheckId) {
-      const VehicleHistory = require('./VehicleHistory');
-      console.log(`🗑️ [Safe Delete] Deleting Vehicle History: ${car.historyCheckId}`);
-      await VehicleHistory.findByIdAndDelete(car.historyCheckId);
-      console.log('✅ [Safe Delete] Vehicle History deleted');
-    }
-    
-    // Delete the car
-    const result = await this.findByIdAndDelete(carId);
-    console.log('✅ [Safe Delete] Car deleted successfully');
-    
-    return {
-      success: true,
-      deletedCar: result,
-      message: 'Car and associated data deleted successfully'
-    };
-    
-  } catch (error) {
-    console.error('❌ [Safe Delete] Error:', error);
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-};
-
-// Instance method to add sample MOT data when API fails
-// DISABLED: This was generating fake future MOT dates
-// MOT data should come from DVLA API or CheckCarDetails API only
-/*
-carSchema.methods.addSampleMOTData = function() {
-  console.log(`🔧 Adding sample MOT data for ${this.registrationNumber}`);
-  
-  // Generate realistic sample MOT data based on car age
-  const currentYear = new Date().getFullYear();
-  const carAge = currentYear - this.year;
-  
-  // Generate MOT tests for the last few years
-  const sampleMOTData = [];
-  
-  for (let i = 0; i < Math.min(4, carAge - 2); i++) {
-    const testYear = currentYear - i;
-    const testMonth = Math.floor(Math.random() * 12) + 1; // Random month
-    const testDay = Math.floor(Math.random() * 28) + 1; // Random day
-    
-    const testDate = new Date(testYear, testMonth - 1, testDay);
-    const expiryDate = new Date(testYear + 1, testMonth - 1, testDay);
-    
-    // Most recent test should be PASSED, older ones can be mixed
-    const testResult = i === 0 ? 'PASSED' : (Math.random() > 0.2 ? 'PASSED' : 'FAILED');
-    
-    // Generate realistic mileage (increases with age)
-    const baseMileage = this.mileage || 50000;
-    const mileageReduction = i * 3000; // Reduce by ~3k miles per year back
-    const testMileage = Math.max(0, baseMileage - mileageReduction);
-    
-    const motTest = {
-      testDate: testDate,
-      testNumber: `${Math.floor(Math.random() * 900000000000) + 100000000000}`,
-      testResult: testResult,
-      expiryDate: testResult === 'PASSED' ? expiryDate : null,
-      odometerValue: testMileage,
-      odometerUnit: 'mi',
-      defects: this.generateSampleDefects(testResult),
-      advisoryText: this.generateSampleAdvisories(),
-      testClass: '4',
-      testType: 'Normal Test',
-      completedDate: testDate,
-      testStation: {
-        name: 'Sample MOT Station',
-        number: '12345',
-        address: '123 Test Street',
-        postcode: 'TE5T 1NG'
-      }
-    };
-    
-    sampleMOTData.push(motTest);
-  }
-  
-  // Sort by test date (most recent first)
-  sampleMOTData.sort((a, b) => b.testDate - a.testDate);
-  
-  // Set MOT history
-  this.motHistory = sampleMOTData;
-  
-  // Set MOT status based on latest test
-  if (sampleMOTData.length > 0) {
-    const latestTest = sampleMOTData[0];
-    this.motStatus = latestTest.testResult === 'PASSED' ? 'Valid' : 'Invalid';
-    this.motExpiry = latestTest.expiryDate;
-    this.motDue = latestTest.expiryDate;
-    
-    console.log(`✅ Sample MOT data added: ${sampleMOTData.length} tests, latest: ${latestTest.testResult}`);
-  }
-};
-*/
-
-// Instance method to generate sample defects
-// DISABLED: Part of fake MOT data generation
-/*
-carSchema.methods.generateSampleDefects = function(testResult) {
-  const defects = [];
-  
-  if (testResult === 'FAILED') {
-    // Add a failure reason
-    defects.push({
-      type: 'FAIL',
-      text: 'Nearside headlamp not working (4.1.1 (a) (ii))',
-      dangerous: false
-    });
-  }
-  
-  // Add some random advisories
-  const advisories = [
-    'Nearside front tyre worn close to legal limit (5.2.3 (e))',
-    'Offside rear brake disc worn, pitted or scored, but not seriously weakened (1.1.14 (a) (ii))',
-    'Brake disc worn, pitted or scored, but not seriously weakened (1.1.14 (a) (ii))',
-    'Offside front tyre worn close to legal limit (5.2.3 (e))',
-    'Nearside rear suspension component mounting prescribed area is corroded but not considered excessive (5.3.6 (a) (i))'
-  ];
-  
-  // Add 0-2 random advisories
-  const numAdvisories = Math.floor(Math.random() * 3);
-  for (let i = 0; i < numAdvisories; i++) {
-    const randomAdvisory = advisories[Math.floor(Math.random() * advisories.length)];
-    defects.push({
-      type: 'ADVISORY',
-      text: randomAdvisory,
-      dangerous: false
-    });
-  }
-  
-  return defects;
-};
-*/
-
-// Instance method to generate sample advisories
-// DISABLED: Part of fake MOT data generation
-/*
-carSchema.methods.generateSampleAdvisories = function() {
-  const advisories = [
-    'Nearside front tyre worn close to legal limit (5.2.3 (e))',
-    'Offside rear brake disc worn, pitted or scored, but not seriously weakened (1.1.14 (a) (ii))',
-    'Brake disc worn, pitted or scored, but not seriously weakened (1.1.14 (a) (ii))'
-  ];
-  
-  // Return 0-2 random advisories
-  const numAdvisories = Math.floor(Math.random() * 3);
-  const selectedAdvisories = [];
-  
-  for (let i = 0; i < numAdvisories; i++) {
-    const randomAdvisory = advisories[Math.floor(Math.random() * advisories.length)];
-    if (!selectedAdvisories.includes(randomAdvisory)) {
-      selectedAdvisories.push(randomAdvisory);
-    }
-  }
-  
-  return selectedAdvisories;
-};
-*/
-
-// Pre-save hook to ensure MOT due date is always set from MOT history
-carSchema.pre('save', function(next) {
-  try {
-    // If MOT history exists but motDue/motExpiry is missing, set it from latest test
-    if (this.motHistory && this.motHistory.length > 0) {
-      const latestTest = this.motHistory[0];
-      
-      if (latestTest && latestTest.expiryDate) {
-        // Set both motDue and motExpiry if they're missing
-        if (!this.motDue) {
-          this.motDue = latestTest.expiryDate;
-        }
-        if (!this.motExpiry) {
-          this.motExpiry = latestTest.expiryDate;
-        }
-        // Update MOT status if missing
-        if (!this.motStatus) {
-          this.motStatus = latestTest.testResult === 'PASSED' ? 'Valid' : 'Invalid';
-        }
-      }
-    }
-    
-    next();
-  } catch (error) {
-    console.error('❌ Error in MOT due date pre-save hook:', error);
-    // Don't fail the save operation
-    next();
-  }
-});
-
-// Pre-save hook to automatically enhance electric vehicles AND plug-in hybrids
-carSchema.pre('save', async function(next) {
-  try {
-    // Check if this is an electric vehicle OR plug-in hybrid
-    const isElectricOrPluginHybrid = this.fuelType === 'Electric' || 
-                                      this.fuelType === 'Plug-in Hybrid' ||
-                                      this.fuelType === 'Petrol Plug-in Hybrid' ||
-                                      this.fuelType === 'Diesel Plug-in Hybrid';
-    
-    // Only enhance if it's electric/PHEV and it's a new document or fuelType changed
-    if (isElectricOrPluginHybrid && (this.isNew || this.isModified('fuelType'))) {
-      console.log(`🔋 Auto-enhancing electric/hybrid vehicle: ${this.make} ${this.model} ${this.variant}`);
-      console.log(`   Fuel Type: ${this.fuelType}`);
-      
-      // Import services (dynamic import to avoid circular dependencies)
-      const ElectricVehicleEnhancementService = require('../services/electricVehicleEnhancementService');
-      const AutoDataPopulationService = require('../services/autoDataPopulationService');
-      
-      // Convert document to plain object for enhancement
-      const vehicleData = this.toObject();
-      
-      // Enhance with comprehensive electric vehicle data
-      const enhancedData = ElectricVehicleEnhancementService.enhanceWithEVData(vehicleData);
-      const fullyEnhancedData = AutoDataPopulationService.populateMissingData(enhancedData);
-      
-      // Apply enhanced data back to the document
-      Object.keys(fullyEnhancedData).forEach(key => {
-        if (key !== '_id' && key !== '__v') {
-          this[key] = fullyEnhancedData[key];
-        }
-      });
-      
-      console.log(`✅ Auto-enhanced EV/PHEV: ${this.electricRange || this.runningCosts?.electricRange}mi range, ${this.batteryCapacity || this.runningCosts?.batteryCapacity}kWh battery`);
-    }
-    
-    // CRITICAL: For plug-in hybrids, DON'T remove electric data
-    // Only remove electric data for pure petrol/diesel (NOT hybrids)
-    const isPureNonElectric = this.fuelType === 'Petrol' || this.fuelType === 'Diesel';
-    
-    if (isPureNonElectric && (this.batteryCapacity || this.electricRange)) {
-      console.log(`⚠️  Removing electric data from pure ${this.fuelType} vehicle`);
-      this.batteryCapacity = null;
-      this.electricRange = null;
-      this.homeChargingSpeed = null;
-      this.rapidChargingSpeed = null;
-      this.chargingPortType = null;
-      this.electricMotorPower = null;
-      this.electricMotorTorque = null;
-    }
-    
-    next();
-  } catch (error) {
-    console.error('❌ Error in electric vehicle pre-save hook:', error);
-    // Don't fail the save operation, just log the error
-    next();
-  }
-});
-
-// Post-save hook to log successful electric vehicle saves
+// ─── Post-save: EV logging only ─────────────────────────────────────────────
 carSchema.post('save', function(doc) {
   if (doc.fuelType === 'Electric') {
-    console.log(`🎉 Electric vehicle saved successfully: ${doc.make} ${doc.model} (${doc.registrationNumber})`);
-    console.log(`   - Range: ${doc.electricRange || doc.runningCosts?.electricRange || 'N/A'} miles`);
-    console.log(`   - Battery: ${doc.batteryCapacity || doc.runningCosts?.batteryCapacity || 'N/A'} kWh`);
-    console.log(`   - Features: ${doc.features?.length || 0} features added`);
+    console.log(`🎉 [Post-Save] EV saved: ${doc.make} ${doc.model} (${doc.registrationNumber})`);
+    console.log(`   Range: ${doc.electricRange || doc.runningCosts?.electricRange || 'N/A'}mi`);
+    console.log(`   Battery: ${doc.batteryCapacity || doc.runningCosts?.batteryCapacity || 'N/A'}kWh`);
+    console.log(`   Features: ${doc.features?.length || 0}`);
   }
 });
 
-// CRITICAL: Auto-complete missing car data after save
-// This ensures ALL cars have complete data (running costs, MOT, vehicle history, etc.)
-// TEMPORARILY DISABLED TO FIX INFINITE LOOP
-carSchema.post('save', async function(doc) {
+// ─── Post-save: auto-complete DISABLED (infinite loop risk) ─────────────────
+// To safely re-enable: use Car.updateOne({_id: doc._id}, {$set: fields})
+// instead of doc.save() inside universalAutoCompleteService.
+// updateOne() bypasses mongoose hooks entirely and breaks the loop.
+//
+// carSchema.post('save', async function(doc) { ... });
+
+// ─── Static: safe delete with cleanup ───────────────────────────────────────
+carSchema.statics.deleteCarWithCleanup = async function(carId) {
   try {
-    // DISABLED - Causing infinite loop
-    // Will re-enable after fixing needsCompletion logic
-    return;
-    
-    // Skip if no registration number (manual entries)
-    if (!doc.registrationNumber) {
-      return;
+    const car = await this.findById(carId);
+    if (!car) throw new Error('Car not found');
+    if (car.historyCheckId) {
+      const VehicleHistory = require('./VehicleHistory');
+      await VehicleHistory.findByIdAndDelete(car.historyCheckId);
     }
-    
-    // Skip if this is a draft that was just created (give user time to add data)
-    const isNewDraft = doc.advertStatus === 'draft' && 
-                       (new Date() - doc.createdAt) < 60000; // Less than 1 minute old
-    
-    if (isNewDraft) {
-      console.log(`\n⏸️  [Auto-Complete] Skipping new draft: ${doc.registrationNumber} (waiting for user input)`);
-      return;
-    }
-    
-    console.log(`\n🤖 [Universal Auto-Complete] Triggered for: ${doc.registrationNumber}`);
-    console.log(`   Status: ${doc.advertStatus}`);
-    
-    const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');
-    const universalService = new UniversalAutoCompleteService();
-    
-    // Check if car needs completion
-    if (universalService.needsCompletion(doc)) {
-      console.log(`   📋 Car needs data completion - running universal service...`);
-      
-      // Run asynchronously to avoid blocking the save operation
-      setImmediate(async () => {
-        try {
-          await universalService.completeCarData(doc, false); // Don't force refresh if recently completed
-          console.log(`   ✅ Universal auto-complete finished for: ${doc.registrationNumber}`);
-        } catch (error) {
-          console.error(`   ❌ Universal auto-complete failed for ${doc.registrationNumber}:`, error.message);
-          // Don't throw - we don't want to break the save operation
-        }
-      });
-    } else {
-      console.log(`   ✅ Car already has complete data`);
-    }
-  } catch (error) {
-    console.error('❌ Universal auto-complete middleware error:', error);
-    // Don't throw - we don't want to break the save operation
+    await this.findByIdAndDelete(carId);
+    return { success: true, message: 'Car and associated data deleted successfully' };
+  } catch (err) {
+    console.error('❌ [deleteCarWithCleanup]', err);
+    return { success: false, error: err.message };
   }
-});
+};
 
 module.exports = mongoose.model('Car', carSchema);

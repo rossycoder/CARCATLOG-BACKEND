@@ -193,7 +193,7 @@ class ExpirationService {
         <body>
           <div class="container">
             <div class="logo-header">
-              <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+              <span style="font-family: Arial, sans-serif; font-size: 22px; font-weight: bold; color: #333; letter-spacing: -0.5px;"><span style="color: #dc3545;">Car</span><span style="color: #0066cc;">Cat</span><span style="color: #ff9800;">alog</span></span>
             </div>
             <div class="header">
               <h1 style="margin: 0;">📋 Your Listing Has Been Saved as Draft</h1>
@@ -324,7 +324,7 @@ The CarCatalog Team`;
         <body>
           <div class="container">
             <div class="logo-header">
-              <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+              <span style="font-family: Arial, sans-serif; font-size: 22px; font-weight: bold; color: #333; letter-spacing: -0.5px;"><span style="color: #dc3545;">Car</span><span style="color: #0066cc;">Cat</span><span style="color: #ff9800;">alog</span></span>
             </div>
             <div class="header">
               <h1 style="margin: 0;">⏰ Your Listing is Expiring Soon</h1>

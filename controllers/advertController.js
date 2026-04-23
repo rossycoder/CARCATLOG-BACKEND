@@ -24,6 +24,26 @@ const createAdvert = async (req, res) => {
     
     const advertId = uuidv4();
     console.log(`📝 Creating advert: ${advertId}`);
+
+    // CRITICAL: Check for existing car with same registration
+    const registration = vehicleData.registration || vehicleData.registrationNumber;
+    if (registration) {
+      const cleanReg = registration.toUpperCase().replace(/\s/g, '');
+      const existing = await Car.findOne({ registrationNumber: cleanReg });
+      if (existing) {
+        console.log(`⚠️ [createAdvert] Car already exists for ${cleanReg} — returning existing advertId`);
+        return res.status(200).json({
+          success: true,
+          data: {
+            id: existing.advertId,
+            vehicleData: { ...vehicleData, estimatedValue: existing.price },
+            advertData: { price: existing.price, description: existing.description || '', photos: existing.images || [] },
+            status: existing.advertStatus,
+            createdAt: existing.createdAt
+          }
+        });
+      }
+    }
     
     // Calculate price with fallback
     let estimatedPrice = 10000;
@@ -110,8 +130,7 @@ const createAdvert = async (req, res) => {
       doors: parseInt(carDataToSave.doors) || undefined,
       seats: parseInt(carDataToSave.seats) || undefined,
       dataSource: carDataToSave.registration ? 'DVLA' : 'manual',
-      advertStatus: 'active',
-      publishedAt: new Date(),
+      advertStatus: 'pending_payment',
       condition: 'used',
       postcode: carDataToSave.postcode || undefined,
       // Electric vehicle fields (if applicable)
@@ -193,17 +212,7 @@ const createAdvert = async (req, res) => {
       }
     }
     
-    // CRITICAL: Skip API calls in pre-save hooks to avoid duplicate calls
-    // Data is already being fetched by vehicleController or will be fetched later
-    car._skipAPICallsInHooks = true;
-    
-    await car.save(); // Pre-save hook will automatically fetch variant if missing
-    
-    console.log(`✅ Car saved with final variant: "${car.variant}"`);
-    console.log(`✅ Car saved with displayTitle: "${car.displayTitle}"`);
-    console.log(`✅ Car saved: ${advertId}`);
-    
-    // CRITICAL: Sync MOT data from VehicleHistory to Car model after car is saved
+    // CRITICAL: Sync MOT data from VehicleHistory BEFORE saving (single save)
     if (car.registrationNumber) {
       try {
         const VehicleHistory = require('../models/VehicleHistory');
@@ -242,10 +251,7 @@ const createAdvert = async (req, res) => {
             car.motExpiry = history.motExpiryDate;
           }
           
-          car.$locals.skipPreSave = true;
-          await car.save();
-          
-          console.log(`✅ MOT data synced: ${normalizedMotHistory.length} tests, Due: ${car.motDue ? new Date(car.motDue).toDateString() : 'NOT SET'}`);
+          console.log(`✅ MOT data prepared: ${normalizedMotHistory.length} tests`);
         } else {
           console.log(`⚠️  No MOT history found in VehicleHistory for ${car.registrationNumber}`);
         }
@@ -254,6 +260,16 @@ const createAdvert = async (req, res) => {
         // Don't fail the request - continue without MOT data
       }
     }
+    
+    // SINGLE SAVE - with all data (variant + MOT)
+    // Skip DVLA API in pre-save hook (data already fetched by vehicleController)
+    car.$locals.skipPreSave = true;
+    await car.save();
+    
+    console.log(`✅ Car saved with final variant: "${car.variant}"`);
+    console.log(`✅ Car saved with displayTitle: "${car.displayTitle}"`);
+    console.log(`✅ Car saved with MOT: ${car.motHistory?.length || 0} tests`);
+    console.log(`✅ Car saved: ${advertId}`);
     
     res.status(201).json({
       success: true,

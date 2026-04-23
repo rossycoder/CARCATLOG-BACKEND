@@ -156,7 +156,7 @@ class EmailService {
       <body>
         <div class="container">
           <div class="logo-header">
-            <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+            <span style="font-family: Arial, sans-serif; font-size: 22px; font-weight: bold; color: #333; letter-spacing: -0.5px;"><span style="color: #dc3545;">Car</span><span style="color: #0066cc;">Cat</span><span style="color: #ff9800;">alog</span></span>
           </div>
           <div class="header">
             <h1>✅ Payment Confirmed!</h1>
@@ -335,7 +335,7 @@ This is an automated email. Please do not reply to this message.
         <body>
           <div class="container">
             <div class="logo-header">
-              <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+              <span style="font-family: Arial, sans-serif; font-size: 22px; font-weight: bold; color: #333; letter-spacing: -0.5px;"><span style="color: #dc3545;">Car</span><span style="color: #0066cc;">Cat</span><span style="color: #ff9800;">alog</span></span>
             </div>
             <div class="header">
               <h1>⏰ Subscription Renewal Reminder</h1>
@@ -455,7 +455,7 @@ The CarCatalog Team
         <body>
           <div class="container">
             <div class="logo-header">
-              <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+              <span style="font-family: Arial, sans-serif; font-size: 22px; font-weight: bold; color: #333; letter-spacing: -0.5px;"><span style="color: #dc3545;">Car</span><span style="color: #0066cc;">Cat</span><span style="color: #ff9800;">alog</span></span>
             </div>
             <div class="header">
               <h1>✅ Subscription Renewed!</h1>
@@ -566,7 +566,7 @@ The CarCatalog Team
         <body>
           <div class="container">
             <div class="logo-header">
-              <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+              <span style="font-family: Arial, sans-serif; font-size: 22px; font-weight: bold; color: #333; letter-spacing: -0.5px;"><span style="color: #dc3545;">Car</span><span style="color: #0066cc;">Cat</span><span style="color: #ff9800;">alog</span></span>
             </div>
             <div class="header">
               <h1>⚠️ Payment Failed</h1>
@@ -683,7 +683,7 @@ The CarCatalog Team
         <body>
           <div class="container">
             <div class="logo-header">
-              <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+              <span style="font-family: Arial, sans-serif; font-size: 22px; font-weight: bold; color: #333; letter-spacing: -0.5px;"><span style="color: #dc3545;">Car</span><span style="color: #0066cc;">Cat</span><span style="color: #ff9800;">alog</span></span>
             </div>
             <div class="header">
               <h1>Subscription Expired</h1>

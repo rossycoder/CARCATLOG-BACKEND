@@ -295,19 +295,14 @@ const vehicleHistorySchema = new mongoose.Schema({
     default: false,
   },
   financeDetails: {
-    amount: {
-      type: Number,
-      default: 0,
-    },
-    lender: {
-      type: String,
-      default: 'Unknown',
-    },
-    type: {
-      type: String,
-      enum: ['hp', 'pcp', 'lease', 'loan', 'unknown'],
-      default: 'unknown',
-    },
+    amount: { type: Number, default: 0 },
+    lender: { type: String, default: 'Unknown' },
+    type:   { type: String, enum: ['hp', 'pcp', 'lease', 'loan', 'unknown'], default: 'unknown' },
+    agreementNumber:    { type: String },
+    startDate:          { type: Date },
+    term:               { type: String },
+    contactNumber:      { type: String },
+    vehicleDescription: { type: String },
   },
   checkStatus: {
     type: String,

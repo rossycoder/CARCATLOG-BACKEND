@@ -6,6 +6,12 @@ const vehicleHistoryController = require('../controllers/vehicleHistoryControlle
 // GET /api/vehicle-history/cached/:vrm - Get cached history (no API calls)
 router.get('/cached/:vrm', vehicleHistoryController.getCachedVehicleHistory);
 
+// GET /api/vehicle-history/mot-cached/:vrm - Get cached MOT history from DB (no API call)
+router.get('/mot-cached/:vrm', vehicleHistoryController.getCachedMOTHistory);
+
+// POST /api/vehicle-history/complete-check - Run history + MOT once, cache and return all data
+router.post('/complete-check', vehicleHistoryController.completeVehicleCheck);
+
 // POST /api/vehicle-history/check - Perform new history check (admin only)
 router.post('/check', historyController.checkVehicleHistory);
 
