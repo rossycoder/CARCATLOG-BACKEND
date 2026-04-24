@@ -80,7 +80,7 @@ const carSchema = new mongoose.Schema({
     coordinates: { type: [Number], index: '2dsphere' }
   },
   condition: { type: String, enum: ['new', 'used'], default: 'used' },
-  vehicleType: { type: String, enum: ['car', 'bike', 'van'], default: 'car', index: true },
+  vehicleType: { type: String, enum: ['car', 'bike', 'van'], default: 'car' },
   engineCC: { type: Number, min: 0 },
   bikeType: {
     type: String,
@@ -147,7 +147,7 @@ const carSchema = new mongoose.Schema({
     stripePaymentIntentId: String
   },
   dealerId: { type: mongoose.Schema.Types.ObjectId, ref: 'TradeDealer', index: true },
-  isDealerListing: { type: Boolean, default: false, index: true },
+  isDealerListing: { type: Boolean, default: false },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
   viewCount: { type: Number, default: 0, min: 0 },
   uniqueViewCount: { type: Number, default: 0, min: 0 },
@@ -364,6 +364,20 @@ function normalizeMakeModel(doc) {
   // Body type capitalization
   if (doc.bodyType) {
     doc.bodyType = doc.bodyType.charAt(0).toUpperCase() + doc.bodyType.slice(1).toLowerCase();
+  }
+
+  // UNIVERSAL SWAP FIX: If model starts with variant + space, they are swapped
+  // e.g. model="FIESTA ZETEC CLIMATE", variant="Fiesta" → model="Fiesta", variant="ZETEC CLIMATE"
+  // e.g. model="TRAFIC LL29 BUSINESS + DCI", variant="Trafic" → model="Trafic", variant="LL29 BUSINESS + DCI"
+  if (doc.model && doc.variant) {
+    const mUp = doc.model.toUpperCase().trim();
+    const vUp = doc.variant.toUpperCase().trim();
+    if (mUp.startsWith(vUp + ' ')) {
+      const trueVariant = doc.model.substring(doc.variant.length).trim();
+      console.log(`🔄 [Car pre-save] Swap fixed: model="${doc.variant}" variant="${trueVariant}"`);
+      doc.model = doc.variant;
+      doc.variant = trueVariant || null;
+    }
   }
 }
 

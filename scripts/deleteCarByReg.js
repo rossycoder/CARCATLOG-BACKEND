@@ -4,7 +4,7 @@ const Car = require('../models/Car');
 const VehicleHistory = require('../models/VehicleHistory');
 const APICallLog = require('../models/APICallLog');
 
-const REG = 'MA57LDL';
+const REG = 'LK68AZZ';
 
 async function deleteCarByReg() {
   await mongoose.connect(process.env.MONGODB_URI);

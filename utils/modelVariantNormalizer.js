@@ -86,8 +86,11 @@ function isLikelySwapped(model, variant, make) {
   // Model is suspiciously long (> 30 chars) - definitely swapped
   if (modelLength > 30) return true;
   
-  // Model is moderately long (> 20 chars) AND variant is very short (< 8 chars) - likely swapped
-  if (modelLength > 20 && variantLength > 0 && variantLength < 8) return true;
+  // Model is moderately long (>= 15 chars) AND variant is shorter - likely swapped
+  if (modelLength >= 15 && variantLength > 0 && variantLength < modelLength) return true;
+  
+  // model starts with variant (e.g. model="FIESTA ZETEC CLIMATE", variant="Fiesta")
+  if (variant && model.toUpperCase().startsWith(variant.toUpperCase() + ' ')) return true;
   
   return false;
 }
@@ -107,6 +110,13 @@ function normalizeModelVariant(model, variant, make) {
   
   // Check if likely swapped
   if (isLikelySwapped(model, variant, make)) {
+    // Special case: model starts with variant (e.g. "FIESTA ZETEC CLIMATE" starts with "Fiesta")
+    if (variant && model.toUpperCase().startsWith(variant.toUpperCase() + ' ')) {
+      const trueVariant = model.substring(variant.length).trim();
+      console.log(`[Model/Variant Normalizer] Starts-with swap: Model="${model}" → "${variant}", Variant="${trueVariant}"`);
+      return { model: variant, variant: trueVariant, wasSwapped: true };
+    }
+
     // Try to extract short model from the long model string
     const shortModel = extractShortModel(model, make);
     

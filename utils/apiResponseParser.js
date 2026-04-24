@@ -191,9 +191,10 @@ function parseCheckCarDetailsResponse(data) {
   // CRITICAL: For bikes, make/model often in VehicleRegistration instead of ModelData
   // Also handle empty strings as null
   const extractedMake = vehicleId.DvlaMake || modelData.Make || vehicleReg.Make || smmtDetails.Marque || null;
-  const extractedModel = modelData.Model || modelData.ModelVariant || vehicleReg.Model || 
+  // model: use base model name only - ModelVariant is the trim level, not the model name
+  const extractedModel = modelData.Model || vehicleReg.Model || 
                         (vehicleId.DvlaModel && vehicleId.DvlaModel.trim() !== '' ? vehicleId.DvlaModel : null) || 
-                        smmtDetails.ModelVariant || null;
+                        smmtDetails.Model || null;
   
   console.log('🔍 [Parser] EXTRACTED make:', extractedMake);
   console.log('🔍 [Parser] EXTRACTED model:', extractedModel);
@@ -205,7 +206,8 @@ function parseCheckCarDetailsResponse(data) {
     // ModelVariant contains base model (e.g., "500")
     // For bikes: Try Model first, then ModelVariant, then DvlaModel, then VehicleReg.Model
     model: extractedModel || 'Unknown', // Default to 'Unknown' if no model found
-    variant: vehicleId.DvlaModel || modelData.Range || smmtDetails.Range || vehicleReg.Model || null,
+    // variant: use ModelVariant (trim/spec level) first, DvlaModel is the full model string not the variant
+    variant: modelData.ModelVariant || smmtDetails.ModelVariant || smmtDetails.Range || modelData.Range || vehicleId.DvlaModel || null,
     year: extractNumber(vehicleId.YearOfManufacture),
     fuelType: normalizeFuelType(modelData.FuelType || vehicleId.DvlaFuelType),
     transmission: normalizeTransmission(transmission.TransmissionType || smmtDetails.Transmission),

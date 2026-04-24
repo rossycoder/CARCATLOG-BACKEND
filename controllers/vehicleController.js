@@ -8,6 +8,7 @@ const ElectricVehicleEnhancementService = require('../services/electricVehicleEn
 const AutoDataPopulationService = require('../services/autoDataPopulationService');
 const UniversalAutoCompleteService = require('../services/universalAutoCompleteService');
 const { normalizeMake } = require('../utils/makeNormalizer');
+const { normalizeModelVariant } = require('../utils/modelVariantNormalizer');
 
 // Initialize services
 const historyService = new HistoryService();
@@ -235,6 +236,17 @@ class VehicleController {
           if (cached.motHistory) carData.motHistory = cached.motHistory;
           if (cached.runningCosts) carData.runningCosts = cached.runningCosts;
           
+          // SWAP DETECTION: Fix model/variant if they're swapped (cached data may have old wrong values)
+          // If model starts with variant + space, they're swapped (e.g. model="FIESTA ZETEC CLIMATE", variant="Fiesta")
+          if (carData.model && carData.variant) {
+            const { model: nm, variant: nv, wasSwapped } = normalizeModelVariant(carData.model, carData.variant, carData.make);
+            if (wasSwapped) {
+              console.log(`🔄 [Cache] Model/variant swap fixed: model="${nm}", variant="${nv}"`);
+              carData.model = nm;
+              carData.variant = nv;
+            }
+          }
+
           console.log(`✅ Cached data applied to vehicle`);
         }
       } else {
@@ -352,6 +364,17 @@ class VehicleController {
       // Step 5: Create Car record
       // CRITICAL: Normalize make to AutoTrader format
       carData.make = normalizeMake(carData.make);
+
+      // CRITICAL: Normalize model/variant swap (e.g. model="FIESTA ZETEC CLIMATE", variant="Fiesta")
+      if (carData.model) {
+        const { model: nm, variant: nv, wasSwapped } = normalizeModelVariant(carData.model, carData.variant, carData.make);
+        if (wasSwapped) {
+          console.log(`🔄 [Vehicle Controller] Model/variant swap fixed: model="${nm}", variant="${nv}"`);
+          carData.model = nm;
+          carData.variant = nv;
+        }
+      }
+
       const car = new Car(carData);
 
       // CRITICAL: Normalize model/variant BEFORE saving

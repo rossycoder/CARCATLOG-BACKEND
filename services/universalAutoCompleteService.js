@@ -969,6 +969,21 @@ class UniversalAutoCompleteService {
       parsed.variant = specs.SmmtDetails?.Variant || 
                       specs.ModelData?.ModelVariant || 
                       null;
+
+      // SWAP DETECTION: Some APIs return model=full trim, variant=base name (e.g. Ford Fiesta)
+      // If variant is a single word and model starts with that word (case-insensitive), they're swapped
+      if (parsed.model && parsed.variant) {
+        const modelUpper = parsed.model.toUpperCase().trim();
+        const variantUpper = parsed.variant.toUpperCase().trim();
+        // Swap if: model starts with variant + space (variant is the base, model is base+trim)
+        if (modelUpper.startsWith(variantUpper + ' ')) {
+          console.log(`🔄 [AutoComplete] Swap detected: model="${parsed.model}" ↔ variant="${parsed.variant}"`);
+          const trueVariant = parsed.model.substring(parsed.variant.length).trim();
+          parsed.model = parsed.variant;
+          parsed.variant = trueVariant || null;
+        }
+      }
+
       parsed.year = specs.VehicleIdentification?.YearOfManufacture;
       
       // Simple approach: Use API fuel type with Vehicle Specs for accurate detection
