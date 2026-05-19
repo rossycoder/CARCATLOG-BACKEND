@@ -129,33 +129,7 @@ function parseCheckCarDetailsResponse(data) {
   const emissions = dataItems.Emissions || {};
   const smmtDetails = dataItems.SmmtDetails || {};
   
-  // CRITICAL: Log ALL available fields to debug bike model issue
-  
-  // CRITICAL: Log ALL available fields to debug bike model issue
-  
-  // Log actual values for debugging
-    DvlaMake: vehicleId.DvlaMake,
-    DvlaModel: vehicleId.DvlaModel,
-    Make: vehicleId.Make,
-    Model: vehicleId.Model,
-    Manufacturer: vehicleId.Manufacturer
-  }));
-    Make: vehicleReg.Make,
-    Model: vehicleReg.Model,
-    MakeModel: vehicleReg.MakeModel,
-    Manufacturer: vehicleReg.Manufacturer
-  }));
-    Make: modelData.Make,
-    Model: modelData.Model,
-    ModelVariant: modelData.ModelVariant,
-    Range: modelData.Range
-  }));
-    Marque: smmtDetails.Marque,
-    Model: smmtDetails.Model,
-    ModelVariant: smmtDetails.ModelVariant,
-    Range: smmtDetails.Range,
-    Series: smmtDetails.Series
-  }));
+
   
 
   // CRITICAL: For bikes, make/model often in VehicleRegistration instead of ModelData
