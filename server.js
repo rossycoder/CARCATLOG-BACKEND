@@ -35,6 +35,8 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://127.0.0.1:3000',
+  'https://carcatalog.co.uk',
+  'https://www.carcatalog.co.uk',
   'https://carcatlog.vercel.app',
   'https://carcatlog-git-main-rozeenas-projects.vercel.app',
   'https://carcatlog-frontend.onrender.com',
