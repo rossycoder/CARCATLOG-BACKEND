@@ -47,8 +47,7 @@ class StripeSubscriptionService {
       }
 
       // Create checkout session
-      // Force localhost:3000 for development
-      const frontendUrl = 'http://localhost:3000';
+      const frontendUrl = process.env.FRONTEND_URL || 'https://carcatalog.co.uk';
       
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
