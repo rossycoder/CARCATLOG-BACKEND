@@ -50,7 +50,7 @@ const register = async (req, res) => {
       // Set a timeout for email sending to prevent hanging
       await Promise.race([
         sendEmail(user.email, emailContent.subject, emailContent.text, emailContent.html),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Email timeout')), 5000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Email timeout')), 10000))
       ]);
     } catch (emailError) {
       console.error('Failed to send verification email:', emailError);
@@ -141,7 +141,7 @@ const login = async (req, res) => {
       // Set a timeout for email sending to prevent hanging
       await Promise.race([
         sendEmail(user.email, emailContent.subject, emailContent.text, emailContent.html),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Email timeout')), 5000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Email timeout')), 10000))
       ]);
     } catch (emailError) {
       console.error('Failed to send login notification:', emailError);
@@ -307,7 +307,7 @@ const verifyEmail = async (req, res) => {
       const emailContent = welcomeEmail(user.name, user.email);
       await Promise.race([
         sendEmail(user.email, emailContent.subject, emailContent.text, emailContent.html),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Email timeout')), 5000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Email timeout')), 10000))
       ]);
     } catch (emailError) {
       console.error('Failed to send welcome email:', emailError);
@@ -571,3 +571,4 @@ module.exports = {
   forgotPassword,
   resetPassword
 };
+

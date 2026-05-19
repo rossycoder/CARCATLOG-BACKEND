@@ -9,10 +9,12 @@ const connectDB = async () => {
       socketTimeoutMS: 45000,
       serverSelectionTimeoutMS: 10000,
       
-      // TLS/SSL settings
-      tls: true,
-      tlsAllowInvalidCertificates: false,
-      tlsAllowInvalidHostnames: false,
+      // TLS/SSL settings - only for Atlas (not localhost)
+      ...(process.env.MONGODB_URI && !process.env.MONGODB_URI.includes('localhost') ? {
+        tls: true,
+        tlsAllowInvalidCertificates: false,
+        tlsAllowInvalidHostnames: false,
+      } : {}),
       
       // Retry settings
       retryWrites: true,

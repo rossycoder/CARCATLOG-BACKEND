@@ -247,7 +247,6 @@ carSchema.index({ price: 1 });
 carSchema.index({ location: '2dsphere' });
 carSchema.index({ condition: 1 });
 carSchema.index({ fuelType: 1 });
-carSchema.index({ registrationNumber: 1 });
 carSchema.index({ historyCheckStatus: 1 });
 carSchema.index({ dealerId: 1, advertStatus: 1 });
 carSchema.index({ isDealerListing: 1 });
