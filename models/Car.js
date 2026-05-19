@@ -392,7 +392,7 @@ function clearEVFieldsIfNeeded(doc) {
       if (doc[f]) { doc[f] = null; cleared = true; }
       if (doc.runningCosts && doc.runningCosts[f]) { doc.runningCosts[f] = null; cleared = true; }
     });
-    if (cleared)  }
+  }
 
   const isPureICE = doc.fuelType === 'Petrol' || doc.fuelType === 'Diesel';
   if (isPureICE && (doc.batteryCapacity || doc.electricRange)) {
@@ -584,7 +584,10 @@ carSchema.pre('save', async function(next) {
     // ── STEP 9: displayTitle ────────────────────────────────────────────────
     if (!this.displayTitle) {
       this.displayTitle = buildDisplayTitle(this);
-      if (this.displayTitle)    }
+      if (this.displayTitle) {
+        // displayTitle set successfully
+      }
+    }
 
     // ── STEP 10: EV / hybrid field cleanup ──────────────────────────────────
     clearEVFieldsIfNeeded(this);

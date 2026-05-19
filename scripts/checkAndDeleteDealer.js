@@ -39,4 +39,27 @@ async function checkAndDeleteDealer(email) {
             console.log(`Trial End: ${subscription.trialEnd}`);
             console.log(`Stripe ID: ${subscription.stripeSubscriptionId}`);
             
-            // Delete subsc
+            // Delete subscription
+            await TradeSubscription.deleteOne({ _id: subscription._id });
+            console.log('✅ Subscription deleted');
+        }
+        
+        // Delete the dealer
+        await TradeDealer.deleteOne({ _id: dealer._id });
+        console.log('✅ Dealer deleted');
+        
+    } catch (error) {
+        console.error('❌ Error:', error.message);
+    } finally {
+        await mongoose.disconnect();
+        console.log('✅ Disconnected from database');
+    }
+}
+
+const email = process.argv[2];
+if (!email) {
+    console.log('Usage: node checkAndDeleteDealer.js <email>');
+    process.exit(1);
+}
+
+checkAndDeleteDealer(email);

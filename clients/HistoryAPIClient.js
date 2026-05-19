@@ -297,11 +297,6 @@ class HistoryAPIClient {
       numberOfPreviousKeepers = parseInt(data.PreviousKeepers) || 0;
     }
     
-      raw: vehicleHistory.NumberOfPreviousKeepers,
-      parsed: numberOfPreviousKeepers,
-      vehicleHistory: vehicleHistory
-    });
-    
     // Extract make and model - try multiple possible field names
     let make = 'Unknown';
     let model = 'Unknown';
@@ -333,13 +328,6 @@ class HistoryAPIClient {
     } else if (data.ModelLiteral) {
       model = data.ModelLiteral;
     }
-    
-      makeRaw: vehicleReg.Make,
-      modelRaw: vehicleReg.Model,
-      makeParsed: make,
-      modelParsed: model,
-      allVehicleRegFields: Object.keys(vehicleReg)
-    });
     
     return {
       vrm: vehicleReg.Vrm || vehicleReg.PreviousVrmGb || data.vrm,

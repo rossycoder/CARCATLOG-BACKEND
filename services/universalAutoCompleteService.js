@@ -1808,7 +1808,8 @@ class UniversalAutoCompleteService {
     const needsCompletion = missingBasicFields || missingRunningCosts || missingMOT || missingHistory;
     
     if (needsCompletion) {
-      if (missingBasicFields)      if (missingRunningCosts)      if (missingMOT)      if (missingHistory)    }
+      // fields need completion: missingBasicFields, missingRunningCosts, missingMOT, missingHistory
+    }
     
     return needsCompletion;
   }
