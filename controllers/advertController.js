@@ -11,7 +11,6 @@ const { normalizeMake } = require('../utils/makeNormalizer');
  */
 const createAdvert = async (req, res) => {
   try {
-    console.log('📝 [createAdvert] Request received');
     
     const { vehicleData } = req.body;
     
@@ -23,7 +22,6 @@ const createAdvert = async (req, res) => {
     }
     
     const advertId = uuidv4();
-    console.log(`📝 Creating advert: ${advertId}`);
 
     // CRITICAL: Check for existing car with same registration
     const registration = vehicleData.registration || vehicleData.registrationNumber;
@@ -31,7 +29,6 @@ const createAdvert = async (req, res) => {
       const cleanReg = registration.toUpperCase().replace(/\s/g, '');
       const existing = await Car.findOne({ registrationNumber: cleanReg });
       if (existing) {
-        console.log(`⚠️ [createAdvert] Car already exists for ${cleanReg} — returning existing advertId`);
         return res.status(200).json({
           success: true,
           data: {
@@ -84,7 +81,6 @@ const createAdvert = async (req, res) => {
       normalizedFuelType = universalService.normalizeFuelType(normalizedFuelType, null);
       
       if (normalizedFuelType !== vehicleData.fuelType) {
-        console.log(`🔄 [createAdvert] Normalized fuelType: "${vehicleData.fuelType}" → "${normalizedFuelType}"`);
       }
     }
     
@@ -94,7 +90,6 @@ const createAdvert = async (req, res) => {
     // CRITICAL: Enhance electric vehicle data BEFORE creating car
     let carDataToSave = normalizedVehicleData;
     if (normalizedVehicleData.fuelType === 'Electric') {
-      console.log(`🔋 Electric vehicle detected - enhancing with EV data`);
       
       // Enhance with comprehensive electric vehicle data
       carDataToSave = ElectricVehicleEnhancementService.enhanceWithEVData(normalizedVehicleData);
@@ -102,10 +97,6 @@ const createAdvert = async (req, res) => {
       // Also use auto data population for additional defaults
       carDataToSave = AutoDataPopulationService.populateMissingData(carDataToSave);
       
-      console.log(`✅ Enhanced electric vehicle data:`);
-      console.log(`   - Range: ${carDataToSave.electricRange} miles`);
-      console.log(`   - Battery: ${carDataToSave.batteryCapacity} kWh`);
-      console.log(`   - Rapid charging: ${carDataToSave.rapidChargingSpeed}kW`);
     }
     
     // Create car with enhanced variant handling
@@ -148,9 +139,6 @@ const createAdvert = async (req, res) => {
       runningCosts: carDataToSave.runningCosts || undefined
     });
     
-    console.log(`🚗 Creating car with registration: ${car.registrationNumber}`);
-    console.log(`   User ID: ${car.userId || 'NOT SET - user not authenticated'}`);
-    console.log(`   Initial variant: ${car.variant || 'NOT SET - will be fetched from API'}`);
     
     // CRITICAL: Normalize model/variant BEFORE saving
     // This ensures proper organization in filter sidebar
@@ -162,12 +150,10 @@ const createAdvert = async (req, res) => {
     if (makeUpper === 'VOLKSWAGEN') {
       if (modelStr.startsWith('Golf ') && modelStr !== 'Golf') {
         const variantPart = modelStr.replace('Golf ', '').trim();
-        console.log(`🔄 [Normalization] VW Golf: "${modelStr}" → "Golf", variant: "${variantPart}"`);
         car.model = 'Golf';
         car.variant = variantPart || variantStr;
       } else if (modelStr.startsWith('Polo ') && modelStr !== 'Polo') {
         const variantPart = modelStr.replace('Polo ', '').trim();
-        console.log(`🔄 [Normalization] VW Polo: "${modelStr}" → "Polo", variant: "${variantPart}"`);
         car.model = 'Polo';
         car.variant = variantPart || variantStr;
       }
@@ -180,7 +166,6 @@ const createAdvert = async (req, res) => {
       if (match) {
         const baseModel = match[1];
         const variantPart = match[2];
-        console.log(`🔄 [Normalization] Audi: "${modelStr}" → "${baseModel}", variant: "${variantPart}"`);
         car.model = baseModel;
         car.variant = variantPart || variantStr;
       }
@@ -194,7 +179,6 @@ const createAdvert = async (req, res) => {
         if (match) {
           const classLetter = match[1].toUpperCase();
           const baseModel = `${classLetter}-Class`;
-          console.log(`🔄 [Normalization] Mercedes: "${modelStr}" → "${baseModel}"`);
           car.model = baseModel;
           if (!variantStr || variantStr === modelStr) {
             car.variant = modelStr;
@@ -207,7 +191,6 @@ const createAdvert = async (req, res) => {
     if (car.bodyType) {
       const normalized = car.bodyType.charAt(0).toUpperCase() + car.bodyType.slice(1).toLowerCase();
       if (car.bodyType !== normalized) {
-        console.log(`🔄 [Normalization] Body type: "${car.bodyType}" → "${normalized}"`);
         car.bodyType = normalized;
       }
     }
@@ -221,7 +204,6 @@ const createAdvert = async (req, res) => {
         }).sort({ checkDate: -1 });
         
         if (history && history.motHistory && history.motHistory.length > 0) {
-          console.log(`🔄 Syncing MOT data from VehicleHistory for ${car.registrationNumber}`);
           
           // Normalize MOT history
           const normalizedMotHistory = history.motHistory.map(test => ({
@@ -251,9 +233,7 @@ const createAdvert = async (req, res) => {
             car.motExpiry = history.motExpiryDate;
           }
           
-          console.log(`✅ MOT data prepared: ${normalizedMotHistory.length} tests`);
         } else {
-          console.log(`⚠️  No MOT history found in VehicleHistory for ${car.registrationNumber}`);
         }
       } catch (syncError) {
         console.error(`❌ Failed to sync MOT data:`, syncError.message);
@@ -266,10 +246,6 @@ const createAdvert = async (req, res) => {
     car.$locals.skipPreSave = true;
     await car.save();
     
-    console.log(`✅ Car saved with final variant: "${car.variant}"`);
-    console.log(`✅ Car saved with displayTitle: "${car.displayTitle}"`);
-    console.log(`✅ Car saved with MOT: ${car.motHistory?.length || 0} tests`);
-    console.log(`✅ Car saved: ${advertId}`);
     
     res.status(201).json({
       success: true,
@@ -418,9 +394,6 @@ const getAdvert = async (req, res) => {
  */
 const updateAdvert = async (req, res) => {
   try {
-    console.log('📝 [updateAdvert] Request received');
-    console.log('📝 [updateAdvert] Params:', req.params);
-    console.log('📝 [updateAdvert] Body keys:', Object.keys(req.body));
     
     const { advertId } = req.params;
     const { advertData, vehicleData, contactDetails } = req.body;
@@ -440,30 +413,18 @@ const updateAdvert = async (req, res) => {
         }
         
         if (!car) {
-          console.log('❌ [updateAdvert] Car not found:', advertId);
           return res.status(404).json({
             success: false,
             message: 'Advert not found'
           });
         }
         
-        console.log(`✅ [updateAdvert] Car found (attempt ${attempt + 1}):`, car.advertId);
-        console.log(`📊 [updateAdvert] Current car version: ${car.__v}`);
-        console.log(`📊 [updateAdvert] Request data:`, {
-          hasAdvertData: !!advertData,
-          hasVehicleData: !!vehicleData,
-          hasContactDetails: !!contactDetails,
-          advertDataKeys: advertData ? Object.keys(advertData) : [],
-          vehicleDataKeys: vehicleData ? Object.keys(vehicleData) : [],
-          contactDetailsKeys: contactDetails ? Object.keys(contactDetails) : []
-        });
         
         // Build update object instead of modifying the document directly
         const updateObj = {};
         
         // Update vehicle data (exclude version field to avoid conflicts)
         if (vehicleData) {
-          console.log('📝 [updateAdvert] Updating vehicle data');
           const { __v, _id, createdAt, updatedAt, ...cleanVehicleData } = vehicleData;
           
           // CRITICAL FIX: Handle estimatedValue conversion from object to number
@@ -471,28 +432,23 @@ const updateAdvert = async (req, res) => {
             // If estimatedValue is an object, extract the private price
             if (cleanVehicleData.estimatedValue.private) {
               cleanVehicleData.estimatedValue = cleanVehicleData.estimatedValue.private;
-              console.log('🔧 [updateAdvert] Converted estimatedValue object to number:', cleanVehicleData.estimatedValue);
             } else if (cleanVehicleData.estimatedValue.retail) {
               cleanVehicleData.estimatedValue = cleanVehicleData.estimatedValue.retail;
-              console.log('🔧 [updateAdvert] Converted estimatedValue object to number (retail):', cleanVehicleData.estimatedValue);
             } else {
               // If object is empty or has no valid prices, remove it
               delete cleanVehicleData.estimatedValue;
-              console.log('🔧 [updateAdvert] Removed empty estimatedValue object');
             }
           }
           
           // CRITICAL FIX: Handle allValuations - this should not be saved to Car model
           if (cleanVehicleData.allValuations) {
             delete cleanVehicleData.allValuations;
-            console.log('🔧 [updateAdvert] Removed allValuations (not part of Car schema)');
           }
           
           // Handle MOT date updates
           if (cleanVehicleData.motDue) {
             updateObj.motDue = new Date(cleanVehicleData.motDue);
             updateObj.motExpiry = new Date(cleanVehicleData.motDue);
-            console.log('📝 [updateAdvert] Updating MOT date:', cleanVehicleData.motDue);
             
             // Mark as user-edited
             DataProtection.markAsUserEdited(car, 'motDue');
@@ -505,7 +461,6 @@ const updateAdvert = async (req, res) => {
           // Handle seats updates
           if (cleanVehicleData.seats) {
             updateObj.seats = parseInt(cleanVehicleData.seats);
-            console.log('📝 [updateAdvert] Updating seats:', cleanVehicleData.seats);
             
             // Mark as user-edited
             DataProtection.markAsUserEdited(car, 'seats');
@@ -516,7 +471,6 @@ const updateAdvert = async (req, res) => {
           // Handle model updates
           if (cleanVehicleData.model) {
             updateObj.model = cleanVehicleData.model.trim();
-            console.log('📝 [updateAdvert] Updating model:', cleanVehicleData.model);
             
             // Mark as user-edited
             DataProtection.markAsUserEdited(car, 'model');
@@ -527,7 +481,6 @@ const updateAdvert = async (req, res) => {
           // Handle variant updates
           if (cleanVehicleData.hasOwnProperty('variant')) {
             updateObj.variant = cleanVehicleData.variant ? cleanVehicleData.variant.trim() : '';
-            console.log('📝 [updateAdvert] Updating variant:', cleanVehicleData.variant);
             
             // Mark as user-edited
             DataProtection.markAsUserEdited(car, 'variant');
@@ -538,7 +491,6 @@ const updateAdvert = async (req, res) => {
           // Handle service history updates
           if (cleanVehicleData.serviceHistory) {
             updateObj.serviceHistory = cleanVehicleData.serviceHistory;
-            console.log('📝 [updateAdvert] Updating serviceHistory from vehicleData:', cleanVehicleData.serviceHistory);
             
             // Mark as user-edited
             DataProtection.markAsUserEdited(car, 'serviceHistory');
@@ -557,9 +509,7 @@ const updateAdvert = async (req, res) => {
             updateObj.fuelType = normalizedFuelType;
             
             if (normalizedFuelType !== cleanVehicleData.fuelType) {
-              console.log(`📝 [updateAdvert] Normalized fuelType: "${cleanVehicleData.fuelType}" → "${normalizedFuelType}"`);
             } else {
-              console.log('📝 [updateAdvert] Updating fuelType:', cleanVehicleData.fuelType);
             }
             
             // Mark as user-edited
@@ -571,7 +521,6 @@ const updateAdvert = async (req, res) => {
           // Handle color updates
           if (cleanVehicleData.color) {
             updateObj.color = cleanVehicleData.color;
-            console.log('📝 [updateAdvert] Updating color:', cleanVehicleData.color);
             
             // Mark as user-edited
             DataProtection.markAsUserEdited(car, 'color');
@@ -600,35 +549,17 @@ const updateAdvert = async (req, res) => {
             if (vehicleDataSellerContact.stats) updateObj.sellerContact.stats = vehicleDataSellerContact.stats;
             if (vehicleDataSellerContact.reviewCount !== undefined) updateObj.sellerContact.reviewCount = vehicleDataSellerContact.reviewCount;
             
-            console.log('✅ [updateAdvert] Merged sellerContact from vehicleData (preserved business info)');
           }
         }
         
         // Update advert data
         if (advertData) {
-          console.log('📝 [updateAdvert] Updating advert data');
-          console.log('📝 [updateAdvert] advertData received:', {
-            hasPrice: !!advertData.price,
-            hasDescription: !!advertData.description,
-            hasPhotos: !!advertData.photos,
-            hasFeatures: !!advertData.features,
-            hasVideoUrl: !!advertData.videoUrl,
-            hasServiceHistory: !!advertData.serviceHistory,
-            hasBusinessName: !!advertData.businessName,
-            hasBusinessLogo: !!advertData.businessLogo,
-            hasBusinessWebsite: !!advertData.businessWebsite,
-            businessName: advertData.businessName,
-            businessLogo: advertData.businessLogo,
-            businessWebsite: advertData.businessWebsite
-          });
           
           if (advertData.price) {
             const priceValue = parseFloat(advertData.price);
             if (!isNaN(priceValue) && priceValue > 0) {
               updateObj.price = priceValue;
-              console.log('📝 [updateAdvert] Updating price:', priceValue);
             } else {
-              console.log('⚠️ [updateAdvert] Invalid price value, skipping:', advertData.price);
             }
           }
           if (advertData.hasOwnProperty('description')) {
@@ -640,7 +571,6 @@ const updateAdvert = async (req, res) => {
               // Use existing description if available
               if (car.description && car.description.trim()) {
                 description = car.description;
-                console.log('📝 [updateAdvert] Empty description provided, keeping existing');
               } else {
                 // Check if description is required (non-DVLA cars require description)
                 const isDescriptionRequired = car.dataSource !== 'DVLA';
@@ -648,44 +578,34 @@ const updateAdvert = async (req, res) => {
                 if (isDescriptionRequired) {
                   // For non-DVLA cars, description is required - use default
                   description = 'No description provided.';
-                  console.log('📝 [updateAdvert] Empty description for non-DVLA car, using default');
                 } else {
                   // For DVLA cars, description is optional - but Mongoose validation might fail with empty string
                   // So we use a minimal description instead
                   description = 'Contact seller for more details.';
-                  console.log('📝 [updateAdvert] Empty description for DVLA car, using minimal default');
                 }
               }
             }
             
             updateObj.description = description;
-            console.log('📝 [updateAdvert] Updating description:', `"${description.substring(0, 50)}..."`);
           }
           if (advertData.photos) updateObj.images = advertData.photos.map(p => p.url || p);
           if (advertData.features) {
-            console.log('📝 [updateAdvert] Updating features:', advertData.features);
             updateObj.features = advertData.features;
           }
           if (advertData.hasOwnProperty('videoUrl')) {
             updateObj.videoUrl = advertData.videoUrl || '';
-            console.log('📝 [updateAdvert] Updating videoUrl:', advertData.videoUrl);
           }
           if (advertData.hasOwnProperty('serviceHistory')) {
             updateObj.serviceHistory = advertData.serviceHistory;
-            console.log('📝 [updateAdvert] Updating serviceHistory:', advertData.serviceHistory);
           }
           
           // CRITICAL: Save business info even when contactDetails is not provided
           if (advertData.businessName || advertData.businessLogo || advertData.businessWebsite) {
-            console.log('📝 [updateAdvert] Updating business info from advertData');
             
             const hasLogo = advertData?.businessLogo && advertData.businessLogo.trim() !== '';
             const hasWebsite = advertData?.businessWebsite && advertData.businessWebsite.trim() !== '';
             const detectedSellerType = (hasLogo || hasWebsite) ? 'trade' : 'private';
             
-            console.log(`🔍 Auto-detected seller type: ${detectedSellerType}`);
-            console.log(`   Has logo: ${hasLogo} (value: "${advertData?.businessLogo}")`);
-            console.log(`   Has website: ${hasWebsite} (value: "${advertData?.businessWebsite}")`);
             
             // Update or create sellerContact using dot notation for proper MongoDB update
             if (!updateObj.sellerContact) updateObj.sellerContact = {};
@@ -700,32 +620,17 @@ const updateAdvert = async (req, res) => {
               updateObj.sellerContact.businessWebsite = advertData.businessWebsite;
             }
             
-            console.log('📝 [updateAdvert] Business info added to updateObj:', {
-              type: updateObj.sellerContact.type,
-              businessName: updateObj.sellerContact.businessName,
-              businessLogo: updateObj.sellerContact.businessLogo,
-              businessWebsite: updateObj.sellerContact.businessWebsite
-            });
           }
         }
         
         // Update contact details
         if (contactDetails) {
-          console.log('📝 [updateAdvert] Updating contact details');
-          console.log('📝 [updateAdvert] advertData business info:', {
-            businessName: advertData?.businessName,
-            businessLogo: advertData?.businessLogo,
-            businessWebsite: advertData?.businessWebsite
-          });
           
           // Auto-detect seller type based on business info
           const hasLogo = advertData?.businessLogo && advertData.businessLogo.trim() !== '';
           const hasWebsite = advertData?.businessWebsite && advertData.businessWebsite.trim() !== '';
           const detectedSellerType = (hasLogo || hasWebsite) ? 'trade' : 'private';
           
-          console.log(`🔍 Auto-detected seller type: ${detectedSellerType}`);
-          console.log(`   Has logo: ${hasLogo} (value: "${advertData?.businessLogo}")`);
-          console.log(`   Has website: ${hasWebsite} (value: "${advertData?.businessWebsite}")`);
           
           // Build sellerContact object preserving existing fields
           if (!updateObj.sellerContact) updateObj.sellerContact = {};
@@ -760,20 +665,15 @@ const updateAdvert = async (req, res) => {
           updateObj.publishedAt = new Date();
         }
         
-        console.log('💾 [updateAdvert] Using findOneAndUpdate to avoid version conflicts...');
         
         // Remove any MongoDB internal fields that might cause conflicts
         const mongoInternalFields = ['__v', '_id', 'createdAt', 'updatedAt'];
         mongoInternalFields.forEach(field => {
           if (updateObj.hasOwnProperty(field)) {
-            console.log(`⚠️ [updateAdvert] Removing internal field: ${field}`);
             delete updateObj[field];
           }
         });
         
-        console.log('💾 [updateAdvert] Update object keys:', Object.keys(updateObj));
-        console.log('💾 [updateAdvert] sellerContact in updateObj:', updateObj.sellerContact);
-        console.log('💾 [updateAdvert] Query:', { _id: car._id, __v: car.__v });
         
         // CRITICAL FIX: Convert nested sellerContact object to dot notation for MongoDB $set
         // This preserves existing fields instead of replacing the entire object
@@ -787,8 +687,6 @@ const updateAdvert = async (req, res) => {
             setUpdate[`sellerContact.${key}`] = sellerContact[key];
           });
           
-          console.log('💾 [updateAdvert] Converted sellerContact to dot notation:', 
-            Object.keys(setUpdate).filter(k => k.startsWith('sellerContact.')));
         }
         
         // Use findOneAndUpdate with the current version to handle concurrency
@@ -808,11 +706,9 @@ const updateAdvert = async (req, res) => {
           }
         );
         
-        console.log('💾 [updateAdvert] findOneAndUpdate result:', !!updatedCar);
         
         if (!updatedCar) {
           // Document was modified by another process, retry
-          console.log(`⚠️ [updateAdvert] Version conflict on attempt ${attempt + 1}, retrying...`);
           attempt++;
           await new Promise(resolve => setTimeout(resolve, 100 * attempt)); // Exponential backoff
           continue;
@@ -826,22 +722,18 @@ const updateAdvert = async (req, res) => {
             
             if (updateObj.serviceHistory) {
               historyUpdate.serviceHistory = updateObj.serviceHistory;
-              console.log('📝 [updateAdvert] Updating VehicleHistory serviceHistory:', updateObj.serviceHistory);
             }
             
             if (updateObj.motDue) {
               historyUpdate.motExpiryDate = updateObj.motDue;
-              console.log('📝 [updateAdvert] Updating VehicleHistory motExpiryDate:', updateObj.motDue);
             }
             
             if (updateObj.seats) {
               historyUpdate.seats = updateObj.seats;
-              console.log('📝 [updateAdvert] Updating VehicleHistory seats:', updateObj.seats);
             }
             
             if (updateObj.fuelType) {
               historyUpdate.fuelType = updateObj.fuelType;
-              console.log('📝 [updateAdvert] Updating VehicleHistory fuelType:', updateObj.fuelType);
             }
             
             await VehicleHistory.findByIdAndUpdate(
@@ -850,14 +742,12 @@ const updateAdvert = async (req, res) => {
               { runValidators: true }
             );
             
-            console.log('✅ [updateAdvert] VehicleHistory updated successfully');
           } catch (historyError) {
             console.error('⚠️ [updateAdvert] Failed to update VehicleHistory:', historyError.message);
             // Don't fail the whole operation if VehicleHistory update fails
           }
         }
         
-        console.log('✅ [updateAdvert] Car updated successfully');
         
         return res.json({
           success: true,
@@ -872,21 +762,18 @@ const updateAdvert = async (req, res) => {
         console.error(`❌ [updateAdvert] Error on attempt ${attempt + 1}:`, error.message);
         
         if (error.name === 'VersionError' && attempt < maxRetries - 1) {
-          console.log(`⚠️ [updateAdvert] Version error on attempt ${attempt + 1}, retrying...`);
           attempt++;
           await new Promise(resolve => setTimeout(resolve, 100 * attempt)); // Exponential backoff
           continue;
         }
         
         if (error.name === 'MongoServerError' && error.code === 11000 && attempt < maxRetries - 1) {
-          console.log(`⚠️ [updateAdvert] Duplicate key error on attempt ${attempt + 1}, retrying...`);
           attempt++;
           await new Promise(resolve => setTimeout(resolve, 100 * attempt)); // Exponential backoff
           continue;
         }
         
         if (error.message && error.message.includes('version') && attempt < maxRetries - 1) {
-          console.log(`⚠️ [updateAdvert] Version-related error on attempt ${attempt + 1}, retrying...`);
           attempt++;
           await new Promise(resolve => setTimeout(resolve, 100 * attempt)); // Exponential backoff
           continue;
@@ -952,7 +839,6 @@ const publishAdvert = async (req, res) => {
  */
 const deleteAdvert = async (req, res) => {
   try {
-    console.log('🗑️ [deleteAdvert] Request received');
     
     const { id } = req.params;
     
@@ -963,13 +849,11 @@ const deleteAdvert = async (req, res) => {
       });
     }
     
-    console.log(`🗑️ [deleteAdvert] Deleting car: ${id}`);
     
     // Use the safe delete method from Car model
     const result = await Car.deleteCarWithCleanup(id);
     
     if (result.success) {
-      console.log('✅ [deleteAdvert] Car and associated data deleted successfully');
       
       return res.status(200).json({
         success: true,

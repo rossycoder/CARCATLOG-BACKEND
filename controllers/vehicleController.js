@@ -147,7 +147,6 @@ class VehicleController {
       }
 
       // Step 1: Lookup vehicle from DVLA
-      console.log(`[Vehicle Controller] Looking up vehicle: ${registrationNumber}`);
       
       let dvlaData;
       try {
@@ -195,15 +194,12 @@ class VehicleController {
       
       // CRITICAL: Use Universal Auto Complete Service instead of direct API calls
       // Universal Service handles all vehicle data fetching with proper caching and race condition prevention
-      console.log(`[Vehicle Controller] Checking vehicle data with API limits...`);
       
       // Check if data already cached
       const safeAPI = require('../services/safeAPIService');
       const summary = await safeAPI.getVehicleSummary(registration);
       
       if (summary && summary.hasCachedData) {
-        console.log(`✅ [Vehicle Controller] Vehicle data already cached for ${registration}`);
-        console.log(`   💰 Skipping API calls - using cached data`);
         
         // Load cached data from VehicleHistory
         const VehicleHistory = require('../models/VehicleHistory');
@@ -241,16 +237,13 @@ class VehicleController {
           if (carData.model && carData.variant) {
             const { model: nm, variant: nv, wasSwapped } = normalizeModelVariant(carData.model, carData.variant, carData.make);
             if (wasSwapped) {
-              console.log(`🔄 [Cache] Model/variant swap fixed: model="${nm}", variant="${nv}"`);
               carData.model = nm;
               carData.variant = nv;
             }
           }
 
-          console.log(`✅ Cached data applied to vehicle`);
         }
       } else {
-        console.log(`📞 [Vehicle Controller] Fetching vehicle data with Universal Service...`);
         
         // Create a temporary vehicle object for the Universal Service
         const tempVehicle = new Car(carData);
@@ -289,14 +282,6 @@ class VehicleController {
           if (completeVehicle.historyCheckStatus !== null && completeVehicle.historyCheckStatus !== undefined) carData.historyCheckStatus = completeVehicle.historyCheckStatus;
           if (completeVehicle.historyCheckDate !== null && completeVehicle.historyCheckDate !== undefined) carData.historyCheckDate = completeVehicle.historyCheckDate;
           
-          console.log(`✅ Universal Service data applied (consolidated from all sources)`);
-          console.log(`   Transmission: ${carData.transmission}`);
-          console.log(`   Emission Class: ${carData.emissionClass}`);
-          console.log(`   Doors: ${carData.doors}, Seats: ${carData.seats}`);
-          console.log(`   Running Costs: Urban ${carData.fuelEconomyUrban}mpg, Combined ${carData.fuelEconomyCombined}mpg`);
-          console.log(`   Annual Tax: £${carData.annualTax}, Insurance Group: ${carData.insuranceGroup}`);
-          console.log(`   CO2 Emissions: ${carData.co2Emissions}g/km`);
-          console.log('🔍 [CONTROLLER DEBUG] carData.runningCosts:', JSON.stringify(carData.runningCosts, null, 2));
         } catch (universalError) {
           console.warn(`⚠️  Universal Service lookup failed, using DVLA data as fallback: ${universalError.message}`);
           // Continue with DVLA data if Universal Service fails
@@ -306,7 +291,6 @@ class VehicleController {
       // Step 3: Automatically fetch coordinates and location name from postcode
       if (postcode) {
         try {
-          console.log(`[Vehicle Controller] Fetching coordinates for postcode: ${postcode}`);
           const postcodeService = require('../services/postcodeService');
           const postcodeData = await postcodeService.lookupPostcode(postcode);
           
@@ -320,8 +304,6 @@ class VehicleController {
             // Add location name to car data
             carData.locationName = postcodeData.locationName;
             
-            console.log(`[Vehicle Controller] Coordinates set: ${postcodeData.latitude}, ${postcodeData.longitude}`);
-            console.log(`[Vehicle Controller] Location name set: ${postcodeData.locationName}`);
           }
         } catch (postcodeError) {
           // Don't fail car creation if postcode lookup fails
@@ -339,12 +321,10 @@ class VehicleController {
       if (req.user) {
         const userId = req.user._id || req.user.id;
         carData.userId = userId;
-        console.log('[Vehicle Controller] Setting userId:', userId);
       }
 
       // Step 4: Enhance electric vehicle data if applicable
       if (carData.fuelType === 'Electric') {
-        console.log(`[Vehicle Controller] Electric vehicle detected - enhancing with EV data`);
         
         // Enhance with comprehensive electric vehicle data
         const enhancedCarData = ElectricVehicleEnhancementService.enhanceWithEVData(carData);
@@ -355,10 +335,6 @@ class VehicleController {
         // Update carData with enhanced data
         Object.assign(carData, fullyEnhancedData);
         
-        console.log(`✅ Enhanced electric vehicle data:`);
-        console.log(`   - Range: ${carData.electricRange} miles`);
-        console.log(`   - Battery: ${carData.batteryCapacity} kWh`);
-        console.log(`   - Rapid charging: ${carData.rapidChargingSpeed}kW`);
       }
 
       // Step 5: Create Car record
@@ -369,7 +345,6 @@ class VehicleController {
       if (carData.model) {
         const { model: nm, variant: nv, wasSwapped } = normalizeModelVariant(carData.model, carData.variant, carData.make);
         if (wasSwapped) {
-          console.log(`🔄 [Vehicle Controller] Model/variant swap fixed: model="${nm}", variant="${nv}"`);
           carData.model = nm;
           carData.variant = nv;
         }
@@ -387,12 +362,10 @@ class VehicleController {
       if (makeUpper === 'VOLKSWAGEN') {
         if (modelStr.startsWith('Golf ') && modelStr !== 'Golf') {
           const variantPart = modelStr.replace('Golf ', '').trim();
-          console.log(`🔄 [Normalization] VW Golf: "${modelStr}" → "Golf", variant: "${variantPart}"`);
           car.model = 'Golf';
           car.variant = variantPart || variantStr;
         } else if (modelStr.startsWith('Polo ') && modelStr !== 'Polo') {
           const variantPart = modelStr.replace('Polo ', '').trim();
-          console.log(`🔄 [Normalization] VW Polo: "${modelStr}" → "Polo", variant: "${variantPart}"`);
           car.model = 'Polo';
           car.variant = variantPart || variantStr;
         }
@@ -405,7 +378,6 @@ class VehicleController {
         if (match) {
           const baseModel = match[1];
           const variantPart = match[2];
-          console.log(`🔄 [Normalization] Audi: "${modelStr}" → "${baseModel}", variant: "${variantPart}"`);
           car.model = baseModel;
           car.variant = variantPart || variantStr;
         }
@@ -419,7 +391,6 @@ class VehicleController {
           if (match) {
             const classLetter = match[1].toUpperCase();
             const baseModel = `${classLetter}-Class`;
-            console.log(`🔄 [Normalization] Mercedes: "${modelStr}" → "${baseModel}"`);
             car.model = baseModel;
             if (!variantStr || variantStr === modelStr) {
               car.variant = modelStr;
@@ -432,7 +403,6 @@ class VehicleController {
       if (car.bodyType) {
         const normalized = car.bodyType.charAt(0).toUpperCase() + car.bodyType.slice(1).toLowerCase();
         if (car.bodyType !== normalized) {
-          console.log(`🔄 [Normalization] Body type: "${car.bodyType}" → "${normalized}"`);
           car.bodyType = normalized;
         }
       }
@@ -449,7 +419,6 @@ class VehicleController {
       purchase.registration = car.registrationNumber;
       await purchase.save();
 
-      console.log(`[Vehicle Controller] Created vehicle: ${car._id} with purchase: ${purchaseId}`);
 
       // Step 5: Return success response
       return res.status(201).json({
@@ -509,7 +478,6 @@ class VehicleController {
 
       const { registrationNumber } = req.body;
 
-      console.log(`[Vehicle Controller] Enhanced lookup for: ${registrationNumber}`);
       
       // CRITICAL: Check database FIRST to avoid duplicate API calls
       const Car = require('../models/Car');
@@ -520,10 +488,6 @@ class VehicleController {
       });
       
       if (existingCar) {
-        console.log(`✅ [Vehicle Controller] Car already exists in database - returning cached data`);
-        console.log(`   Status: ${existingCar.advertStatus}`);
-        console.log(`   MOT Due: ${existingCar.motDue ? new Date(existingCar.motDue).toDateString() : 'NOT SET'}`);
-        console.log(`   💰 Saved API call cost!`);
         
         // Return existing car data in the same format as API response
         return res.json({
@@ -580,8 +544,6 @@ class VehicleController {
       if (cachedHistory) {
         const daysSinceCheck = (Date.now() - cachedHistory.checkDate.getTime()) / (1000 * 60 * 60 * 24);
         if (daysSinceCheck <= 30) {
-          console.log(`✅ [Vehicle Controller] Found cached VehicleHistory (${Math.floor(daysSinceCheck)} days old)`);
-          console.log(`   💰 Saved API call cost!`);
           
           // Return cached history data
           return res.json({
@@ -629,7 +591,6 @@ class VehicleController {
       }
       
       // No cache found - make API calls
-      console.log(`⚠️  [Vehicle Controller] No cache found - making API calls...`);
       
       try {
         // Call both APIs in parallel for faster response
@@ -642,18 +603,14 @@ class VehicleController {
         let dvlaData = null;
         if (dvlaResult.status === 'fulfilled') {
           dvlaData = dvlaResult.value;
-          console.log(`[Vehicle Controller] DVLA lookup successful`);
         } else {
-          console.log(`[Vehicle Controller] DVLA lookup failed:`, dvlaResult.reason?.message);
         }
         
         // Process CheckCarDetails result
         let historyData = null;
         if (historyResult.status === 'fulfilled') {
           historyData = historyResult.value;
-          console.log(`[Vehicle Controller] CheckCarDetails lookup successful`);
         } else {
-          console.log(`[Vehicle Controller] CheckCarDetails lookup failed:`, historyResult.reason?.message);
         }
         
         // Merge data - prioritize CheckCarDetails for model info as it's more comprehensive
@@ -811,12 +768,10 @@ class VehicleController {
       }
 
       // Increment view count (using car._id since car is lean)
-      console.log(`🔍 [View Count] Incrementing view count for car: ${car._id}`);
       await Car.findByIdAndUpdate(car._id, {
         $inc: { viewCount: 1 },
         lastViewedAt: new Date()
       });
-      console.log(`✅ [View Count] View count incremented for: ${car.make} ${car.model}`);
 
       // car is already a plain object from .lean(), no need for toObject()
       const carData = car;
@@ -838,11 +793,6 @@ class VehicleController {
           insuranceGroup: carData.insuranceGroup || '',
           annualTax: carData.annualTax || ''
         };
-        console.log('🔧 [getCarById] Structured runningCosts from legacy fields:', {
-          urban: carData.runningCosts.fuelEconomy.urban,
-          extraUrban: carData.runningCosts.fuelEconomy.extraUrban,
-          combined: carData.runningCosts.fuelEconomy.combined
-        });
       }
       
       // CRITICAL FIX: Auto-sync running costs from VehicleHistory if missing
@@ -853,7 +803,6 @@ class VehicleController {
           const history = await VehicleHistory.findOne({ vrm: car.registrationNumber }).sort({ checkDate: -1 });
           
           if (history && (history.combinedMpg || history.co2Emissions)) {
-            console.log(`🔄 Auto-syncing running costs for ${car.registrationNumber} from VehicleHistory`);
             
             // Update carData with running costs from history
             carData.runningCosts = {
@@ -891,13 +840,11 @@ class VehicleController {
                     annualTax: history.annualTax
                   }
                 });
-                console.log(`✅ Running costs saved to Car document for ${car.registrationNumber}`);
               } catch (saveError) {
                 console.error(`⚠️ Failed to save running costs to Car:`, saveError.message);
               }
             });
             
-            console.log(`✅ Running costs synced: MPG=${history.combinedMpg}, CO2=${history.co2Emissions}, Tax=£${history.annualTax || 'N/A'}, Insurance=${history.insuranceGroup || 'N/A'}`);
           }
         } catch (syncError) {
           console.warn(`⚠️ Failed to auto-sync running costs:`, syncError.message);
@@ -913,12 +860,10 @@ class VehicleController {
           retail: carData.valuation.dealerPrice || carData.price,
           trade: carData.valuation.partExchangePrice || carData.price
         };
-        console.log('💰 Structured allValuations from database valuation:', carData.allValuations);
       }
       
       // If allValuations exists but estimatedValue doesn't match private price, update it
       if (carData.allValuations?.private && carData.estimatedValue !== carData.allValuations.private) {
-        console.log(`💰 Updating estimatedValue: £${carData.estimatedValue} → £${carData.allValuations.private} (Private Sale)`);
         carData.estimatedValue = carData.allValuations.private;
       }
 
@@ -952,10 +897,8 @@ class VehicleController {
                 carLon
               );
               carData.distance = Math.round(distance);
-              console.log(`[Vehicle Controller] Calculated distance: ${carData.distance} miles from ${postcode}`);
             }
           } else {
-            console.log(`[Vehicle Controller] Car has no coordinates, cannot calculate distance`);
           }
         } catch (distanceError) {
           console.warn(`[Vehicle Controller] Failed to calculate distance:`, distanceError.message);
@@ -1002,13 +945,6 @@ class VehicleController {
             carData.sellerContact.businessAddress = dealer.businessAddress;
           }
           
-          console.log('[getCarById] Added TradeDealer info to response:', {
-            businessName: dealer.businessName,
-            tradingName: dealer.tradingName,
-            logo: dealer.logo,
-            website: dealer.website,
-            address: dealer.businessAddress
-          });
         }
       }
 
@@ -1163,10 +1099,6 @@ class VehicleController {
    */
   async searchCars(req, res, next) {
     try {
-      console.log('🔴 [Vehicle Controller] ========================================');
-      console.log('🔴 [Vehicle Controller] SEARCH ENDPOINT CALLED');
-      console.log('🔴 [Vehicle Controller] Full req.query:', req.query);
-      console.log('🔴 [Vehicle Controller] ========================================');
       
       const { 
         make, 
@@ -1192,14 +1124,6 @@ class VehicleController {
         skip = 0 
       } = req.query;
 
-      console.log('🔴 [Vehicle Controller] Search params received:', { 
-        sellerType, 
-        writeOffStatus, 
-        make, 
-        model,
-        engineSize,
-        fuelType
-      });
 
       // Build query - ONLY show active cars (public search should only show active listings)
       const query = {
@@ -1245,29 +1169,22 @@ class VehicleController {
           query.fuelType = { 
             $in: ['Hybrid', 'Petrol Hybrid', 'Diesel Hybrid', 'Plug-in Hybrid', 'Petrol Plug-in Hybrid', 'Diesel Plug-in Hybrid'] 
           };
-          console.log('[Vehicle Controller] Fuel type filter: Searching for all Hybrid variants');
         } else if (fuelType === 'Petrol Hybrid') {
           // Match both "Petrol Hybrid" and "Hybrid" (for backwards compatibility)
           query.fuelType = { $in: ['Petrol Hybrid', 'Hybrid'] };
-          console.log('[Vehicle Controller] Fuel type filter: Searching for Petrol Hybrid vehicles');
         } else if (fuelType === 'Diesel Hybrid') {
           // Match both "Diesel Hybrid" and "Hybrid" (for backwards compatibility)
           query.fuelType = { $in: ['Diesel Hybrid', 'Hybrid'] };
-          console.log('[Vehicle Controller] Fuel type filter: Searching for Diesel Hybrid vehicles');
         } else if (fuelType === 'Plug-in Hybrid') {
           // Match all plug-in hybrid types
           query.fuelType = { $in: ['Plug-in Hybrid', 'Petrol Plug-in Hybrid', 'Diesel Plug-in Hybrid'] };
-          console.log('[Vehicle Controller] Fuel type filter: Searching for Plug-in Hybrid vehicles');
         } else if (fuelType === 'Petrol Plug-in Hybrid') {
           query.fuelType = { $in: ['Petrol Plug-in Hybrid', 'Plug-in Hybrid'] };
-          console.log('[Vehicle Controller] Fuel type filter: Searching for Petrol Plug-in Hybrid vehicles');
         } else if (fuelType === 'Diesel Plug-in Hybrid') {
           query.fuelType = { $in: ['Diesel Plug-in Hybrid', 'Plug-in Hybrid'] };
-          console.log('[Vehicle Controller] Fuel type filter: Searching for Diesel Plug-in Hybrid vehicles');
         } else {
           // Exact match for Petrol, Diesel, Electric
           query.fuelType = fuelType;
-          console.log('[Vehicle Controller] Fuel type filter: Searching for', fuelType, 'vehicles');
         }
       }
       
@@ -1308,8 +1225,6 @@ class VehicleController {
           $nin: ['Electric'] // Exclude pure electric vehicles
         };
         
-        console.log('[Vehicle Controller] Engine size filter applied:', engineSize, '→', query.engineSize);
-        console.log('[Vehicle Controller] Excluding fuel types:', query.fuelType);
       }
       
       // Seller type filter - MUTUALLY EXCLUSIVE
@@ -1323,7 +1238,6 @@ class VehicleController {
             { $or: [{ isDealerListing: { $exists: false } }, { isDealerListing: false }, { isDealerListing: null }] },
             { $or: [{ 'sellerContact.type': { $exists: false } }, { 'sellerContact.type': { $ne: 'trade' } }] }
           );
-          console.log('[Vehicle Controller] Seller type filter: Private sellers only');
         } else if (sellerType === 'trade') {
           // Trade sellers: dealerId exists OR isDealerListing is true OR sellerContact.type is 'trade'
           if (query.$and) {
@@ -1342,7 +1256,6 @@ class VehicleController {
               { 'sellerContact.type': 'trade' }
             ];
           }
-          console.log('[Vehicle Controller] Seller type filter: Trade sellers only');
         }
       }
       
@@ -1381,7 +1294,6 @@ class VehicleController {
               ];
             }
           }
-          console.log('[Vehicle Controller] Write-off filter: Excluding', writtenOffVRMs.length, 'written off vehicles');
         } else if (writeOffStatus === 'only') {
           // Show only written off vehicles
           const VehicleHistory = require('../models/VehicleHistory');
@@ -1406,11 +1318,9 @@ class VehicleController {
             // No written off vehicles found, return empty result
             query._id = null; // This will match nothing
           }
-          console.log('[Vehicle Controller] Write-off filter: Only showing', writtenOffVRMs.length, 'written off vehicles');
         }
       }
       
-      console.log('[Vehicle Controller] Constructed query:', JSON.stringify(query, null, 2));
 
       // Determine sort order
       let sortOption = { createdAt: -1 }; // Default: newest first
@@ -1490,7 +1400,6 @@ class VehicleController {
               car.annualTax = history.annualTax;
               
               await car.save();
-              console.log(`✅ Background sync: Running costs saved for ${car.registrationNumber}`);
             }
           }
         } catch (syncError) {
@@ -1500,7 +1409,6 @@ class VehicleController {
 
       const total = await Car.countDocuments(query);
 
-      console.log('[Vehicle Controller] Found', total, 'cars matching filters');
 
       return res.json({
         success: true,
@@ -1529,7 +1437,6 @@ class VehicleController {
    */
   async getFilterOptions(req, res, next) {
     try {
-      console.log('[Vehicle Controller] Fetching filter options...');
       
       // Get ALL filter parameters from query string for dynamic filtering
       const { 
@@ -1540,7 +1447,6 @@ class VehicleController {
         sellerType
       } = req.query;
       
-      console.log('[Vehicle Controller] Filter params:', req.query);
       
       // Build base query for active cars (and draft in test mode)
       const baseQuery = {};
@@ -1598,11 +1504,9 @@ class VehicleController {
         if (mileageTo) filteredQuery.mileage.$lte = parseInt(mileageTo);
       }
       
-      console.log('[Vehicle Controller] Comprehensive filtered query:', filteredQuery);
       
       // Get unique makes with counts (from base query, not filtered)
       const makes = await Car.distinct('make', baseQuery);
-      console.log('[Vehicle Controller] Found makes:', makes.length);
       
       // Calculate counts for each make
       // For selected make: use filteredQuery (includes make filter)
@@ -1610,7 +1514,6 @@ class VehicleController {
       const makeCounts = {};
       const makeQuery = { ...filteredQuery };
       delete makeQuery.make; // Exclude make filter for non-selected makes
-      console.log('[Vehicle Controller] Calculating make counts...');
       for (const makeName of makes) {
         if (makeName) {
           // If this is the currently selected make, show count with make filter
@@ -1624,11 +1527,9 @@ class VehicleController {
           }
         }
       }
-      console.log('[Vehicle Controller] Make counts:', makeCounts);
       
       // Get unique models (filtered by baseQuery to respect current filters)
       const models = await Car.distinct('model', baseQuery);
-      console.log('[Vehicle Controller] Found models:', models.length);
       
       // Calculate counts for each model
       // For selected model: use filteredQuery (includes model filter)
@@ -1705,7 +1606,6 @@ class VehicleController {
             
             // DEBUG: Log variants order
             if (variantsByMakeModel[make][model].length > 0) {
-              console.log(`[Vehicle Controller] Variants for ${make} ${model}:`, variantsByMakeModel[make][model]);
             }
           }
         });
@@ -1715,7 +1615,6 @@ class VehicleController {
       
       // Get unique fuel types with counts (filtered based on selection)
       let fuelTypes = await Car.distinct('fuelType', baseQuery);
-      console.log('[Vehicle Controller] Found fuelTypes:', fuelTypes.length);
       
       // Calculate counts for each fuel type
       // For selected fuel type: use filteredQuery
@@ -1763,7 +1662,6 @@ class VehicleController {
       
       // Get unique transmissions with counts (filtered based on selection)
       const transmissions = await Car.distinct('transmission', baseQuery);
-      console.log('[Vehicle Controller] Found transmissions:', transmissions.length);
       
       // Calculate counts for each transmission
       const transmissionCounts = {};
@@ -1783,7 +1681,6 @@ class VehicleController {
       
       // Get unique body types with counts (filtered based on selection)
       const bodyTypes = await Car.distinct('bodyType', baseQuery);
-      console.log('[Vehicle Controller] Found bodyTypes:', bodyTypes.length);
       
       // Calculate counts for each body type
       const bodyTypeCounts = {};
@@ -1803,7 +1700,6 @@ class VehicleController {
       
       // Get unique colours with counts (filtered based on selection)
       const colours = await Car.distinct('color', baseQuery);
-      console.log('[Vehicle Controller] Found colours:', colours.length);
       
       // Calculate counts for each colour
       const colourCounts = {};
@@ -1888,7 +1784,6 @@ class VehicleController {
         'sellerContact.type': { $ne: 'trade' }
       });
       
-      console.log('[Vehicle Controller] Seller counts - Private:', privateSellerCount, 'Trade:', tradeSellerCount);
       
       // Get write-off status counts
       // Query VehicleHistory for written off vehicles
@@ -1915,7 +1810,6 @@ class VehicleController {
       // Total cars based on current filters
       const totalCars = await Car.countDocuments(filteredQuery);
       
-      console.log('[Vehicle Controller] Write-off counts - Total:', totalCars, 'Written off:', writtenOffCount, 'Clean:', cleanCount);
 
       const result = {
         success: true,
@@ -1955,9 +1849,7 @@ class VehicleController {
       };
       
       // DEBUG: Log variants data being sent
-      console.log('[Vehicle Controller] variantsByMakeModel:', JSON.stringify(variantsByMakeModel, null, 2));
       
-      console.log('[Vehicle Controller] Returning filter options with counts');
       
       return res.json(result);
 
@@ -1976,7 +1868,6 @@ class VehicleController {
       const { registration } = req.params;
       const { mileage } = req.query;
 
-      console.log(`[Vehicle Controller] Basic lookup request for: ${registration}, mileage: ${mileage || 'not provided'}`);
 
       if (!registration) {
         return res.status(400).json({
@@ -2006,7 +1897,6 @@ class VehicleController {
       // Wait for database connection
       const mongoose = require('mongoose');
       if (mongoose.connection.readyState !== 1) {
-        console.log('[Vehicle Controller] Waiting for database connection...');
         await new Promise((resolve) => {
           if (mongoose.connection.readyState === 1) {
             resolve();
@@ -2017,7 +1907,6 @@ class VehicleController {
       }
       
       // SIMPLE FIX: Check VehicleHistory cache first (no API calls, no database save)
-      console.log(`[Vehicle Controller] ✅ FIXED VERSION - Checking VehicleHistory cache for: ${cleanedReg}`);
       
       let result;
       
@@ -2030,7 +1919,6 @@ class VehicleController {
         
         if (cachedData && cachedData.make) {
           // Return from cache - NO API CALL!
-          console.log(`[Vehicle Controller] ✅ Found in cache for ${cleanedReg} - NO API CALL`);
           
           result = {
             success: true,
@@ -2060,7 +1948,6 @@ class VehicleController {
           };
         } else {
           // Not in cache - need to fetch from API (only £0.05 call)
-          console.log(`[Vehicle Controller] ⚠️ Not in cache for ${cleanedReg} - will fetch from API (£0.05)`);
           
           const CheckCarDetailsClient = require('../clients/CheckCarDetailsClient');
           const client = new CheckCarDetailsClient();
@@ -2110,7 +1997,6 @@ class VehicleController {
             
             if (calculatedTax !== null) {
               apiData.annualTax = calculatedTax;
-              console.log(`💰 [BasicLookup] Calculated annual tax: £${calculatedTax} (CO2: ${apiData.co2Emissions}g/km, Year: ${apiData.year})`);
             }
           }
           
@@ -2139,10 +2025,8 @@ class VehicleController {
             }
             
             apiData.insuranceGroup = estimatedGroup;
-            console.log(`🛡️ [BasicLookup] Estimated insurance group: ${estimatedGroup} (Engine: ${engineSize}L, Age: ${age} years)`);
           }
           
-          console.log(`[Vehicle Controller] 🔍 Extracted API Data:`, JSON.stringify(apiData, null, 2));
           
           if (!apiData.make) {
             throw new Error('Vehicle not found in API');
@@ -2176,7 +2060,6 @@ class VehicleController {
             { upsert: true, new: true }
           );
           
-          console.log(`[Vehicle Controller] ✅ Fetched from API and cached for ${cleanedReg}`);
           
           result = {
             success: true,
@@ -2208,7 +2091,6 @@ class VehicleController {
           };
         }
         
-        console.log(`[Vehicle Controller] Basic lookup successful for ${cleanedReg}`);
       } catch (lookupError) {
         console.error(`[Vehicle Controller] Basic lookup failed for ${cleanedReg}:`, lookupError.message);
         
@@ -2229,8 +2111,6 @@ class VehicleController {
         });
       }
 
-      console.log(`[Vehicle Controller] Basic lookup successful for ${registration}`);
-      console.log(`[Vehicle Controller] From cache: ${result.fromCache}, API calls: ${result.apiCalls}, Cost: £${result.cost}`);
 
       // Return basic vehicle data (already unwrapped)
       return res.json({
@@ -2264,7 +2144,6 @@ class VehicleController {
       const { registration } = req.params;
       const { useCache = 'true', mileage } = req.query;
 
-      console.log(`[Vehicle Controller] Enhanced lookup request for: ${registration}, mileage: ${mileage || 'not provided'}`);
 
       if (!registration) {
         return res.status(400).json({
@@ -2293,7 +2172,6 @@ class VehicleController {
       
       // CRITICAL FIX: Don't use Universal Service for enhanced lookup (it tries to save to DB)
       // Instead, directly get vehicle data from API without saving
-      console.log(`[Vehicle Controller] Fetching vehicle data for enhanced lookup: ${cleanedReg}`);
       
       let result; // Declare result outside try block
       
@@ -2382,9 +2260,6 @@ class VehicleController {
           warnings: []
         };
         
-        console.log(`[Vehicle Controller] Universal Service enhanced lookup successful for ${cleanedReg}`);
-        console.log(`[Vehicle Controller] Complete vehicle data populated through Universal Service`);
-        console.log('🔍 [ENHANCED LOOKUP DEBUG] Running costs in result:', JSON.stringify(result.data.runningCosts, null, 2));
       } catch (universalError) {
         console.error(`[Vehicle Controller] Universal Service enhanced lookup failed for ${cleanedReg}:`, universalError.message);
         console.error(universalError.stack);
@@ -2407,8 +2282,6 @@ class VehicleController {
         });
       }
 
-      console.log(`[Vehicle Controller] Enhanced lookup successful for ${registration}`);
-      console.log(`[Vehicle Controller] Data sources - DVLA: ${result.data.dataSources?.dvla}, CheckCarDetails: ${result.data.dataSources?.checkCarDetails}`);
 
       // Unwrap the data for frontend compatibility
       const unwrappedData = this.unwrapVehicleData(result.data);
@@ -2484,12 +2357,10 @@ class VehicleController {
             typeof fixedValuation.estimatedValue === 'object' && 
             Object.keys(fixedValuation.estimatedValue).length === 0) {
           
-          console.log(`[Vehicle Controller] Fixing empty estimatedValue for valuation`);
           
           // Try to reconstruct from other sources in the wrapped data
           if (wrappedData.allValuations && Object.keys(wrappedData.allValuations).length > 0) {
             fixedValuation.estimatedValue = wrappedData.allValuations;
-            console.log(`[Vehicle Controller] Reconstructed estimatedValue from allValuations:`, fixedValuation.estimatedValue);
           } else {
             // Try to find price data elsewhere in the wrapped data
             const privatePrice = wrappedData.privatePrice || wrappedData.price;
@@ -2499,15 +2370,12 @@ class VehicleController {
                 retail: Math.round(privatePrice * 1.15), // Estimate retail as 15% higher
                 trade: Math.round(privatePrice * 0.85)   // Estimate trade as 15% lower
               };
-              console.log(`[Vehicle Controller] Reconstructed estimatedValue from price:`, fixedValuation.estimatedValue);
             } else {
-              console.log(`[Vehicle Controller] Could not reconstruct estimatedValue - no price data available`);
             }
           }
         }
         
         unwrapped[key] = fixedValuation;
-        console.log(`[Vehicle Controller] Keeping valuation object as-is:`, fixedValuation);
       } else if (Array.isArray(value)) {
         // Keep arrays as-is (motHistory, mileageHistory)
         unwrapped[key] = value;
@@ -2517,13 +2385,6 @@ class VehicleController {
       }
     });
     
-    console.log(`[Vehicle Controller] Unwrapped ${Object.keys(wrappedData).length} fields for frontend`);
-    console.log(`[Vehicle Controller] Sample unwrapped fields:`, {
-      make: unwrapped.make,
-      model: unwrapped.model,
-      bodyType: unwrapped.bodyType
-    });
-    console.log('🏃 [Vehicle Controller] Unwrapped runningCosts:', JSON.stringify(unwrapped.runningCosts, null, 2));
     
     // CRITICAL FIX: Final check for price data - ensure we have some price available
     if (!unwrapped.valuation || !unwrapped.valuation.estimatedValue || 
@@ -2533,7 +2394,6 @@ class VehicleController {
       const availablePrice = unwrapped.price || unwrapped.estimatedValue || unwrapped.privatePrice;
       
       if (availablePrice && availablePrice > 0) {
-        console.log(`[Vehicle Controller] Creating valuation from available price: £${availablePrice}`);
         
         if (!unwrapped.valuation) {
           unwrapped.valuation = {};
@@ -2548,9 +2408,7 @@ class VehicleController {
         unwrapped.valuation.confidence = 'medium';
         unwrapped.valuation.source = 'reconstructed';
         
-        console.log(`[Vehicle Controller] Created valuation object:`, unwrapped.valuation);
       } else {
-        console.log(`[Vehicle Controller] No price data available to create valuation`);
       }
     }
     
@@ -2559,12 +2417,9 @@ class VehicleController {
       const privateSaleValue = unwrapped.valuation.estimatedValue.private;
       if (privateSaleValue && typeof privateSaleValue === 'number' && privateSaleValue > 0) {
         unwrapped.price = privateSaleValue;
-        console.log(`[Vehicle Controller] Set price field to private sale value: £${privateSaleValue}`);
       } else {
-        console.log(`[Vehicle Controller] No valid private sale value found:`, unwrapped.valuation.estimatedValue);
       }
     } else {
-      console.log(`[Vehicle Controller] No valuation data available for price extraction`);
     }
     
     return unwrapped;
@@ -2579,7 +2434,6 @@ class VehicleController {
     try {
       // Check if user is authenticated
       if (!req.user) {
-        console.log('[Vehicle Controller] Unauthenticated request to my-listings');
         return res.status(401).json({
           success: false,
           error: 'Authentication required'
@@ -2589,9 +2443,6 @@ class VehicleController {
       const userId = req.user._id || req.user.id;
       const isAdmin = req.user.isAdmin || req.user.role === 'admin';
       
-      console.log('[Vehicle Controller] Fetching listings for user:', userId);
-      console.log('[Vehicle Controller] Is Admin:', isAdmin);
-      console.log('[Vehicle Controller] User object:', req.user);
 
       // Import Bike and Van models
       const Bike = require('../models/Bike');
@@ -2608,11 +2459,8 @@ class VehicleController {
         Van.find(query).lean().populate('userId', 'email name').sort({ createdAt: -1 })
       ]);
 
-      console.log('[Vehicle Controller] Found', cars.length, 'cars,', bikes.length, 'bikes, and', vans.length, 'vans');
       if (isAdmin) {
-        console.log('[Vehicle Controller] Admin view: Showing ALL listings from all users');
       } else {
-        console.log('[Vehicle Controller] User view: Showing only listings for user:', userId);
       }
 
       // Combine and mark vehicle types
@@ -2732,7 +2580,6 @@ class VehicleController {
       }
       await vehicle.save();
 
-      console.log('[Vehicle Controller] Updated', vehicleType, 'status:', id, advertStatus);
 
       return res.json({
         success: true,
@@ -2801,7 +2648,6 @@ class VehicleController {
         await Car.findByIdAndDelete(id);
       }
 
-      console.log('[Vehicle Controller] Deleted', vehicleType, ':', id);
 
       return res.json({
         success: true,
@@ -2826,7 +2672,6 @@ class VehicleController {
       const { id } = req.params;
       const { type } = req.body; // 'phone' or 'email'
 
-      console.log('[Vehicle Controller] Tracking inquiry for vehicle:', id, 'Type:', type);
 
       // Find vehicle in Car collection
       let vehicle = await Car.findById(id);
@@ -2858,7 +2703,6 @@ class VehicleController {
       vehicle.lastInquiryAt = new Date();
       await vehicle.save();
 
-      console.log('[Vehicle Controller] Inquiry tracked successfully. Total inquiries:', vehicle.inquiryCount);
 
       return res.json({
         success: true,
@@ -2947,7 +2791,6 @@ class VehicleController {
       
       await vehicle.save();
 
-      console.log('[Vehicle Controller] Vehicle prepared for relisting:', id, vehicleType);
 
       return res.json({
         success: true,

@@ -30,7 +30,6 @@ router.post('/fix-subscription', async (req, res) => {
       });
     }
 
-    console.log('🔧 Fixing subscription for:', email);
 
     // Find dealer
     const dealer = await TradeDealer.findOne({ email: email.toLowerCase() });
@@ -86,7 +85,6 @@ router.post('/fix-subscription', async (req, res) => {
     }
 
     // No subscription exists, create one
-    console.log('Creating new subscription...');
 
     // Get a plan
     let plan = await SubscriptionPlan.findOne({ slug: 'starter' });

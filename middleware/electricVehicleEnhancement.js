@@ -16,7 +16,6 @@ const enhanceElectricVehicleData = async (req, res, next) => {
   try {
     // Check if this is an electric vehicle
     if (req.body.fuelType === 'Electric' || req.vehicleData?.fuelType === 'Electric') {
-      console.log('🔋 Electric vehicle detected - enhancing with EV data...');
       
       // Get the vehicle data (could be in req.body or req.vehicleData)
       let vehicleData = req.vehicleData || req.body;
@@ -44,10 +43,6 @@ const enhanceElectricVehicleData = async (req, res, next) => {
         req.body = vehicleData;
       }
       
-      console.log(`✅ Enhanced electric vehicle: ${vehicleData.make} ${vehicleData.model}`);
-      console.log(`   - Range: ${vehicleData.electricRange} miles`);
-      console.log(`   - Battery: ${vehicleData.batteryCapacity} kWh`);
-      console.log(`   - Rapid charging: ${vehicleData.rapidChargingSpeed}kW`);
     }
     
     next();

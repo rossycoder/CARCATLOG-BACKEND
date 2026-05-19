@@ -59,7 +59,6 @@ class UniversalAutoCompleteService {
     const vrm = vehicle.registrationNumber?.toUpperCase().replace(/\s/g, '');
     
     if (!vrm) {
-      console.log('⚠️  No registration number - using manual data enhancement only');
       return this.enhanceManualData(vehicle);
     }
     
@@ -72,9 +71,6 @@ class UniversalAutoCompleteService {
         // Begin transaction
         await session.startTransaction();
         
-        console.log(`\n🚀 [UniversalAutoComplete] Starting complete data population for: ${vrm}`);
-        console.log(`📋 Vehicle Type: ${vehicle.constructor.modelName || 'Unknown'}`);
-        console.log(`🔒 Transaction started for atomic operations`);
         
         // Periodic cleanup of expired sessions (every 10th call)
         if (Math.random() < 0.1) {
@@ -87,23 +83,19 @@ class UniversalAutoCompleteService {
             const cacheStatus = cachedData._cacheStatus || 'unknown';
             const cacheSavings = cachedData._cacheSavings || 1.99;
             
-            console.log(`✅ Using ${cacheStatus} cached data (saves £${cacheSavings} in API costs)`);
             
             // For stale cache, trigger background refresh while using cached data
             if (cacheStatus === 'stale') {
-              console.log('🔄 Triggering background cache refresh for stale data...');
               this.refreshCacheInBackground(vrm);
             }
             
             const result = await this.updateVehicleFromCache(vehicle, cachedData, session);
             await session.commitTransaction();
-            console.log('✅ Transaction committed successfully (cache-first)');
             return this.createSuccessResponse(result, { cached: true, cacheStatus });
           }
         }
 
         // Step 2: Fetch ALL data from API in parallel
-        console.log('📡 Fetching fresh data from CheckCarDetails API...');
         const apiData = await this.fetchAllAPIData(vrm);
         
         // Step 3: Parse and normalize all data
@@ -120,12 +112,10 @@ class UniversalAutoCompleteService {
         
         // Apply completeness fixes if needed
         if (!validationResult.isComplete) {
-          console.log(`⚠️  Data incomplete (${validationResult.completionPercentage}%), applying fixes...`);
           this.applyCompletenessFixes(updatedVehicle, parsedData, validationResult);
           
           // Re-validate after fixes
           const revalidationResult = this.validateDataCompleteness(updatedVehicle, parsedData);
-          console.log(`✅ After fixes: ${revalidationResult.completionPercentage}% complete`);
           
           // Check if meets minimum threshold (70%)
           if (!this.meetsCompletenessThreshold(revalidationResult)) {
@@ -141,7 +131,6 @@ class UniversalAutoCompleteService {
                                           updatedVehicle.fuelType === 'Diesel Plug-in Hybrid';
         
         if (isElectricOrPluginHybrid) {
-          console.log(`🔋 Applying electric vehicle enhancements for ${updatedVehicle.fuelType}...`);
           const enhancedEVData = ElectricVehicleEnhancementService.enhanceWithEVData(updatedVehicle.toObject());
           Object.assign(updatedVehicle, enhancedEVData);
         }
@@ -156,8 +145,6 @@ class UniversalAutoCompleteService {
         
         // Commit transaction - all operations succeeded
         await session.commitTransaction();
-        console.log('✅ Transaction committed successfully');
-        console.log('✅ Vehicle data population complete!');
         return this.createSuccessResponse(updatedVehicle, {
           cached: false,
           apiErrors: apiData._errors || [],
@@ -188,7 +175,6 @@ class UniversalAutoCompleteService {
   async withVehicleLock(vrm, operation) {
     // Check if vehicle is already being processed
     if (this.processingLocks.has(vrm)) {
-      console.log(`⏳ Vehicle ${vrm} is already being processed, queuing request...`);
       
       // Wait for the existing operation to complete and return its result
       try {
@@ -196,20 +182,16 @@ class UniversalAutoCompleteService {
         return existingResult;
       } catch (error) {
         // If existing operation failed, try the new operation
-        console.log(`⚠️ Previous operation for ${vrm} failed, retrying...`);
       }
     }
     
     // Create new lock with proper promise handling
     const lockPromise = this.executeWithTimeout(async () => {
       try {
-        console.log(`🔒 Acquired lock for vehicle ${vrm}`);
         const result = await operation();
-        console.log(`🔓 Processing next queued operation for vehicle ${vrm}`);
         
         return result;
       } catch (error) {
-        console.log(`🔓 Released lock for vehicle ${vrm} (with error)`);
         throw error;
       }
     }, this.lockTimeout);
@@ -280,7 +262,6 @@ class UniversalAutoCompleteService {
    * Fetch ALL data from CheckCarDetails API with deduplication
    */
   async fetchAllAPIData(vrm) {
-    console.log('📡 Making parallel API calls with deduplication...');
     
     // Check for recent API calls in session (deduplication)
     const sessionKey = vrm.toUpperCase();
@@ -289,8 +270,6 @@ class UniversalAutoCompleteService {
     if (existingSession) {
       const sessionAge = Date.now() - existingSession.timestamp;
       if (sessionAge < this.sessionTimeout) {
-        console.log(`🔄 Using deduplicated API data from session (${Math.round(sessionAge/1000)}s ago)`);
-        console.log(`💰 Saved £${existingSession.totalCost.toFixed(2)} in duplicate API costs`);
         return existingSession.data;
       } else {
         // Session expired, clean up
@@ -300,13 +279,10 @@ class UniversalAutoCompleteService {
     
     // Check for pending API calls (call coalescing)
     if (this.pendingApiCalls.has(sessionKey)) {
-      console.log(`⏳ Coalescing with pending API call for ${vrm}...`);
       try {
         const coalescedResult = await this.pendingApiCalls.get(sessionKey);
-        console.log('✅ Used coalesced API result');
         return coalescedResult;
       } catch (error) {
-        console.log('❌ Coalesced call failed, making new call');
         this.pendingApiCalls.delete(sessionKey);
       }
     }
@@ -352,7 +328,6 @@ class UniversalAutoCompleteService {
 
     for (const ep of endpoints) {
       try {
-        console.log(`   Calling ${ep.name} (£${ep.cost})...`);
         
         const params = {
           apikey: this.apiKey,
@@ -381,11 +356,9 @@ class UniversalAutoCompleteService {
           responseTime: Date.now() - callStartTime
         });
         
-        console.log(`   ✅ ${ep.name} success`);
 
       } catch (error) {
         const errorMessage = this.normalizeErrorMessage(error);
-        console.log(`   ❌ ${ep.name} failed: ${errorMessage}`);
         
         errors.push({
           endpoint: ep.name,
@@ -410,7 +383,6 @@ class UniversalAutoCompleteService {
       }
     }
 
-    console.log(`💰 Total API cost: £${totalCost.toFixed(2)}`);
     
     // Add comprehensive error reporting
     if (errors.length > 0) {
@@ -443,7 +415,6 @@ class UniversalAutoCompleteService {
         const result = await apiCall();
         
         if (attempt > 1) {
-          console.log(`   ✅ ${endpointName} succeeded on attempt ${attempt}`);
         }
         
         return result;
@@ -453,17 +424,14 @@ class UniversalAutoCompleteService {
         
         // Don't retry on certain error types
         if (this.isNonRetryableError(error)) {
-          console.log(`   ❌ ${endpointName} non-retryable error: ${error.message}`);
           throw error;
         }
         
         if (attempt < maxRetries) {
           const backoffDelay = Math.min(1000 * Math.pow(2, attempt - 1), 10000); // Max 10 seconds
-          console.log(`   ⏳ ${endpointName} attempt ${attempt} failed, retrying in ${backoffDelay}ms...`);
           
           await new Promise(resolve => setTimeout(resolve, backoffDelay));
         } else {
-          console.log(`   ❌ ${endpointName} failed after ${maxRetries} attempts`);
         }
       }
     }
@@ -526,20 +494,17 @@ class UniversalAutoCompleteService {
    * @returns {Promise<Object|null>} Fallback data or null
    */
   async getFallbackDataForEndpoint(endpointName, vrm, error) {
-    console.log(`🔄 Applying fallback strategy for ${endpointName}...`);
     
     try {
       // Try to get data from cache first
       const cachedData = await this.getCachedData(vrm);
       if (cachedData) {
-        console.log(`   ✅ Using cached data as fallback for ${endpointName}`);
         return this.extractEndpointDataFromCache(cachedData, endpointName);
       }
       
       // Generate reasonable fallback data based on endpoint
       const fallbackData = this.generateFallbackData(endpointName, vrm);
       if (fallbackData) {
-        console.log(`   ✅ Generated fallback data for ${endpointName}`);
         return fallbackData;
       }
       
@@ -811,7 +776,6 @@ class UniversalAutoCompleteService {
     }
     
     if (cleanedCount > 0) {
-      console.log(`🧹 Cleaned up ${cleanedCount} expired API sessions`);
     }
   }
 
@@ -924,11 +888,9 @@ class UniversalAutoCompleteService {
           const astonModelMatch = rawModel.match(/^(DB\d+|DBS|Vantage|Rapide|Vanquish|Virage|V\d+)/i);
           if (astonModelMatch) {
             parsed.model = astonModelMatch[1];
-            console.log(`🏎️ Aston Martin model extracted: "${rawModel}" → "${parsed.model}"`);
           } else {
             // Fallback: take first word
             parsed.model = rawModel.split(/\s+/)[0];
-            console.log(`🏎️ Aston Martin model (fallback): "${rawModel}" → "${parsed.model}"`);
           }
         } else {
           // Common patterns to remove from model name
@@ -958,7 +920,6 @@ class UniversalAutoCompleteService {
           parsed.model = cleanModel.trim();
           
           if (cleanModel !== rawModel) {
-            console.log(`🧹 Cleaned model: "${rawModel}" → "${parsed.model}"`);
           }
         }
       } else {
@@ -977,7 +938,6 @@ class UniversalAutoCompleteService {
         const variantUpper = parsed.variant.toUpperCase().trim();
         // Swap if: model starts with variant + space (variant is the base, model is base+trim)
         if (modelUpper.startsWith(variantUpper + ' ')) {
-          console.log(`🔄 [AutoComplete] Swap detected: model="${parsed.model}" ↔ variant="${parsed.variant}"`);
           const trueVariant = parsed.model.substring(parsed.variant.length).trim();
           parsed.model = parsed.variant;
           parsed.variant = trueVariant || null;
@@ -1047,19 +1007,10 @@ class UniversalAutoCompleteService {
                            0;
       
       // Log CO2 selection for debugging
-      console.log(`🔍 CO2 Selection: DVLA="${specs.VehicleExciseDutyDetails?.DvlaCo2}", SMMT="${specs.SmmtDetails?.Co2}", Selected="${parsed.co2Emissions}"`);
       
       parsed.annualTax = specs.VehicleExciseDutyDetails?.VedRate?.Standard?.TwelveMonths || null;
       
       // DEBUG: Log running costs parsing
-      console.log('🏃 [RUNNING COSTS PARSED]:', {
-        urbanMpg: parsed.urbanMpg,
-        extraUrbanMpg: parsed.extraUrbanMpg,
-        combinedMpg: parsed.combinedMpg,
-        insuranceGroup: parsed.insuranceGroup,
-        co2Emissions: parsed.co2Emissions,
-        annualTax: parsed.annualTax
-      });
       
       // CRITICAL FIX: Parse emission class from API - prioritize SmmtDetails
       parsed.emissionClass = specs.SmmtDetails?.EmissionClass || 
@@ -1077,11 +1028,6 @@ class UniversalAutoCompleteService {
       if (specs.PowerSource?.ElectricDetails) {
         const ev = specs.PowerSource.ElectricDetails;
         
-        console.log('🔋 [API Parser] Electric Details found in API response:');
-        console.log('   RangeFigures:', JSON.stringify(ev.RangeFigures, null, 2));
-        console.log('   BatteryDetailsList:', JSON.stringify(ev.BatteryDetailsList, null, 2));
-        console.log('   ChargePortDetailsList:', JSON.stringify(ev.ChargePortDetailsList, null, 2));
-        console.log('   MotorDetailsList:', JSON.stringify(ev.MotorDetailsList, null, 2));
         
         parsed.electricRange = ev.RangeFigures?.RangeTestCycles?.[0]?.CombinedRangeMiles;
         parsed.batteryCapacity = ev.BatteryDetailsList?.[0]?.CapacityKwh;
@@ -1091,11 +1037,6 @@ class UniversalAutoCompleteService {
         parsed.electricMotorTorque = ev.MotorDetailsList?.[0]?.MaxTorqueNm;
         parsed.chargingPortType = ev.ChargePortDetailsList?.map(p => p.PortType).join(' / ');
         
-        console.log('🔋 [API Parser] Parsed electric data:');
-        console.log('   electricRange:', parsed.electricRange);
-        console.log('   batteryCapacity:', parsed.batteryCapacity);
-        console.log('   homeChargingSpeed:', parsed.homeChargingSpeed);
-        console.log('   rapidChargingSpeed:', parsed.rapidChargingSpeed);
         
         // Calculate charging time (10-80%)
         const chargingTimes = ev.ChargePortDetailsList?.[0]?.ChargeTimes?.AverageChargeTimes10To80Percent;
@@ -1104,8 +1045,6 @@ class UniversalAutoCompleteService {
           parsed.chargingTime = fastCharging ? fastCharging.TimeInMinutes / 60 : null;
         }
       } else {
-        console.log('⚠️  [API Parser] No ElectricDetails found in PowerSource');
-        console.log('   PowerSource:', JSON.stringify(specs.PowerSource, null, 2));
       }
     }
 
@@ -1153,7 +1092,6 @@ class UniversalAutoCompleteService {
           damageLocations: writeoffData.damagelocations || []
         };
         
-        console.log(`⚠️  Write-off detected: Category ${category}, Date: ${writeoffData.lossdate || 'N/A'}`);
       } else {
         parsed.writeOffCategory = 'none';
         parsed.isWrittenOff = false;
@@ -1201,13 +1139,10 @@ class UniversalAutoCompleteService {
           }
         })).filter(test => test.testDate); // Only include tests with valid dates
         
-        console.log(`✅ [UniversalService] Parsed ${parsed.motHistory.length} MOT tests`);
       } else {
-        console.log(`⚠️  [UniversalService] No MOT tests found in API response`);
         parsed.motHistory = [];
       }
     } else {
-      console.log(`⚠️  [UniversalService] No MOT data in API response`);
       parsed.motHistory = [];
     }
 
@@ -1229,7 +1164,6 @@ class UniversalAutoCompleteService {
    * Update vehicle with ALL parsed data (handles Cars, Bikes, Vans)
    */
   async updateVehicleWithCompleteData(vehicle, parsedData, vehicleHistory, session = null) {
-    console.log('🔄 Updating vehicle with complete data...');
     
     // Basic vehicle info (common to all vehicle types)
     vehicle.make = parsedData.make || vehicle.make;
@@ -1254,15 +1188,6 @@ class UniversalAutoCompleteService {
     if (parsedData.emissionClass !== null && parsedData.emissionClass !== undefined) vehicle.emissionClass = parsedData.emissionClass;
     
     // DEBUG: Log running costs saving
-    console.log('💾 [RUNNING COSTS SAVED TO VEHICLE]:', {
-      urbanMpg: vehicle.urbanMpg,
-      extraUrbanMpg: vehicle.extraUrbanMpg,
-      combinedMpg: vehicle.combinedMpg,
-      insuranceGroup: vehicle.insuranceGroup,
-      co2Emissions: vehicle.co2Emissions,
-      annualTax: vehicle.annualTax,
-      emissionClass: vehicle.emissionClass
-    });
     
     // Performance (common to all vehicle types)
     vehicle.power = parsedData.power || vehicle.power;
@@ -1276,14 +1201,9 @@ class UniversalAutoCompleteService {
                                       vehicle.fuelType === 'Petrol Plug-in Hybrid' ||
                                       vehicle.fuelType === 'Diesel Plug-in Hybrid';
     
-    console.log('🔋 [UniversalService] Checking electric data for:', vehicle.fuelType);
-    console.log('   isElectricOrPluginHybrid:', isElectricOrPluginHybrid);
-    console.log('   parsedData.electricRange:', parsedData.electricRange);
-    console.log('   parsedData.batteryCapacity:', parsedData.batteryCapacity);
     
     if (isElectricOrPluginHybrid && (parsedData.electricRange || parsedData.batteryCapacity)) {
       // Save electric data for EVs and PHEVs
-      console.log('✅ [UniversalService] Saving electric data to vehicle...');
       if (parsedData.electricRange) vehicle.electricRange = parsedData.electricRange;
       if (parsedData.batteryCapacity) vehicle.batteryCapacity = parsedData.batteryCapacity;
       if (parsedData.chargingTime) vehicle.chargingTime = parsedData.chargingTime;
@@ -1293,10 +1213,7 @@ class UniversalAutoCompleteService {
       if (parsedData.electricMotorTorque) vehicle.electricMotorTorque = parsedData.electricMotorTorque;
       if (parsedData.chargingPortType) vehicle.chargingPortType = parsedData.chargingPortType;
       
-      console.log(`⚡ [UniversalService] Electric data saved: ${vehicle.batteryCapacity}kWh battery, ${vehicle.electricRange} miles range`);
     } else if (isElectricOrPluginHybrid) {
-      console.log('⚠️  [UniversalService] PHEV/EV detected but NO electric data in parsedData!');
-      console.log('   This means API did not return ElectricDetails');
     } else {
       // For pure petrol/diesel vehicles (NOT hybrids), ensure EV fields are null
       vehicle.electricRange = null;
@@ -1339,7 +1256,6 @@ class UniversalAutoCompleteService {
       if (calculatedTax !== null) {
         parsedData.annualTax = calculatedTax;
         vehicle.annualTax = calculatedTax; // CRITICAL FIX: Also set on vehicle object
-        console.log(`💰 [UniversalService] Calculated annual tax: £${calculatedTax} (CO2: ${parsedData.co2Emissions}g/km, Year: ${vehicle.year})`);
       }
     }
     
@@ -1368,7 +1284,6 @@ class UniversalAutoCompleteService {
       
       parsedData.insuranceGroup = estimatedGroup;
       vehicle.insuranceGroup = estimatedGroup;
-      console.log(`🛡️ [UniversalService] Estimated insurance group: ${estimatedGroup} (Engine: ${engineSize}L, Age: ${age} years)`);
     }
     
     // Vehicle history reference
@@ -1393,11 +1308,6 @@ class UniversalAutoCompleteService {
         isStolen: parsedData.stolen || false
       };
       
-      console.log('✅ [UniversalService] Vehicle history data saved:', {
-        previousKeepers: vehicle.historyCheckData.previousKeepers,
-        isWrittenOff: vehicle.historyCheckData.isWrittenOff,
-        writeOffCategory: vehicle.historyCheckData.writeOffCategory
-      });
     }
     
     // Running costs object (common structure for all vehicle types)
@@ -1422,9 +1332,6 @@ class UniversalAutoCompleteService {
       chargingPortType: vehicle.chargingPortType
     };
     
-    console.log('✅ Vehicle updated with complete data');
-    console.log('📦 [FINAL RUNNING COSTS OBJECT]:', JSON.stringify(vehicle.runningCosts, null, 2));
-    console.log(`   Running costs: MPG=${vehicle.combinedMpg}, CO2=${vehicle.co2Emissions}, Insurance=${vehicle.insuranceGroup}, Emission Class=${vehicle.emissionClass}`);
     return vehicle;
   }
 
@@ -1476,7 +1383,6 @@ class UniversalAutoCompleteService {
       
       // Save within transaction if provided
       await vehicleHistory.save(session ? { session } : {});
-      console.log('✅ Data cached in VehicleHistory (complete with variant, doors, seats, engine)');
       return vehicleHistory;
       
     } catch (error) {
@@ -1490,7 +1396,6 @@ class UniversalAutoCompleteService {
    */
   async getCachedData(vrm) {
     try {
-      console.log(`🔍 Checking cache for ${vrm}...`);
       
       // Find the most recent cache entry for this VRM
       const cached = await VehicleHistory.findOne({ vrm: vrm })
@@ -1498,7 +1403,6 @@ class UniversalAutoCompleteService {
         .lean(); // Use lean() for better performance
       
       if (!cached) {
-        console.log('📭 No cache found');
         return null;
       }
       
@@ -1521,7 +1425,6 @@ class UniversalAutoCompleteService {
       
       // Log cache status
       const ageInDays = Math.floor(cacheAge / (24 * 60 * 60 * 1000));
-      console.log(`📦 Cache found: ${cacheStatus} (${ageInDays} days old)`);
       
       // Return cache with status metadata
       if (cacheStatus !== 'expired') {
@@ -1534,7 +1437,6 @@ class UniversalAutoCompleteService {
       }
       
       // Cache expired - clean up old entries
-      console.log('⏰ Cache expired, cleaning up old entries...');
       await this.cleanupExpiredCache(vrm);
       return null;
       
@@ -1557,7 +1459,6 @@ class UniversalAutoCompleteService {
       });
       
       if (result.deletedCount > 0) {
-        console.log(`🧹 Cleaned up ${result.deletedCount} expired cache entries for ${vrm}`);
       }
     } catch (error) {
       console.error('❌ Cache cleanup failed:', error.message);
@@ -1569,13 +1470,11 @@ class UniversalAutoCompleteService {
    * @param {Array} vrmList - List of VRMs to warm cache for
    */
   async warmCache(vrmList) {
-    console.log(`🔥 Warming cache for ${vrmList.length} vehicles...`);
     
     const warmingPromises = vrmList.map(async (vrm) => {
       try {
         const cached = await this.getCachedData(vrm);
         if (!cached || cached._cacheStatus === 'stale') {
-          console.log(`🔥 Pre-warming cache for ${vrm}...`);
           // Trigger background refresh without waiting
           this.refreshCacheInBackground(vrm);
         }
@@ -1586,7 +1485,6 @@ class UniversalAutoCompleteService {
     
     // Don't wait for all to complete - fire and forget
     Promise.allSettled(warmingPromises);
-    console.log('🔥 Cache warming initiated');
   }
 
   /**
@@ -1598,7 +1496,6 @@ class UniversalAutoCompleteService {
       // 🔒 DEDUPLICATION: Check if refresh is already in progress
       const refreshKey = `refresh_${vrm.toUpperCase()}`;
       if (this.processingLocks.has(refreshKey)) {
-        console.log(`⏸️  Background refresh already in progress for ${vrm} - skipping duplicate`);
         return;
       }
       
@@ -1617,7 +1514,6 @@ class UniversalAutoCompleteService {
           setTimeout(async () => {
             try {
               await this.completeCarData(vehicle, true);
-              console.log(`🔄 Background cache refresh completed for ${vrm}`);
               resolve();
             } catch (error) {
               console.error(`❌ Background cache refresh failed for ${vrm}:`, error.message);
@@ -1640,7 +1536,6 @@ class UniversalAutoCompleteService {
    * Update vehicle from cached data (handles Cars, Bikes, Vans)
    */
   async updateVehicleFromCache(vehicle, cachedData, session = null) {
-    console.log('🔄 Updating vehicle from cached data...');
     
     // Update all fields from cache
     vehicle.make = cachedData.make || vehicle.make;
@@ -1667,7 +1562,6 @@ class UniversalAutoCompleteService {
     const motData = cachedData.motHistory || cachedData.motTests || [];
     if (motData.length > 0) {
       vehicle.motHistory = motData;
-      console.log(`✅ MOT history saved: ${motData.length} tests`);
     }
     
     // Vehicle history reference
@@ -1701,10 +1595,8 @@ class UniversalAutoCompleteService {
     if (cachedData._id) {
       vehicle.dataSources.historyCheck = true;
     }
-    console.log('✅ Data sources flags set:', vehicle.dataSources);
     
     await vehicle.save(session ? { session } : {});
-    console.log('✅ Vehicle updated from cache');
     return vehicle;
   }
 
@@ -1712,7 +1604,6 @@ class UniversalAutoCompleteService {
    * Apply fallback data if API fails (handles Cars, Bikes, Vans)
    */
   async applyFallbackData(vehicle) {
-    console.log('🚨 Applying fallback data...');
     
     // Generate reasonable defaults based on fuel type and year
     if (!vehicle.annualTax) {
@@ -1917,12 +1808,7 @@ class UniversalAutoCompleteService {
     const needsCompletion = missingBasicFields || missingRunningCosts || missingMOT || missingHistory;
     
     if (needsCompletion) {
-      console.log(`   ⚠️  Vehicle needs completion:`);
-      if (missingBasicFields) console.log(`      - Missing basic fields`);
-      if (missingRunningCosts) console.log(`      - Missing running costs`);
-      if (missingMOT) console.log(`      - Missing MOT data`);
-      if (missingHistory) console.log(`      - Missing vehicle history`);
-    }
+      if (missingBasicFields)      if (missingRunningCosts)      if (missingMOT)      if (missingHistory)    }
     
     return needsCompletion;
   }
@@ -1931,7 +1817,6 @@ class UniversalAutoCompleteService {
    * Enhance manual data (for vehicles without registration)
    */
   async enhanceManualData(vehicle) {
-    console.log('🔧 Enhancing manual data...');
     
     // Generate variant if missing
     if (!vehicle.variant) {
@@ -1949,7 +1834,6 @@ class UniversalAutoCompleteService {
                                       vehicle.fuelType === 'Diesel Plug-in Hybrid';
     
     if (isElectricOrPluginHybrid) {
-      console.log(`🔋 Applying electric vehicle enhancements for ${vehicle.fuelType}...`);
       const enhancedData = ElectricVehicleEnhancementService.enhanceWithEVData(vehicle.toObject());
       Object.assign(vehicle, enhancedData);
     }
@@ -1967,7 +1851,6 @@ class UniversalAutoCompleteService {
   async applyVehicleSpecificEnhancements(vehicle) {
     const vehicleType = vehicle.constructor.modelName;
     
-    console.log(`🔧 Applying ${vehicleType}-specific enhancements...`);
     
     if (vehicleType === 'Bike') {
       // Bike-specific enhancements
@@ -1985,7 +1868,6 @@ class UniversalAutoCompleteService {
    * Enhance bike-specific data
    */
   async enhanceBikeData(bike) {
-    console.log('🏍️ Applying bike-specific enhancements...');
     
     // Bikes don't have doors
     bike.doors = 0;
@@ -2023,7 +1905,6 @@ class UniversalAutoCompleteService {
    * Enhance van-specific data
    */
   async enhanceVanData(van) {
-    console.log('🚐 Applying van-specific enhancements...');
     
     // Default van doors
     if (!van.doors) {
@@ -2051,7 +1932,6 @@ class UniversalAutoCompleteService {
    * Enhance car-specific data
    */
   async enhanceCarData(car) {
-    console.log('🚗 Applying car-specific enhancements...');
     
     // Default car doors based on body type
     if (!car.doors && car.bodyType) {
@@ -2083,7 +1963,6 @@ class UniversalAutoCompleteService {
    */
   async fetchCompleteVehicleData(vrm, mileage = 50000, forceRefresh = false) {
     try {
-      console.log(`\n🚀 [UniversalAutoComplete] Comprehensive data fetch for: ${vrm}`);
       
       // Find the vehicle in database
       const Car = require('../models/Car');
@@ -2164,10 +2043,8 @@ class UniversalAutoCompleteService {
       (validationResult.completedFieldsCount / validationResult.criticalFieldsCount) * 100
     );
 
-    console.log(`📊 Data completeness: ${validationResult.completionPercentage}% (${validationResult.completedFieldsCount}/${validationResult.criticalFieldsCount} fields)`);
     
     if (missingFields.length > 0) {
-      console.log(`⚠️  Missing critical fields: ${missingFields.join(', ')}`);
     }
 
     return validationResult;
@@ -2225,13 +2102,11 @@ class UniversalAutoCompleteService {
   applyCompletenessFixes(vehicle, parsedData, validationResult) {
     const vehicleType = vehicle.constructor.modelName;
     
-    console.log(`🔧 Applying completeness fixes for ${validationResult.missingFields.length} missing fields...`);
 
     validationResult.missingFields.forEach(field => {
       const fallbackValue = this.getFallbackValueForField(field, vehicle, vehicleType);
       if (fallbackValue !== null) {
         vehicle[field] = fallbackValue;
-        console.log(`   ✅ ${field}: ${fallbackValue}`);
       }
     });
 
@@ -2326,7 +2201,6 @@ class UniversalAutoCompleteService {
     const cost = logEntry.success ? `£${logEntry.cost}` : '£0.00';
     const time = `${logEntry.responseTime}ms`;
     
-    console.log(`📊 API Call: ${status} ${logEntry.endpoint} | ${cost} | ${time} | ${logEntry.vrm}`);
     
     // TODO: In production, also log to external monitoring system
     // this.logToExternalSystem(logEntry);
@@ -2661,7 +2535,6 @@ class UniversalAutoCompleteService {
    * @returns {Object} Standardized response with fallback data
    */
   async applyFallbackData(vehicle) {
-    console.log('🚨 Applying fallback data due to critical error...');
     
     try {
       // Generate reasonable defaults based on fuel type and year
@@ -2829,14 +2702,12 @@ class UniversalAutoCompleteService {
    */
   async getVehicleData(vrm, mileage = 50000) {
     try {
-      console.log(`\n🔍 [UniversalAutoComplete] Fetching vehicle data for: ${vrm} (no database save)`);
       
       const cleanedVrm = vrm.toUpperCase().replace(/\s/g, '');
       
       // Step 1: Try cache first
       const cachedData = await this.getCachedData(cleanedVrm);
       if (cachedData) {
-        console.log('✅ Using cached data for enhanced lookup');
         return {
           success: true,
           data: this.formatVehicleDataResponse(cachedData),
@@ -2845,7 +2716,6 @@ class UniversalAutoCompleteService {
       }
       
       // Step 2: Fetch from API
-      console.log('📡 Fetching fresh data from API...');
       const apiData = await this.fetchAllAPIData(cleanedVrm);
       
       // Step 3: Parse data
@@ -2881,13 +2751,6 @@ class UniversalAutoCompleteService {
     // Parsed data uses: year, color, motDueDate
     
     // DEBUG: Log what data we're formatting
-    console.log('🔍 [formatVehicleDataResponse] Input data fields:', {
-      urbanMpg: data.urbanMpg,
-      combinedMpg: data.combinedMpg,
-      co2Emissions: data.co2Emissions,
-      insuranceGroup: data.insuranceGroup,
-      annualTax: data.annualTax
-    });
     
     const formatted = {
       // Basic info - handle both field name formats
@@ -2958,12 +2821,6 @@ class UniversalAutoCompleteService {
     };
     
     // DEBUG: Log what we're returning
-    console.log('🔍 [formatVehicleDataResponse] Output running costs:', {
-      urbanMpg: formatted.urbanMpg,
-      combinedMpg: formatted.combinedMpg,
-      co2Emissions: formatted.co2Emissions,
-      runningCosts: formatted.runningCosts
-    });
     
     return formatted;
   }

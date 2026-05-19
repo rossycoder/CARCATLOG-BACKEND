@@ -30,7 +30,6 @@ class APICacheService {
         .lean();
       
       if (!cached) {
-        console.log(`📦 [Cache] No cache found for ${cleanVrm}`);
         return null;
       }
       
@@ -39,12 +38,9 @@ class APICacheService {
       const ageInDays = Math.floor(age / (24 * 60 * 60 * 1000));
       
       if (age > this.CACHE_TTL_MS) {
-        console.log(`📦 [Cache] Cache expired for ${cleanVrm} (${ageInDays} days old)`);
         return null;
       }
       
-      console.log(`✅ [Cache] HIT for ${cleanVrm} (${ageInDays} days old)`);
-      console.log(`   💰 Saved API call cost!`);
       
       return cached;
     } catch (error) {
@@ -78,7 +74,6 @@ class APICacheService {
         }
       );
       
-      console.log(`✅ [Cache] Saved data for ${cleanVrm} (valid for ${this.CACHE_TTL_DAYS} days)`);
       
       return cacheEntry;
     } catch (error) {
@@ -99,11 +94,9 @@ class APICacheService {
       const result = await VehicleHistory.deleteOne({ vrm: cleanVrm });
       
       if (result.deletedCount > 0) {
-        console.log(`✅ [Cache] Invalidated cache for ${cleanVrm}`);
         return true;
       }
       
-      console.log(`⚠️  [Cache] No cache found to invalidate for ${cleanVrm}`);
       return false;
     } catch (error) {
       console.error(`❌ [Cache] Error invalidating cache:`, error.message);

@@ -49,7 +49,6 @@ class ValuationAPIClient {
       if (shouldRetry) {
         // Exponential backoff: 1s, 2s, 4s
         const delay = Math.pow(2, attempt - 1) * 1000;
-        console.log(`Valuation API retry attempt ${attempt}/${this.maxRetries} after ${delay}ms`);
         
         await new Promise(resolve => setTimeout(resolve, delay));
         return this.makeRequestWithRetry(vrm, mileage, attempt + 1);

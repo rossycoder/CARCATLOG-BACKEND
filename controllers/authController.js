@@ -90,7 +90,6 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    console.log('🔐 Login attempt for:', email);
 
     // Validation
     if (!email || !password) {
@@ -104,20 +103,15 @@ const login = async (req, res) => {
     const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
     
     if (!user) {
-      console.log('❌ User not found:', email);
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
       });
     }
 
-    console.log('✅ User found:', user.email);
-    console.log('   Has password:', !!user.password);
-    console.log('   Email verified:', user.isEmailVerified);
 
     // Check if user has a password (social auth users might not)
     if (!user.password) {
-      console.log('❌ User has no password (social auth user)');
       return res.status(401).json({
         success: false,
         message: 'Please use social login or reset your password'
@@ -127,17 +121,14 @@ const login = async (req, res) => {
     // Check password using the model method
     const isMatch = await user.comparePassword(password);
     
-    console.log('   Password match:', isMatch);
 
     if (!isMatch) {
-      console.log('❌ Password mismatch');
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
       });
     }
 
-    console.log('✅ Login successful');
 
     // Generate token
     const token = generateToken(user._id);
@@ -264,12 +255,8 @@ const verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
 
-    console.log('📧 Email verification attempt');
-    console.log('   Token received:', token);
-    console.log('   Token length:', token?.length);
 
     if (!token) {
-      console.log('❌ No token provided');
       return res.status(400).json({
         success: false,
         message: 'Verification token is required'
@@ -282,7 +269,6 @@ const verifyEmail = async (req, res) => {
       emailVerificationExpires: { $gt: Date.now() }
     }).select('+emailVerificationToken +emailVerificationExpires');
 
-    console.log('   User found:', !!user);
     
     if (!user) {
       // Check if token exists but is expired
@@ -291,8 +277,6 @@ const verifyEmail = async (req, res) => {
       }).select('+emailVerificationToken +emailVerificationExpires');
 
       if (expiredUser) {
-        console.log('❌ Token expired for user:', expiredUser.email);
-        console.log('   Expired at:', expiredUser.emailVerificationExpires);
         return res.status(400).json({
           success: false,
           message: 'Verification link has expired. Please request a new verification email.',
@@ -300,7 +284,6 @@ const verifyEmail = async (req, res) => {
         });
       }
 
-      console.log('❌ Invalid token - no matching user found');
       return res.status(400).json({
         success: false,
         message: 'Invalid verification link. Please request a new verification email.',
@@ -308,8 +291,6 @@ const verifyEmail = async (req, res) => {
       });
     }
 
-    console.log('✅ Valid token for user:', user.email);
-    console.log('   Token expires:', user.emailVerificationExpires);
 
     // Update user
     user.isEmailVerified = true;
@@ -317,7 +298,6 @@ const verifyEmail = async (req, res) => {
     user.emailVerificationExpires = undefined;
     await user.save();
 
-    console.log('✅ Email verified successfully');
 
     // Generate token for auto-login
     const authToken = generateToken(user._id);

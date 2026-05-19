@@ -9,25 +9,18 @@ const connectDB = async () => {
       socketTimeoutMS: 45000,
       serverSelectionTimeoutMS: 10000,
       
-      // TLS/SSL settings to fix connection issues
+      // TLS/SSL settings
       tls: true,
       tlsAllowInvalidCertificates: false,
       tlsAllowInvalidHostnames: false,
       
       // Retry settings
       retryWrites: true,
-      retryReads: true,
-      
-      // Use new URL parser
-      useNewUrlParser: true,
-      useUnifiedTopology: true
+      retryReads: true
     };
 
-    console.log('🔄 Attempting to connect to MongoDB Atlas...');
     const conn = await mongoose.connect(process.env.MONGODB_URI, options);
 
-    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
-    console.log(`📊 Database: ${conn.connection.name}`);
     
     // Handle connection events
     mongoose.connection.on('error', (err) => {
@@ -39,7 +32,6 @@ const connectDB = async () => {
     });
 
     mongoose.connection.on('reconnected', () => {
-      console.log('🔄 MongoDB reconnected successfully');
     });
 
     return conn;
@@ -59,7 +51,6 @@ const connectDB = async () => {
     }
     
     // Retry connection after 10 seconds
-    console.log('🔄 Retrying connection in 10 seconds...');
     setTimeout(connectDB, 10000);
   }
 };
@@ -68,7 +59,6 @@ const connectDB = async () => {
 process.on('SIGINT', async () => {
   try {
     await mongoose.connection.close();
-    console.log('🛑 MongoDB connection closed through app termination');
     process.exit(0);
   } catch (err) {
     console.error('Error closing MongoDB connection:', err);

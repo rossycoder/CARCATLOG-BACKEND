@@ -11,12 +11,6 @@ class EmailService {
     this.emailService = process.env.EMAIL_SERVICE || 'gmail'; // Default to Gmail
     this.fromEmail = process.env.EMAIL_FROM || 'noreply@carcatalog.com';
     
-    console.log('📧 Email Service Configuration:');
-    console.log('   Service:', this.emailService);
-    console.log('   From:', this.fromEmail);
-    console.log('   Gmail User:', process.env.EMAIL_USER ? '✓ Set' : '✗ Not set');
-    console.log('   Gmail Password:', process.env.EMAIL_PASSWORD ? '✓ Set' : '✗ Not set');
-    console.log('   SendGrid Key:', process.env.SENDGRID_API_KEY ? '✓ Set' : '✗ Not set');
     
     // Configure Gmail with Nodemailer (Primary)
     if (this.emailService === 'gmail' && process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
@@ -28,17 +22,13 @@ class EmailService {
         }
       });
       this.enabled = true;
-      console.log('✅ Email service initialized with Gmail');
     }
     // Configure SendGrid (Fallback)
     else if (this.emailService === 'sendgrid' && process.env.SENDGRID_API_KEY) {
       sgMail.setApiKey(process.env.SENDGRID_API_KEY);
       this.enabled = true;
-      console.log('✅ Email service initialized with SendGrid');
     } else {
       this.enabled = false;
-      console.log('⚠️ Email service disabled - no valid configuration found');
-      console.log('   Please check your .env file for EMAIL_USER and EMAIL_PASSWORD');
     }
   }
 
@@ -53,8 +43,6 @@ class EmailService {
   async sendEmail(to, subject, text, html) {
     try {
       if (!this.enabled) {
-        console.log('📧 Email disabled - Would send to:', to);
-        console.log('   Subject:', subject);
         return true;
       }
 
@@ -69,7 +57,6 @@ class EmailService {
         };
 
         await sgMail.send(msg);
-        console.log('✅ Email sent successfully via SendGrid to:', to);
         return true;
       }
       
@@ -84,7 +71,6 @@ class EmailService {
         };
 
         const info = await this.transporter.sendMail(mailOptions);
-        console.log('✅ Email sent successfully via Gmail:', info.messageId);
         return true;
       }
 
@@ -106,9 +92,6 @@ class EmailService {
   async sendAdvertisingPackageConfirmation(purchase) {
     try {
       if (!this.enabled) {
-        console.log('📧 Email disabled - Would send confirmation to:', purchase.customerEmail);
-        console.log('   Package:', purchase.packageName);
-        console.log('   Amount:', purchase.amountFormatted);
         return true;
       }
 
@@ -276,7 +259,6 @@ This is an automated email. Please do not reply to this message.
   async sendPaymentFailureNotification(email, details) {
     try {
       if (!this.enabled) {
-        console.log('📧 Email disabled - Would send failure notification to:', email);
         return true;
       }
 
@@ -305,7 +287,6 @@ This is an automated email. Please do not reply to this message.
   async sendSubscriptionRenewalReminder(dealer, subscription) {
     try {
       if (!this.enabled) {
-        console.log('📧 Email disabled - Would send renewal reminder to:', dealer.email);
         return true;
       }
 
@@ -425,7 +406,6 @@ The CarCatalog Team
   async sendSubscriptionRenewed(dealer, subscription) {
     try {
       if (!this.enabled) {
-        console.log('📧 Email disabled - Would send renewal confirmation to:', dealer.email);
         return true;
       }
 
@@ -542,7 +522,6 @@ The CarCatalog Team
   async sendSubscriptionPaymentFailed(dealer, subscription) {
     try {
       if (!this.enabled) {
-        console.log('📧 Email disabled - Would send payment failed to:', dealer.email);
         return true;
       }
 
@@ -659,7 +638,6 @@ The CarCatalog Team
   async sendSubscriptionExpired(dealer, subscription) {
     try {
       if (!this.enabled) {
-        console.log('📧 Email disabled - Would send expired notification to:', dealer.email);
         return true;
       }
 

@@ -195,7 +195,6 @@ async function getFreshValuation(req, res) {
   try {
     const { vrm, mileage } = req.body;
     
-    console.log(`🔄 [Fresh Valuation] Request for ${vrm} with ${mileage} miles`);
     
     // Validate inputs
     if (!vrm) {
@@ -221,14 +220,9 @@ async function getFreshValuation(req, res) {
 
     // ALWAYS make fresh API call (no cache)
     const valuationService = new ValuationService();
-    console.log(`💰 [Fresh Valuation] Making PAID API call for ${vrm}`);
     
     const valuation = await valuationService.getValuation(vrm, mileage, true); // forceRefresh = true
 
-    console.log(`✅ [Fresh Valuation] API call successful for ${vrm}`);
-    console.log(`   Private: £${valuation.estimatedValue?.private || 'N/A'}`);
-    console.log(`   Retail: £${valuation.estimatedValue?.retail || 'N/A'}`);
-    console.log(`   Trade: £${valuation.estimatedValue?.trade || 'N/A'}`);
 
     res.json({
       success: true,

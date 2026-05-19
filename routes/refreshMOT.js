@@ -16,7 +16,6 @@ router.post('/:carId', async (req, res) => {
   try {
     const { carId } = req.params;
     
-    console.log(`🔄 Refreshing MOT history for car: ${carId}`);
     
     // Find the car
     const car = await Car.findById(carId);
@@ -35,17 +34,11 @@ router.post('/:carId', async (req, res) => {
       });
     }
     
-    console.log(`   VRM: ${car.registrationNumber}`);
-    console.log(`   Current MOT History: ${car.motHistory ? car.motHistory.length : 0} tests`);
     
     // Use Universal Service to fetch complete data including MOT history
     const universalService = new UniversalAutoCompleteService();
     const result = await universalService.completeCarData(car, true); // Force refresh
     
-    console.log(`✅ MOT history refreshed!`);
-    console.log(`   New MOT History: ${result.motHistory ? result.motHistory.length : 0} tests`);
-    console.log(`   MOT Due: ${result.motDue}`);
-    console.log(`   MOT Status: ${result.motStatus}`);
     
     res.json({
       success: true,
@@ -77,7 +70,6 @@ router.post('/vrm/:vrm', async (req, res) => {
   try {
     const { vrm } = req.params;
     
-    console.log(`🔄 Refreshing MOT history for VRM: ${vrm}`);
     
     // Find the car by VRM
     const car = await Car.findOne({ registrationNumber: vrm.toUpperCase() });
@@ -89,17 +81,11 @@ router.post('/vrm/:vrm', async (req, res) => {
       });
     }
     
-    console.log(`   Car ID: ${car._id}`);
-    console.log(`   Current MOT History: ${car.motHistory ? car.motHistory.length : 0} tests`);
     
     // Use Universal Service to fetch complete data including MOT history
     const universalService = new UniversalAutoCompleteService();
     const result = await universalService.completeCarData(car, true); // Force refresh
     
-    console.log(`✅ MOT history refreshed!`);
-    console.log(`   New MOT History: ${result.motHistory ? result.motHistory.length : 0} tests`);
-    console.log(`   MOT Due: ${result.motDue}`);
-    console.log(`   MOT Status: ${result.motStatus}`);
     
     res.json({
       success: true,

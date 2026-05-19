@@ -465,7 +465,6 @@ const bikeSchema = new mongoose.Schema({
 
 // Pre-save middleware to normalize bike data and generate display title
 bikeSchema.pre('save', async function(next) {
-  console.log(`🔧 [Bike Pre-Save Hook] Starting for ${this.make} ${this.model} (${this.registrationNumber})`);
   
   // CRITICAL: Normalize make names (exactly like cars)
   // Honda, HONDA, honda → Honda
@@ -501,7 +500,6 @@ bikeSchema.pre('save', async function(next) {
       const oldMake = this.make;
       this.make = makeNormalization[makeUpper];
       if (oldMake !== this.make) {
-        console.log(`✅ [Bike Make] Normalized: "${oldMake}" → "${this.make}"`);
       }
     }
   }
@@ -528,7 +526,6 @@ bikeSchema.pre('save', async function(next) {
       const oldFuel = this.fuelType;
       this.fuelType = fuelNormalization[fuelUpper];
       if (oldFuel !== this.fuelType) {
-        console.log(`✅ [Bike Fuel] Normalized: "${oldFuel}" → "${this.fuelType}"`);
       }
     }
   }
@@ -541,7 +538,6 @@ bikeSchema.pre('save', async function(next) {
     
     if (needsCoordinates || needsLocationName) {
       try {
-        console.log(`📍 [Bike Model] Fetching coordinates for postcode: ${this.postcode}`);
         const postcodeService = require('../services/postcodeService');
         const postcodeData = await postcodeService.lookupPostcode(this.postcode);
         
@@ -559,10 +555,7 @@ bikeSchema.pre('save', async function(next) {
           // Set location name
           this.locationName = postcodeData.locationName;
           
-          console.log(`✅ [Bike Model] Coordinates set: ${postcodeData.latitude}, ${postcodeData.longitude}`);
-          console.log(`✅ [Bike Model] Location name set: ${postcodeData.locationName}`);
         } else {
-          console.log(`⚠️  [Bike Model] Could not fetch coordinates for postcode: ${this.postcode}`);
         }
       } catch (error) {
         console.error(`❌ [Bike Model] Error fetching coordinates:`, error.message);
@@ -619,8 +612,6 @@ bikeSchema.pre('save', async function(next) {
     
     // Only enhance if it's electric/hybrid and it's a new document or fuelType changed
     if (isElectricOrPluginHybrid && (this.isNew || this.isModified('fuelType'))) {
-      console.log(`🔋 [Bike] Auto-enhancing electric/hybrid bike: ${this.make} ${this.model} ${this.variant}`);
-      console.log(`   Fuel Type: ${this.fuelType}`);
       
       // Import services (dynamic import to avoid circular dependencies)
       const ElectricVehicleEnhancementService = require('../services/electricVehicleEnhancementService');
@@ -640,7 +631,6 @@ bikeSchema.pre('save', async function(next) {
         }
       });
       
-      console.log(`✅ [Bike] Auto-enhanced EV/Hybrid: ${this.electricRange || this.runningCosts?.electricRange}mi range, ${this.batteryCapacity || this.runningCosts?.batteryCapacity}kWh battery`);
     }
     
     // CRITICAL: For plug-in hybrids, DON'T remove electric data
@@ -648,7 +638,6 @@ bikeSchema.pre('save', async function(next) {
     const isPureNonElectric = this.fuelType === 'Petrol';
     
     if (isPureNonElectric && (this.batteryCapacity || this.electricRange)) {
-      console.log(`⚠️  [Bike] Removing electric data from pure ${this.fuelType} bike`);
       this.batteryCapacity = null;
       this.electricRange = null;
       this.homeChargingSpeed = null;

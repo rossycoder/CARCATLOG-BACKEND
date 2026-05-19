@@ -14,14 +14,11 @@ const Van = require('../models/Van');
  */
 async function cleanupPendingPaymentCars() {
   try {
-    console.log('\n🧹 [Cleanup Job] Starting cleanup of pending payment cars...');
     
     // Calculate cutoff time (24 hours ago)
     const cutoffTime = new Date();
     cutoffTime.setHours(cutoffTime.getHours() - 24);
     
-    console.log(`⏰ Cutoff time: ${cutoffTime.toISOString()}`);
-    console.log(`   (Deleting cars created before this time with pending payment)`);
     
     // Find and delete pending payment CARS
     const pendingCars = await Car.find({
@@ -32,11 +29,9 @@ async function cleanupPendingPaymentCars() {
       createdAt: { $lt: cutoffTime }
     });
     
-    console.log(`\n📋 Found ${pendingCars.length} pending payment cars to delete`);
     
     let deletedCarsCount = 0;
     for (const car of pendingCars) {
-      console.log(`   🗑️  Deleting car: ${car.make} ${car.model} (${car.registrationNumber || 'No reg'}) - Created: ${car.createdAt.toISOString()}`);
       await Car.deleteOne({ _id: car._id });
       deletedCarsCount++;
     }
@@ -50,11 +45,9 @@ async function cleanupPendingPaymentCars() {
       createdAt: { $lt: cutoffTime }
     });
     
-    console.log(`\n📋 Found ${pendingBikes.length} pending payment bikes to delete`);
     
     let deletedBikesCount = 0;
     for (const bike of pendingBikes) {
-      console.log(`   🗑️  Deleting bike: ${bike.make} ${bike.model} (${bike.registrationNumber || 'No reg'}) - Created: ${bike.createdAt.toISOString()}`);
       await Bike.deleteOne({ _id: bike._id });
       deletedBikesCount++;
     }
@@ -68,11 +61,9 @@ async function cleanupPendingPaymentCars() {
       createdAt: { $lt: cutoffTime }
     });
     
-    console.log(`\n📋 Found ${pendingVans.length} pending payment vans to delete`);
     
     let deletedVansCount = 0;
     for (const van of pendingVans) {
-      console.log(`   🗑️  Deleting van: ${van.make} ${van.model} (${van.registrationNumber || 'No reg'}) - Created: ${van.createdAt.toISOString()}`);
       await Van.deleteOne({ _id: van._id });
       deletedVansCount++;
     }
@@ -80,13 +71,6 @@ async function cleanupPendingPaymentCars() {
     // Summary
     const totalDeleted = deletedCarsCount + deletedBikesCount + deletedVansCount;
     
-    console.log(`\n✅ [Cleanup Job] Completed successfully!`);
-    console.log(`   📊 Summary:`);
-    console.log(`      - Cars deleted: ${deletedCarsCount}`);
-    console.log(`      - Bikes deleted: ${deletedBikesCount}`);
-    console.log(`      - Vans deleted: ${deletedVansCount}`);
-    console.log(`      - Total deleted: ${totalDeleted}`);
-    console.log(`      - Cutoff time: ${cutoffTime.toISOString()}`);
     
     return {
       success: true,
@@ -114,13 +98,11 @@ async function cleanupPendingPaymentCars() {
  */
 async function cleanupOrphanedCars() {
   try {
-    console.log('\n🧹 [Cleanup Job] Starting cleanup of orphaned cars (no userId)...');
     
     // Calculate cutoff time (7 days ago - give more time for orphaned cars)
     const cutoffTime = new Date();
     cutoffTime.setDate(cutoffTime.getDate() - 7);
     
-    console.log(`⏰ Cutoff time: ${cutoffTime.toISOString()}`);
     
     // Find cars without userId that are old
     const orphanedCars = await Car.find({
@@ -129,17 +111,13 @@ async function cleanupOrphanedCars() {
       createdAt: { $lt: cutoffTime }
     });
     
-    console.log(`\n📋 Found ${orphanedCars.length} orphaned cars to delete`);
     
     let deletedCount = 0;
     for (const car of orphanedCars) {
-      console.log(`   🗑️  Deleting orphaned car: ${car.make} ${car.model} - Status: ${car.advertStatus}`);
       await Car.deleteOne({ _id: car._id });
       deletedCount++;
     }
     
-    console.log(`\n✅ [Cleanup Job] Orphaned cars cleanup completed!`);
-    console.log(`   📊 Deleted ${deletedCount} orphaned cars`);
     
     return {
       success: true,
@@ -159,9 +137,6 @@ async function cleanupOrphanedCars() {
  * Main cleanup function - runs all cleanup tasks
  */
 async function runDailyCleanup() {
-  console.log('\n' + '='.repeat(60));
-  console.log('🕐 [Daily Cleanup Job] Starting at:', new Date().toISOString());
-  console.log('='.repeat(60));
   
   try {
     // Task 1: Cleanup pending payment vehicles
@@ -170,9 +145,6 @@ async function runDailyCleanup() {
     // Task 2: Cleanup orphaned cars (optional - uncomment if needed)
     // const orphanedResult = await cleanupOrphanedCars();
     
-    console.log('\n' + '='.repeat(60));
-    console.log('✅ [Daily Cleanup Job] All tasks completed!');
-    console.log('='.repeat(60) + '\n');
     
     return {
       success: true,

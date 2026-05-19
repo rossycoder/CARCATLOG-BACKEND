@@ -21,7 +21,6 @@ class ValuationService {
     this.client = new ValuationAPIClient(apiKey, baseUrl, isTestMode);
     this.isTestMode = isTestMode;
     
-    console.log(`ValuationService initialized in ${environment} mode (Test Mode: ${isTestMode})`);
   }
 
 
@@ -40,13 +39,10 @@ class ValuationService {
     
     try {
       // Call CheckCardDetails API
-      console.log(`Calling CheckCardDetails Valuation API for VRM ${vrm} with mileage ${mileage}`);
-      console.log(`API Endpoint: ${this.client.baseUrl}/vehicledata/valuation`);
       
       const result = await this.client.getValuation(vrm, mileage);
       
       const responseTime = Date.now() - startTime;
-      console.log(`Valuation API call completed in ${responseTime}ms`);
 
       return result;
     } catch (error) {
@@ -72,7 +68,6 @@ class ValuationService {
       // Try to get DVLA vehicle details (optional enhancement)
       let dvlaData = null;
       try {
-        console.log(`Fetching DVLA details for ${vrm}`);
         dvlaData = await dvlaService.lookupVehicle(vrm);
       } catch (dvlaError) {
         console.warn(`DVLA lookup failed for ${vrm}:`, dvlaError.message);

@@ -194,7 +194,6 @@ exports.createVan = async (req, res) => {
     const vanData = { ...req.body };
     if (req.user && req.user._id) {
       vanData.userId = req.user._id;
-      console.log(`✅ Setting userId: ${req.user._id} (${req.user.email})`);
     }
     
     const van = new Van(vanData);
@@ -202,7 +201,6 @@ exports.createVan = async (req, res) => {
 
     // Increment subscription usage for trade dealers
     if (req.dealerId && req.subscription) {
-      console.log('[Van Create] Incrementing subscription listing count...');
       await req.subscription.incrementListingCount();
     }
 
@@ -271,7 +269,6 @@ exports.deleteVan = async (req, res) => {
 
     // Decrement subscription usage if was active and dealer is authenticated
     if (wasActive && req.dealerId && req.subscription) {
-      console.log('[Van Delete] Decrementing subscription listing count...');
       await req.subscription.decrementListingCount();
     }
 
@@ -316,7 +313,6 @@ exports.markVanAsSold = async (req, res) => {
 
     // Fix any invalid historyCheckStatus values before saving
     if (van.historyCheckStatus && !['pending', 'verified', 'failed', 'not_required'].includes(van.historyCheckStatus)) {
-      console.log(`⚠️  Invalid van historyCheckStatus: ${van.historyCheckStatus}, setting to 'not_required'`);
       van.historyCheckStatus = 'not_required';
     }
 
@@ -467,7 +463,6 @@ exports.searchByPostcode = async (req, res) => {
       })
       .sort((a, b) => a.distance - b.distance);
     
-    console.log(`🔍 Van search NATIONWIDE - Found ${vansWithDistance.length} vans`);
 
     res.json({
       success: true,
@@ -495,14 +490,11 @@ exports.searchByPostcode = async (req, res) => {
 // Publish van for trade dealer (bypasses payment)
 exports.publishVan = async (req, res) => {
   try {
-    console.log('[Van Publish] ========== START PUBLISH REQUEST ==========');
-    console.log('[Van Publish] Request body:', JSON.stringify(req.body, null, 2));
 
     const { advertId, vehicleData, advertData, contactDetails, dealerId } = req.body;
 
     // Verify dealer matches authenticated user
     if (dealerId && dealerId.toString() !== req.dealerId.toString()) {
-      console.log('[Van Publish] Unauthorized: dealer mismatch');
       return res.status(403).json({ 
         success: false, 
         message: 'Unauthorized - Dealer ID mismatch' 
@@ -514,7 +506,6 @@ exports.publishVan = async (req, res) => {
     
     if (!van) {
       // Create new van
-      console.log('[Van Publish] Creating new van');
       van = new Van({
         advertId: advertId,
         make: vehicleData?.make || 'Unknown',
@@ -533,7 +524,6 @@ exports.publishVan = async (req, res) => {
       });
     }
 
-    console.log('[Van Publish] Found/created van:', van._id);
 
     // Update van with all details
     van.price = advertData?.price || van.price;
@@ -574,9 +564,7 @@ exports.publishVan = async (req, res) => {
     }
 
     await van.save();
-    console.log('[Van Publish] Van published successfully:', van._id);
 
-    console.log('[Van Publish] ========== PUBLISH SUCCESS ==========');
     res.json({
       success: true,
       data: {
@@ -647,27 +635,21 @@ exports.getDealerVans = async (req, res) => {
 // Get filter options for vans
 exports.getFilterOptions = async (req, res) => {
   try {
-    console.log('[Van Controller] Fetching filter options...');
     
     // Get unique makes (from active vans only)
     const makes = await Van.distinct('make', { status: 'active' });
-    console.log('[Van Controller] Found makes:', makes.length);
     
     // Get unique models
     const models = await Van.distinct('model', { status: 'active' });
-    console.log('[Van Controller] Found models:', models.length);
     
     // Get unique fuel types
     const fuelTypes = await Van.distinct('fuelType', { status: 'active' });
-    console.log('[Van Controller] Found fuelTypes:', fuelTypes.length);
     
     // Get unique van types
     const vanTypes = await Van.distinct('vanType', { status: 'active' });
-    console.log('[Van Controller] Found vanTypes:', vanTypes.length);
     
     // Get unique colours
     const colours = await Van.distinct('color', { status: 'active' });
-    console.log('[Van Controller] Found colours:', colours.length);
     
     // Get year range
     const years = await Van.aggregate([
@@ -692,7 +674,6 @@ exports.getFilterOptions = async (req, res) => {
       }
     };
     
-    console.log('[Van Controller] Returning filter options:', JSON.stringify(result, null, 2));
     
     return res.json(result);
 
@@ -709,7 +690,6 @@ exports.getFilterOptions = async (req, res) => {
 // Search vans with comprehensive filters
 exports.searchVans = async (req, res) => {
   try {
-    console.log('[Van Controller] Search request received with params:', req.query);
     
     const { 
       make, 
@@ -763,7 +743,6 @@ exports.searchVans = async (req, res) => {
     if (colour) query.color = colour;
     if (fuelType) query.fuelType = fuelType;
     
-    console.log('[Van Controller] Constructed query:', JSON.stringify(query, null, 2));
 
     // Execute query
     let vans = await Van.find(query)
@@ -785,7 +764,6 @@ exports.searchVans = async (req, res) => {
           longitude: postcodeData.longitude
         };
         
-        console.log('[Van Controller] Calculating distances from:', postcode);
         
         // Calculate distance for each van
         vans = vans.map(van => {
@@ -816,9 +794,7 @@ exports.searchVans = async (req, res) => {
         if (radius && radius !== 'nationwide') {
           const radiusMiles = Number(radius);
           vans = vans.filter(van => van.distance <= radiusMiles);
-          console.log('[Van Controller] Filtered to', vans.length, 'vans within', radius, 'miles');
         } else {
-          console.log('[Van Controller] Showing all', vans.length, 'vans nationwide (sorted by distance)');
         }
       } catch (err) {
         console.warn('[Van Controller] Could not calculate distances:', err.message);
@@ -868,7 +844,6 @@ exports.searchVans = async (req, res) => {
         break;
     }
 
-    console.log('[Van Controller] Found', vans.length, 'vans matching filters');
 
     return res.json({
       success: true,
@@ -894,7 +869,6 @@ exports.searchVans = async (req, res) => {
 // Basic van lookup using optimized DVLA-first approach (FREE API first)
 exports.basicVanLookup = async (req, res) => {
   try {
-    console.log('[Van Controller] ========== BASIC VAN LOOKUP ==========');
     
     const { registration } = req.params;
     const { mileage } = req.query;
@@ -906,7 +880,6 @@ exports.basicVanLookup = async (req, res) => {
       });
     }
     
-    console.log(`[Van Controller] Looking up van: ${registration} with ${mileage || 'unknown'} miles`);
     
     // Clean registration number
     const cleanedReg = registration.toUpperCase().replace(/\s/g, '');
@@ -916,7 +889,6 @@ exports.basicVanLookup = async (req, res) => {
     const result = await lightweightVanService.getBasicVanData(cleanedReg, parsedMileage);
     
     if (!result.success) {
-      console.log(`[Van Controller] Lookup failed: ${result.error}`);
       return res.status(404).json({
         success: false,
         error: result.error,
@@ -924,7 +896,6 @@ exports.basicVanLookup = async (req, res) => {
       });
     }
     
-    console.log(`[Van Controller] Lookup successful - Cost: £${result.cost}, API: ${result.data.apiProvider}`);
     
     return res.json({
       success: true,

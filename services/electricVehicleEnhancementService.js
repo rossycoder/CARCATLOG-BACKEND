@@ -426,14 +426,12 @@ class ElectricVehicleEnhancementService {
     const isPureElectric = vehicleData.fuelType === 'Electric';
     const isPluginHybrid = vehicleData.fuelType?.includes('Plug-in');
     
-    console.log(`🔋 Enhancing ${isPureElectric ? 'electric' : 'hybrid'} vehicle: ${vehicleData.make} ${vehicleData.model} ${vehicleData.variant}`);
 
     // Get comprehensive EV data
     let evData = this.getComprehensiveEVData(vehicleData.make, vehicleData.model, vehicleData.variant);
     
     if (!evData) {
       // Fall back to generic defaults based on vehicle type
-      console.log(`⚠️ No specific EV data found, using generic defaults`);
       if (isPureElectric) {
         evData = AutoDataPopulationService.getElectricVehicleDefaults(vehicleData.make, vehicleData.model, vehicleData.year);
       } else if (isPluginHybrid) {
@@ -587,7 +585,6 @@ class ElectricVehicleEnhancementService {
     // Merge features without duplicates
     vehicleData.features = [...new Set([...vehicleData.features, ...evFeatures])];
 
-    console.log(`✅ Enhanced ${isPureElectric ? 'EV' : 'hybrid'} data: ${evData.electricRange}mi range, ${evData.batteryCapacity}kWh battery`);
 
     return vehicleData;
   }

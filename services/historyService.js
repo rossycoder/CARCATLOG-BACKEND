@@ -33,10 +33,8 @@ class HistoryService {
       if (cached) {
         const daysSinceCheck = (Date.now() - cached.checkDate.getTime()) / (1000 * 60 * 60 * 24);
         if (daysSinceCheck <= 30) {
-          console.log(`✅ Using cached history for ${vrm} (${Math.floor(daysSinceCheck)}d old) — saved £1.82`);
           return cached;
         }
-        console.log(`⏰ Cache expired for ${vrm} (${Math.floor(daysSinceCheck)}d old)`);
       }
       return null;
     } catch (error) {
@@ -165,7 +163,6 @@ class HistoryService {
       const historyDoc = new VehicleHistory(historyData);
       await historyDoc.save();
 
-      console.log(`✅ Stored history for ${vrm} — owners: ${historyData.numberOfPreviousKeepers}, colour: ${historyData.colour}`);
       return historyDoc;
 
     } catch (error) {
@@ -192,14 +189,12 @@ class HistoryService {
         if (cached) return cached.toObject();
       }
 
-      console.log(`📞 [HistoryService] Calling carhistorycheck API for ${vrm} (£1.82)`);
 
       // ── SINGLE API CALL ──────────────────────────────────────────────────
       const result = await this.client.checkHistory(vrm);
       // ── NO getVehicleSpecs() call here  — UniversalService handles specs ──
       // ── NO getMOTHistory() call here    — UniversalService handles MOT   ──
 
-      console.log(`✅ [HistoryService] History API completed in ${Date.now() - startTime}ms`);
 
       const stored = await this.storeHistoryResult(vrm, result);
 
@@ -235,7 +230,6 @@ class HistoryService {
       const car = await Car.findOne({ registrationNumber: vrm.toUpperCase() });
 
       if (!car) {
-        console.log(`⚠️  [HistoryService] No car found for ${vrm} — skipping MOT sync`);
         return;
       }
 
@@ -270,7 +264,6 @@ class HistoryService {
           testStation:           test.testStation
         })).filter(t => t.testDate);
         updated = true;
-        console.log(`   ✅ MOT history: ${car.motHistory.length} tests`);
       }
 
       if (vehicleHistory.colour && (!car.color || car.color === 'null')) {
@@ -286,7 +279,6 @@ class HistoryService {
         // skipPreSave = true prevents pre-save hook from re-calling history API
         car.$locals.skipPreSave = true;
         await car.save();
-        console.log(`✅ [HistoryService] MOT data synced to Car for ${vrm}`);
       }
 
     } catch (error) {
@@ -299,7 +291,6 @@ class HistoryService {
 
   async getVehicleRegistration(vrm) {
     try {
-      console.log(`Fetching vehicle registration for ${vrm}`);
       return await this.client.getVehicleRegistration(vrm);
     } catch (error) {
       console.error(`Vehicle registration fetch failed:`, error.message);
@@ -309,7 +300,6 @@ class HistoryService {
 
   async getVehicleSpecs(vrm) {
     try {
-      console.log(`Fetching vehicle specs for ${vrm}`);
       return await this.client.getVehicleSpecs(vrm);
     } catch (error) {
       console.error(`Vehicle specs fetch failed:`, error.message);
@@ -319,7 +309,6 @@ class HistoryService {
 
   async getMileageHistory(vrm) {
     try {
-      console.log(`Fetching mileage history for ${vrm}`);
       return await this.client.getMileageHistory(vrm);
     } catch (error) {
       console.error(`Mileage history fetch failed:`, error.message);
@@ -329,7 +318,6 @@ class HistoryService {
 
   async getMOTHistory(vrm) {
     try {
-      console.log(`Fetching MOT history for ${vrm}`);
       return await this.client.getMOTHistory(vrm);
     } catch (error) {
       console.error(`MOT history fetch failed:`, error.message);
@@ -348,7 +336,6 @@ class HistoryService {
 
   async getComprehensiveVehicleData(vrm) {
     try {
-      console.log(`Fetching comprehensive vehicle data for ${vrm}`);
       const [registration, specs, mileage, history, mot] = await Promise.allSettled([
         this.getVehicleRegistration(vrm),
         this.getVehicleSpecs(vrm),

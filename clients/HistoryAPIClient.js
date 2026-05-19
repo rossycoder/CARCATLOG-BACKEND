@@ -58,7 +58,6 @@ class HistoryAPIClient {
    */
   async makeRequestWithRetry(datapoint, vrm, attempt = 1) {
     try {
-      console.log(`Calling CheckCarDetails API: ${datapoint} for VRM ${vrm} (attempt ${attempt})`);
       
       const response = await axios.get(
         `${this.baseUrl}/vehicledata/${datapoint}`,
@@ -71,7 +70,6 @@ class HistoryAPIClient {
         }
       );
 
-      console.log(`API call successful: ${datapoint} (cost: £${this.dataPointCosts[datapoint] || 'unknown'})`);
       return response.data;
     } catch (error) {
       // Check if we should retry
@@ -84,7 +82,6 @@ class HistoryAPIClient {
       if (shouldRetry) {
         // Exponential backoff: 1s, 2s, 4s
         const delay = Math.pow(2, attempt - 1) * 1000;
-        console.log(`API retry attempt ${attempt}/${this.maxRetries} after ${delay}ms`);
         
         await new Promise(resolve => setTimeout(resolve, delay));
         return this.makeRequestWithRetry(datapoint, vrm, attempt + 1);
@@ -224,13 +221,10 @@ class HistoryAPIClient {
     }
 
     try {
-      console.log(`Fetching MOT history from CheckCarDetails API for VRM: ${vrm}`);
       const apiResponse = await this.makeRequestWithRetry('mot', vrm);
       
-      console.log('MOT API response received');
       return ApiResponseParser.parseMOTResponse(apiResponse);
     } catch (error) {
-      console.log('CheckCarDetails MOT endpoint error:', error.message);
       throw this.formatError(error, vrm, 'mot');
     }
   }
@@ -303,7 +297,6 @@ class HistoryAPIClient {
       numberOfPreviousKeepers = parseInt(data.PreviousKeepers) || 0;
     }
     
-    console.log('📊 Previous Keepers Data:', {
       raw: vehicleHistory.NumberOfPreviousKeepers,
       parsed: numberOfPreviousKeepers,
       vehicleHistory: vehicleHistory
@@ -341,7 +334,6 @@ class HistoryAPIClient {
       model = data.ModelLiteral;
     }
     
-    console.log('🚗 Make/Model Data:', {
       makeRaw: vehicleReg.Make,
       modelRaw: vehicleReg.Model,
       makeParsed: make,

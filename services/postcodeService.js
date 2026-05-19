@@ -47,7 +47,6 @@ async function lookupPostcode(postcode) {
     // Check if we have hardcoded coordinates
     if (hardcodedPostcodes[normalizedPostcode]) {
       const data = hardcodedPostcodes[normalizedPostcode];
-      console.log(`[Postcode Service] Using hardcoded coordinates for ${normalizedPostcode}`);
       return {
         postcode: postcode.toUpperCase(),
         latitude: data.latitude,
@@ -57,7 +56,6 @@ async function lookupPostcode(postcode) {
     }
 
     // Try the external API as fallback
-    console.log(`[Postcode Service] Attempting API lookup for ${normalizedPostcode}`);
     const response = await axios.get(
       `https://api.postcodes.io/postcodes/${normalizedPostcode}`,
       { timeout: 5000 }
@@ -91,7 +89,6 @@ async function lookupPostcode(postcode) {
       // Remove any postcode patterns from the location name
       locationName = locationName.replace(/\b[A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2}\b/gi, '').trim();
       
-      console.log(`[Postcode Service] API lookup successful for ${normalizedPostcode}`);
       return {
         postcode: returnedPostcode,
         latitude,
@@ -100,7 +97,6 @@ async function lookupPostcode(postcode) {
       };
     } else {
       // If API returns invalid response, use default UK center coordinates
-      console.log(`[Postcode Service] API returned invalid response, using UK center coordinates`);
       return {
         postcode: postcode.toUpperCase(),
         latitude: 52.3555, // UK geographic center
@@ -110,7 +106,6 @@ async function lookupPostcode(postcode) {
     }
   } catch (err) {
     // If API fails, use default UK center coordinates instead of throwing error
-    console.log(`[Postcode Service] API lookup failed, using UK center coordinates:`, err.message);
     return {
       postcode: postcode.toUpperCase(),
       latitude: 52.3555, // UK geographic center
@@ -158,7 +153,6 @@ async function searchCarsByLocation(latitude, longitude, radius = 25, vehicleTyp
       .filter(car => car !== null && car.distance <= radius)
       .sort((a, b) => a.distance - b.distance);
 
-    console.log(`[Postcode Service] Found ${carsWithDistance.length} cars within ${radius} miles`);
     return carsWithDistance;
   } catch (err) {
     const error = new Error('An error occurred while searching for cars');

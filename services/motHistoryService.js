@@ -17,7 +17,6 @@ class MOTHistoryService {
     
     this.client = new HistoryAPIClient(apiKey, baseUrl, isTestMode);
     
-    console.log(`[MOTHistoryService] Initialized with ${isTestMode ? 'TEST' : 'PRODUCTION'} mode`);
   }
 
   /**
@@ -28,7 +27,6 @@ class MOTHistoryService {
    */
   async fetchAndSaveMOTHistory(vrm, forceRefresh = false) {
     try {
-      console.log(`[MOTHistoryService] Fetching MOT history for: ${vrm}`);
       
       // Check if we already have MOT history (unless forcing refresh)
       if (!forceRefresh) {
@@ -38,7 +36,6 @@ class MOTHistoryService {
         });
         
         if (existingCar && existingCar.motHistory.length > 0) {
-          console.log(`[MOTHistoryService] Using cached MOT history for ${vrm}`);
           return {
             success: true,
             data: existingCar.motHistory,
@@ -48,29 +45,15 @@ class MOTHistoryService {
       }
 
       // Fetch from API
-      console.log(`[MOTHistoryService] Calling MOT API for: ${vrm}`);
       const apiResponse = await this.client.getMOTHistory(vrm);
       
-      console.log(`[MOTHistoryService] API Response structure:`, {
-        hasMotTests: !!apiResponse?.motTests,
-        hasMotHistory: !!apiResponse?.motHistory,
-        hasTests: !!apiResponse?.tests,
-        keys: Object.keys(apiResponse || {}),
-        testsCount: apiResponse?.tests?.length || apiResponse?.motTests?.length || apiResponse?.motHistory?.length || 0,
-        firstTest: apiResponse?.tests?.[0] || apiResponse?.motTests?.[0] || apiResponse?.motHistory?.[0] || null
-      });
       
       // The HistoryAPIClient returns a parsed structure with 'tests' array
       // Try all possible field names
       const motTests = apiResponse?.tests || apiResponse?.motHistory || apiResponse?.motTests || [];
       
-      console.log(`[MOTHistoryService] Extracted MOT tests:`, {
-        count: motTests.length,
-        firstTest: motTests[0] || null
-      });
       
       if (!motTests || !Array.isArray(motTests) || motTests.length === 0) {
-        console.log(`[MOTHistoryService] No MOT history found in API response for ${vrm}`);
         return {
           success: true,
           data: [],
@@ -89,7 +72,6 @@ class MOTHistoryService {
       // Also save to VehicleHistory if exists
       await this.saveMOTHistoryToVehicleHistory(vrm, motHistory);
       
-      console.log(`[MOTHistoryService] Saved ${motHistory.length} MOT tests for ${vrm}`);
       
       return {
         success: true,
@@ -218,12 +200,9 @@ class MOTHistoryService {
       );
 
       if (result) {
-        console.log(`[MOTHistoryService] Updated Car document for ${vrm}`);
         if (updateData.motExpiry) {
-          console.log(`   MOT Expiry: ${new Date(updateData.motExpiry).toLocaleDateString()}`);
         }
         if (updateData.motStatus) {
-          console.log(`   MOT Status: ${updateData.motStatus}`);
         }
       } else {
         console.warn(`[MOTHistoryService] Car not found for ${vrm}`);
@@ -252,9 +231,7 @@ class MOTHistoryService {
       );
 
       if (result) {
-        console.log(`[MOTHistoryService] Updated VehicleHistory document for ${vrm}`);
       } else {
-        console.log(`[MOTHistoryService] No VehicleHistory document found for ${vrm}`);
       }
     } catch (error) {
       console.error(`[MOTHistoryService] Error saving to VehicleHistory:`, error);

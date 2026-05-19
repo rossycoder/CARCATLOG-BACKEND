@@ -222,12 +222,6 @@ exports.getVehicle = async (req, res) => {
  */
 exports.createVehicle = async (req, res) => {
   try {
-    console.log('[Trade Inventory] Creating vehicle with data:', JSON.stringify(req.body, null, 2));
-    console.log('[Trade Inventory] Dealer info:', {
-      id: req.dealerId,
-      businessName: req.dealer.businessName,
-      businessAddress: req.dealer.businessAddress
-    });
     
     // Check listing limit (middleware should have already checked, but double-check)
     if (req.subscription) {
@@ -255,7 +249,6 @@ exports.createVehicle = async (req, res) => {
     // CRITICAL: Normalize make to proper capitalization (BMW, Volvo, Mercedes-Benz, etc.)
     // This prevents filter duplicates like "VOLVO" and "Volvo"
     const make = normalizeMake(req.body.make);
-    console.log(`[Trade Inventory] Normalized make: "${req.body.make}" → "${make}"`);
     
     // CRITICAL: Normalize model and variant (prevent swaps like model="XC90 R-DESIGN..." variant="XC90")
     const { model: normalizedModel, variant: normalizedVariant, wasSwapped } = normalizeModelVariant(
@@ -265,7 +258,6 @@ exports.createVehicle = async (req, res) => {
     );
     
     if (wasSwapped) {
-      console.log(`[Trade Inventory] Fixed model/variant swap for ${make}`);
     }
     
     // Use dealer's business address postcode if not provided
@@ -278,15 +270,12 @@ exports.createVehicle = async (req, res) => {
         // CRITICAL: Use Universal Auto Complete Service instead of CheckCarDetailsClient
         // Universal Service handles all vehicle data fetching with proper caching and race condition prevention
         const registration = req.body.registrationNumber || req.body.registration;
-        console.log(`[Trade Inventory] Checking vehicle data with API limits: ${registration}`);
         
         // Check if data already cached
         const safeAPI = require('../services/safeAPIService');
         const summary = await safeAPI.getVehicleSummary(registration);
         
         if (summary && summary.hasCachedData) {
-          console.log(`✅ [Trade Inventory] Vehicle data already cached for ${registration}`);
-          console.log(`   💰 Skipping API calls - using cached data`);
           
           // Load cached data from VehicleHistory
           const VehicleHistory = require('../models/VehicleHistory');
@@ -312,10 +301,8 @@ exports.createVehicle = async (req, res) => {
               insuranceGroup: cached.insuranceGroup
             };
             
-            console.log(`✅ [Trade Inventory] Cached data applied`);
           }
         } else {
-          console.log(`📞 [Trade Inventory] Fetching vehicle data with Universal Service: ${registration}`);
           
           // Create a temporary vehicle object for the Universal Service
           const tempVehicle = new Car({
@@ -346,19 +333,12 @@ exports.createVehicle = async (req, res) => {
           };
         }
         
-        console.log(`[Trade Inventory] Enhanced data ready:`, {
-          modelVariant: enhancedData?.modelVariant,
-          variant: enhancedData?.variant,
-          engineSize: enhancedData?.engineSize
-        });
       } catch (error) {
-        console.log(`[Trade Inventory] Universal Service could not fetch enhanced data: ${error.message}`);
       }
     }
     
     // Use enhanced engine size if available
     const engineSize = enhancedData?.engineSize || req.body.engineSize;
-    console.log(`[Trade Inventory] Engine size: ${engineSize}L (from ${enhancedData?.engineSize ? 'API' : 'request body'})`);
     
     // Auto-generate variant if missing or null
     const vehicleFormatter = require('../utils/vehicleFormatter');
@@ -367,10 +347,8 @@ exports.createVehicle = async (req, res) => {
     // Priority: Use enhanced data from API if available
     if (enhancedData?.modelVariant && enhancedData.modelVariant !== 'null' && enhancedData.modelVariant !== 'undefined' && enhancedData.modelVariant.trim() !== '') {
       variant = enhancedData.modelVariant;
-      console.log(`[Trade Inventory] Using ModelVariant from CheckCarDetails API: "${variant}"`);
     } else if (enhancedData?.variant && enhancedData.variant !== 'null' && enhancedData.variant !== 'undefined' && enhancedData.variant.trim() !== '') {
       variant = enhancedData.variant;
-      console.log(`[Trade Inventory] Using variant from CheckCarDetails API: "${variant}"`);
     } else if (!variant || variant === 'null' || variant === 'undefined' || variant.trim() === '') {
       // Generate variant from vehicle data
       const variantData = {
@@ -385,7 +363,6 @@ exports.createVehicle = async (req, res) => {
       };
       
       variant = vehicleFormatter.formatVariant(variantData);
-      console.log('[Trade Inventory] Auto-generated variant:', variant);
     }
     
     // Generate displayTitle in AutoTrader format
@@ -399,9 +376,7 @@ exports.createVehicle = async (req, res) => {
       displayTitleParts.push(trans);
     }
     const displayTitle = displayTitleParts.join(' ');
-    console.log('[Trade Inventory] Generated displayTitle:', displayTitle);
     
-    console.log('[Trade Inventory] Normalized values:', { transmission, postcode, variant, displayTitle, engineSize });
     
     const vehicleData = {
       ...req.body,
@@ -428,12 +403,9 @@ exports.createVehicle = async (req, res) => {
       }
     };
 
-    console.log('[Trade Inventory] Processed vehicle data:', JSON.stringify(vehicleData, null, 2));
 
     // CRITICAL: Enhance with electric vehicle data if it's an EV or hybrid
-    console.log('[Trade Inventory] Checking if vehicle needs EV enhancement...');
     const enhancedVehicleData = ElectricVehicleEnhancementService.enhanceWithEVData(vehicleData);
-    console.log('[Trade Inventory] EV enhancement complete');
 
     const vehicle = new Car(enhancedVehicleData);
     
@@ -447,12 +419,10 @@ exports.createVehicle = async (req, res) => {
     if (makeUpper === 'VOLKSWAGEN') {
       if (modelStr.startsWith('Golf ') && modelStr !== 'Golf') {
         const variantPart = modelStr.replace('Golf ', '').trim();
-        console.log(`🔄 [Normalization] VW Golf: "${modelStr}" → "Golf", variant: "${variantPart}"`);
         vehicle.model = 'Golf';
         vehicle.variant = variantPart || variantStr;
       } else if (modelStr.startsWith('Polo ') && modelStr !== 'Polo') {
         const variantPart = modelStr.replace('Polo ', '').trim();
-        console.log(`🔄 [Normalization] VW Polo: "${modelStr}" → "Polo", variant: "${variantPart}"`);
         vehicle.model = 'Polo';
         vehicle.variant = variantPart || variantStr;
       }
@@ -465,7 +435,6 @@ exports.createVehicle = async (req, res) => {
       if (match) {
         const baseModel = match[1];
         const variantPart = match[2];
-        console.log(`🔄 [Normalization] Audi: "${modelStr}" → "${baseModel}", variant: "${variantPart}"`);
         vehicle.model = baseModel;
         vehicle.variant = variantPart || variantStr;
       }
@@ -479,7 +448,6 @@ exports.createVehicle = async (req, res) => {
         if (match) {
           const classLetter = match[1].toUpperCase();
           const baseModel = `${classLetter}-Class`;
-          console.log(`🔄 [Normalization] Mercedes: "${modelStr}" → "${baseModel}"`);
           vehicle.model = baseModel;
           if (!variantStr || variantStr === modelStr) {
             vehicle.variant = modelStr;
@@ -492,24 +460,18 @@ exports.createVehicle = async (req, res) => {
     if (vehicle.bodyType) {
       const normalized = vehicle.bodyType.charAt(0).toUpperCase() + vehicle.bodyType.slice(1).toLowerCase();
       if (vehicle.bodyType !== normalized) {
-        console.log(`🔄 [Normalization] Body type: "${vehicle.bodyType}" → "${normalized}"`);
         vehicle.bodyType = normalized;
       }
     }
     
-    console.log('[Trade Inventory] Saving vehicle to database...');
     await vehicle.save();
-    console.log('[Trade Inventory] Vehicle saved successfully:', vehicle._id);
 
     // Increment subscription usage
-    console.log('[Trade Inventory] Incrementing subscription listing count...');
     await req.subscription.incrementListingCount();
 
     // Update dealer stats
-    console.log('[Trade Inventory] Updating dealer stats...');
     await req.dealer.updateStats();
 
-    console.log('[Trade Inventory] Vehicle creation complete!');
     res.status(201).json({
       success: true,
       message: 'Vehicle added successfully',
@@ -633,7 +595,6 @@ exports.markAsSold = async (req, res) => {
 
     // Fix any invalid historyCheckStatus values before saving
     if (vehicle.historyCheckStatus && !['pending', 'verified', 'failed', 'not_required'].includes(vehicle.historyCheckStatus)) {
-      console.log(`⚠️  Invalid historyCheckStatus: ${vehicle.historyCheckStatus}, setting to 'not_required'`);
       vehicle.historyCheckStatus = 'not_required';
     }
 
@@ -675,23 +636,11 @@ exports.markAsSold = async (req, res) => {
  */
 exports.publishVehicle = async (req, res) => {
   try {
-    console.log('[Trade Publish] ========== START PUBLISH REQUEST ==========');
-    console.log('[Trade Publish] Request body keys:', Object.keys(req.body));
-    console.log('[Trade Publish] Authenticated dealer:', {
-      id: req.dealerId,
-      businessName: req.dealer?.businessName
-    });
 
     const { advertId, contactDetails, dealerId, advertData } = req.body;
 
-    console.log('[Trade Publish] ===== DEBUG DATA =====');
-    console.log('[Trade Publish] advertData received:', !!advertData);
     if (advertData) {
-      console.log('[Trade Publish] advertData.images:', advertData.images ? advertData.images.length : 'NONE');
-      console.log('[Trade Publish] advertData.description:', advertData.description ? 'YES' : 'NONE');
-      console.log('[Trade Publish] advertData keys:', Object.keys(advertData));
     }
-    console.log('[Trade Publish] ===== END DEBUG =====');
 
     // Validation: Check required fields
     const validationErrors = [];
@@ -715,7 +664,6 @@ exports.publishVehicle = async (req, res) => {
     }
     
     if (validationErrors.length > 0) {
-      console.log('[Trade Publish] Validation failed:', validationErrors);
       return res.status(400).json({
         success: false,
         message: 'Validation failed',
@@ -725,7 +673,6 @@ exports.publishVehicle = async (req, res) => {
 
     // Verify dealer matches authenticated user
     if (dealerId && dealerId.toString() !== req.dealerId.toString()) {
-      console.log('[Trade Publish] Unauthorized: dealer mismatch');
       return res.status(403).json({ 
         success: false, 
         message: 'Unauthorized - Dealer ID mismatch' 
@@ -737,23 +684,18 @@ exports.publishVehicle = async (req, res) => {
     
     // Check if it's a MongoDB ObjectId (24 hex characters)
     if (/^[0-9a-fA-F]{24}$/.test(advertId)) {
-      console.log('[Trade Publish] Searching by MongoDB _id:', advertId);
       car = await Car.findById(advertId);
     } else {
-      console.log('[Trade Publish] Searching by advertId (UUID):', advertId);
       car = await Car.findOne({ advertId });
     }
     
     if (!car) {
-      console.log('[Trade Publish] Vehicle not found:', advertId);
       return res.status(404).json({ 
         success: false, 
         message: 'Vehicle not found' 
       });
     }
 
-    console.log('[Trade Publish] Found vehicle:', car._id);
-    console.log('[Trade Publish] Current images:', car.images ? car.images.length : 0);
 
     // Prepare update data
     const updateData = {
@@ -773,11 +715,9 @@ exports.publishVehicle = async (req, res) => {
     if (postcodeToUse === 'SW1A 1AA' && req.dealer.businessAddress?.postcode) {
       postcodeToUse = req.dealer.businessAddress.postcode;
       updateData.postcode = postcodeToUse;
-      console.log(`[Trade Publish] Using dealer's business postcode: ${postcodeToUse}`);
     }
     
     try {
-      console.log(`[Trade Publish] 🔍 Fetching location data for postcode: ${postcodeToUse}`);
       const postcodeService = require('../services/postcodeService');
       const locationData = await postcodeService.lookupPostcode(postcodeToUse);
       
@@ -785,9 +725,7 @@ exports.publishVehicle = async (req, res) => {
         updateData.locationName = locationData.locationName;
         updateData.latitude = locationData.latitude;
         updateData.longitude = locationData.longitude;
-        console.log(`[Trade Publish] ✅ Location data fetched: ${locationData.locationName} (${locationData.latitude}, ${locationData.longitude})`);
       } else {
-        console.log(`[Trade Publish] ⚠️  Location data not available for postcode: ${contactDetails.postcode}`);
       }
     } catch (error) {
       console.error(`[Trade Publish] ❌ Location fetch failed: ${error.message}`);
@@ -797,17 +735,14 @@ exports.publishVehicle = async (req, res) => {
     // ALWAYS use images from advertData if provided (these are the dealer's uploaded images)
     // Frontend sends photos array, backend needs images array
     if (advertData && advertData.photos && advertData.photos.length > 0) {
-      console.log('[Trade Publish] Using photos from advertData:', advertData.photos.length);
       // Convert photos array (with url property) to images array (just URLs)
       updateData.images = advertData.photos.map(photo => photo.url || photo);
     } else if (advertData && advertData.images && advertData.images.length > 0) {
-      console.log('[Trade Publish] Using images from advertData:', advertData.images.length);
       updateData.images = advertData.images;
     }
 
     // ALWAYS use description from advertData if provided
     if (advertData && advertData.description && advertData.description.trim() !== '') {
-      console.log('[Trade Publish] Using description from advertData');
       updateData.description = advertData.description;
     }
 
@@ -816,7 +751,6 @@ exports.publishVehicle = async (req, res) => {
       const fieldsToUpdate = ['features', 'condition', 'serviceHistory', 'owners'];
       fieldsToUpdate.forEach(field => {
         if (advertData[field]) {
-          console.log(`[Trade Publish] Using ${field} from advertData`);
           updateData[field] = advertData[field];
         }
       });
@@ -827,7 +761,6 @@ exports.publishVehicle = async (req, res) => {
     if (car.make) {
       const normalizedMake = normalizeMake(car.make);
       if (car.make !== normalizedMake) {
-        console.log(`[Trade Publish] 🔄 Normalizing make: "${car.make}" → "${normalizedMake}"`);
         updateData.make = normalizedMake;
       }
     }
@@ -841,7 +774,6 @@ exports.publishVehicle = async (req, res) => {
       );
       
       if (wasSwapped) {
-        console.log(`[Trade Publish] 🔄 Fixed model/variant swap`);
         updateData.model = normalizedModel;
         updateData.variant = normalizedVariant;
       }
@@ -849,7 +781,6 @@ exports.publishVehicle = async (req, res) => {
     
     // CRITICAL: Normalize BMW series models BEFORE publishing (318d → 3 Series)
     if (car.make && car.make.toUpperCase() === 'BMW' && car.model) {
-      console.log(`[Trade Publish] Checking BMW normalization for: ${car.model}`);
       
       // Skip electric models (i4, i8, iX, iX3, etc.)
       const isElectricModel = /^i[X0-9]/i.test(car.model);
@@ -864,27 +795,22 @@ exports.publishVehicle = async (req, res) => {
           const seriesModel = `${seriesNumber} Series`;
           const fullVariant = car.model.trim(); // Full variant like "320d" or "118i M"
           
-          console.log(`[Trade Publish] 🔄 Normalizing BMW model: "${car.model}" → "${seriesModel}"`);
           updateData.model = seriesModel;
           
           // Update variant if it's empty, same as model, or is a fuel type (fallback variant)
           const isFuelTypeVariant = car.variant && ['Petrol', 'Diesel', 'Electric', 'Hybrid'].includes(car.variant);
           if (!car.variant || car.variant === car.model || car.variant === 'null' || car.variant === 'undefined' || isFuelTypeVariant) {
             updateData.variant = fullVariant;
-            console.log(`[Trade Publish] 🔄 Setting variant to: "${fullVariant}"`);
           }
         } else {
-          console.log(`[Trade Publish] ℹ️  BMW model "${car.model}" doesn't match series pattern, keeping as-is`);
         }
       } else {
-        console.log(`[Trade Publish] ⚡ Electric BMW model detected, skipping normalization: ${car.model}`);
       }
     }
     
     // CRITICAL: Fetch vehicle history and MOT history for trade dealers
     if (car.registrationNumber) {
       try {
-        console.log(`[Trade Publish] 🔍 Fetching vehicle history for: ${car.registrationNumber}`);
         const HistoryService = require('../services/historyService');
         const historyService = new HistoryService();
         
@@ -894,9 +820,7 @@ exports.publishVehicle = async (req, res) => {
         if (historyResult && historyResult._id) {
           updateData.historyCheckId = historyResult._id; // CRITICAL: Use _id, not historyCheckId
           updateData.historyCheckStatus = 'completed';
-          console.log(`[Trade Publish] ✅ Vehicle history fetched: ${historyResult._id}`);
         } else {
-          console.log(`[Trade Publish] ⚠️  Vehicle history not available`);
         }
       } catch (error) {
         console.error(`[Trade Publish] ❌ Vehicle history fetch failed: ${error.message}`);
@@ -904,7 +828,6 @@ exports.publishVehicle = async (req, res) => {
       }
       
       try {
-        console.log(`[Trade Publish] 🔍 Fetching MOT history for: ${car.registrationNumber}`);
         const motHistoryService = require('../services/motHistoryService');
         
         // Fetch MOT history from CheckCarDetails API
@@ -919,11 +842,8 @@ exports.publishVehicle = async (req, res) => {
             updateData.motDue = new Date(latestTest.expiryDate);
             updateData.motExpiry = new Date(latestTest.expiryDate);
             updateData.motStatus = latestTest.testResult || 'Valid';
-            console.log(`[Trade Publish] ✅ MOT history fetched: ${motHistory.length} tests`);
-            console.log(`[Trade Publish] ✅ MOT expiry: ${latestTest.expiryDate}`);
           }
         } else {
-          console.log(`[Trade Publish] ⚠️  MOT history not available`);
         }
       } catch (error) {
         console.error(`[Trade Publish] ❌ MOT history fetch failed: ${error.message}`);
@@ -945,19 +865,16 @@ exports.publishVehicle = async (req, res) => {
     // Add logo if exists
     if (req.dealer.logo) {
       sellerContact.businessLogo = req.dealer.logo;
-      console.log('[Trade Publish] Adding dealer logo:', req.dealer.logo);
     }
     
     // Add website if exists
     if (req.dealer.website) {
       sellerContact.businessWebsite = req.dealer.website;
-      console.log('[Trade Publish] Adding dealer website:', req.dealer.website);
     }
     
     // Add business address if exists
     if (req.dealer.businessAddress) {
       sellerContact.businessAddress = req.dealer.businessAddress;
-      console.log('[Trade Publish] Adding dealer address:', req.dealer.businessAddress);
     }
     
     // Update with complete sellerContact object
@@ -976,19 +893,15 @@ exports.publishVehicle = async (req, res) => {
     delete updateData['sellerContact.businessAddress'];
     
     // CRITICAL: Normalize fuel type using Universal Service (handles "Diesel/Electric" → "Diesel Hybrid")
-    console.log('[Trade Publish] Checking fuel type normalization...');
-    console.log('[Trade Publish] Current fuel type:', car.fuelType);
     
     if (car.fuelType) {
       const normalizedFuelType = universalService.normalizeFuelType(car.fuelType, null);
       if (normalizedFuelType !== car.fuelType) {
-        console.log(`[Trade Publish] 🔄 Normalizing fuel type: "${car.fuelType}" → "${normalizedFuelType}"`);
         updateData.fuelType = normalizedFuelType;
       }
     }
     
     // CRITICAL: Enhance with electric vehicle data if it's an EV or hybrid
-    console.log('[Trade Publish] Checking if vehicle needs EV enhancement...');
     
     // Merge car data with updateData to get complete vehicle data
     const completeVehicleData = {
@@ -1001,7 +914,6 @@ exports.publishVehicle = async (req, res) => {
     
     // Extract only the EV-related fields to update
     if (enhancedVehicleData.electricRange || enhancedVehicleData.batteryCapacity) {
-      console.log('[Trade Publish] ✅ EV enhancement applied');
       updateData.electricRange = enhancedVehicleData.electricRange;
       updateData.batteryCapacity = enhancedVehicleData.batteryCapacity;
       updateData.chargingTime = enhancedVehicleData.chargingTime;
@@ -1018,13 +930,7 @@ exports.publishVehicle = async (req, res) => {
       updateData.runningCosts = enhancedVehicleData.runningCosts;
       updateData.features = enhancedVehicleData.features;
       
-      console.log('[Trade Publish] EV data added:', {
-        electricRange: updateData.electricRange,
-        batteryCapacity: updateData.batteryCapacity,
-        chargingPortType: updateData.chargingPortType
-      });
     } else {
-      console.log('[Trade Publish] ℹ️  No EV enhancement needed (not an EV/hybrid)');
     }
     
     // SIMPLE UPDATE - Just set the fields we need, PRESERVE existing images
@@ -1034,8 +940,6 @@ exports.publishVehicle = async (req, res) => {
       { runValidators: false }
     );
     
-    console.log('[Trade Publish] Update result:', updateResult);
-    console.log('[Trade Publish] ========== PUBLISH SUCCESS ==========');
     
     res.json({
       success: true,
@@ -1107,7 +1011,6 @@ exports.chargeTrialListing = async (req, res) => {
       confirm: true
     });
     
-    console.log('✅ Trial listing charge successful:', paymentIntent.id);
     
     res.json({
       success: true,

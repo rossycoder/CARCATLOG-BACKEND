@@ -47,12 +47,9 @@ class VehicleAPILimitService {
 
     try {
       // Step 1: Check cache first (most important)
-      console.log(`🔍 [Vehicle API Limit] Checking cache for ${endpoint} - ${cleanVrm}`);
       const cached = await apiCache.getCachedVehicleData(cleanVrm);
       
       if (cached) {
-        console.log(`✅ [Vehicle API Limit] Cache HIT - Using cached data for ${cleanVrm}`);
-        console.log(`   💰 API call NOT needed - data already available`);
         
         return {
           allowed: false, // Don't allow new API call
@@ -63,7 +60,6 @@ class VehicleAPILimitService {
       }
 
       // Step 2: Check API call history
-      console.log(`📊 [Vehicle API Limit] Checking API call history for ${endpoint} - ${cleanVrm}`);
       
       const existingCalls = await APICallLog.find({
         vrm: cleanVrm,
@@ -75,9 +71,6 @@ class VehicleAPILimitService {
         const lastCall = existingCalls[0];
         const daysSinceCall = (Date.now() - lastCall.timestamp) / (1000 * 60 * 60 * 24);
         
-        console.log(`⚠️  [Vehicle API Limit] API already called for ${endpoint} - ${cleanVrm}`);
-        console.log(`   Last call: ${lastCall.timestamp.toISOString()}`);
-        console.log(`   Days ago: ${Math.floor(daysSinceCall)}`);
         
         // Allow refresh after 30 days
         if (daysSinceCall < 30) {
@@ -89,12 +82,10 @@ class VehicleAPILimitService {
             source: 'api_log'
           };
         } else {
-          console.log(`   ✅ Data is old (>30 days), allowing refresh`);
         }
       }
 
       // Step 3: Allow API call
-      console.log(`✅ [Vehicle API Limit] API call ALLOWED for ${endpoint} - ${cleanVrm}`);
       
       return {
         allowed: true,
@@ -235,9 +226,7 @@ class VehicleAPILimitService {
       const results = await APICallLog.aggregate(pipeline);
 
       if (results.length > 0) {
-        console.log(`🚨 [Vehicle API Limit] Found ${results.length} vehicles with excessive API calls`);
         results.forEach(r => {
-          console.log(`   ${r._id}: ${r.totalCalls} calls (£${r.totalCost.toFixed(2)})`);
         });
       }
 

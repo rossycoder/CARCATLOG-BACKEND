@@ -20,7 +20,6 @@ function extractModel(apiResponse) {
   if (apiResponse.VehicleRegistration?.Model) {
     const model = apiResponse.VehicleRegistration.Model.trim();
     if (model && model !== 'Unknown') {
-      console.log(`[HistoryParser] Model extracted from VehicleRegistration.Model: ${model}`);
       return model;
     }
   }
@@ -29,7 +28,6 @@ function extractModel(apiResponse) {
   if (apiResponse.SmmtDetails?.ModelVariant) {
     const model = apiResponse.SmmtDetails.ModelVariant.trim();
     if (model && model !== 'Unknown') {
-      console.log(`[HistoryParser] Model extracted from SmmtDetails.ModelVariant: ${model}`);
       return model;
     }
   }
@@ -38,7 +36,6 @@ function extractModel(apiResponse) {
   if (apiResponse.SmmtDetails?.Series) {
     const model = apiResponse.SmmtDetails.Series.trim();
     if (model && model !== 'Unknown') {
-      console.log(`[HistoryParser] Model extracted from SmmtDetails.Series: ${model}`);
       return model;
     }
   }
@@ -161,7 +158,6 @@ function parseHistoryResponse(apiResponse, isTestMode = false) {
     numberOfPreviousKeepers = parseInt(vehicleHistory.PreviousKeepers) || 0;
   }
   
-  console.log(`[HistoryParser] Previous Keepers: ${numberOfPreviousKeepers} (raw: ${vehicleHistory.NumberOfPreviousKeepers})`);
   
   // Extract V5C certificate data
   const v5cCertificateCount = vehicleHistory.V5CCertificateCount || 0;
@@ -175,7 +171,6 @@ function parseHistoryResponse(apiResponse, isTestMode = false) {
       }
     });
   }
-  console.log(`[HistoryParser] V5C Certificates: ${v5cCertificateCount}, List entries: ${v5cCertificateList.length}`);
   
   // Extract plate change data
   const plateChanges = vehicleHistory.PlateChangeCount || 0;
@@ -189,7 +184,6 @@ function parseHistoryResponse(apiResponse, isTestMode = false) {
       });
     });
   }
-  console.log(`[HistoryParser] Plate Changes: ${plateChanges}, List entries: ${plateChangesList.length}`);
   
   // Extract colour change data
   const colourChanges = vehicleHistory.ColourChangeCount || 0;
@@ -217,7 +211,6 @@ function parseHistoryResponse(apiResponse, isTestMode = false) {
         : null
     };
   }
-  console.log(`[HistoryParser] Colour Changes: ${colourChanges}, List entries: ${colourChangesList.length}`);
   
   // Extract keeper changes list
   const keeperChangesList = [];
@@ -230,11 +223,9 @@ function parseHistoryResponse(apiResponse, isTestMode = false) {
       });
     });
   }
-  console.log(`[HistoryParser] Keeper Changes List: ${keeperChangesList.length} entries`);
   
   // Extract VIC count
   const vicCount = vehicleHistory.VicCount || 0;
-  console.log(`[HistoryParser] VIC Count: ${vicCount}`);
   
   // Parse the response from CheckCarDetails format
   const result = {
@@ -295,7 +286,6 @@ function parseHistoryResponse(apiResponse, isTestMode = false) {
       else if (status.includes('CAT N') || status.includes('CATEGORY N')) category = 'N';
     }
     
-    console.log(`[HistoryParser] Write-off detected: Category ${category}, Status: ${writeoffData.status}`);
     
     result.accidentDetails = {
       count: 1,

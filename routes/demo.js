@@ -24,7 +24,6 @@ router.post('/add-electric-vehicle', async (req, res) => {
       registrationNumber = `EV${Date.now().toString().slice(-6)}`
     } = req.body;
 
-    console.log(`🚗 Demo: Creating electric vehicle ${make} ${model} ${variant}...`);
 
     // Create a basic electric vehicle - the system will automatically enhance it
     const electricVehicle = new Car({

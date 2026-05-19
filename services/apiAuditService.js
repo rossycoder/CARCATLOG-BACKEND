@@ -55,9 +55,7 @@ class APIAuditService {
       });
       
       if (cacheHit) {
-        console.log(`📊 [Audit] Cache hit for ${endpoint} - ${vrm} (£0.00)`);
       } else {
-        console.log(`📊 [Audit] API call logged: ${endpoint} - ${vrm} (£${cost.toFixed(2)})`);
       }
       
       return logEntry;
@@ -180,7 +178,6 @@ class APIAuditService {
       const monthCosts = await this.getMonthCosts();
       
       if (monthCosts && monthCosts.summary.totalCost > threshold) {
-        console.log(`🚨 [Audit] COST ALERT: Monthly costs (£${monthCosts.summary.totalCost}) exceed threshold (£${threshold})`);
         return true;
       }
       

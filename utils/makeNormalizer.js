@@ -185,7 +185,6 @@ function normalizeMake(make) {
   if (AUTOTRADER_MAKES[makeLower]) {
     const normalized = AUTOTRADER_MAKES[makeLower];
     if (normalized !== make) {
-      console.log(`🔧 Make normalized: "${make}" → "${normalized}"`);
     }
     return normalized;
   }
@@ -197,7 +196,6 @@ function normalizeMake(make) {
     .join(' ');
   
   if (titleCase !== make) {
-    console.log(`⚠️  Make not in AutoTrader list, using title case: "${make}" → "${titleCase}"`);
   }
   
   return titleCase;

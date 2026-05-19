@@ -8,23 +8,18 @@ const uploadImage = async (req, res) => {
   try {
     const { image, advertId } = req.body;
     
-    console.log('[Upload] Received upload request, advertId:', advertId);
-    console.log('[Upload] Image data length:', image ? image.length : 0);
     
     if (!image) {
-      console.log('[Upload] Error: No image data provided');
       return res.status(400).json({
         success: false,
         message: 'Image data is required'
       });
     }
     
-    console.log('[Upload] Uploading to Cloudinary...');
     const result = await cloudinaryService.uploadImage(image, {
       folder: advertId ? `car-adverts/${advertId}` : 'car-adverts'
     });
     
-    console.log('[Upload] Cloudinary result:', result.success ? 'Success' : 'Failed', result.error || '');
     
     if (result.success) {
       res.json(result);

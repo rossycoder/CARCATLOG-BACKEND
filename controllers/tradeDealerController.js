@@ -195,7 +195,6 @@ Best regards,
 The CarCatalog Team
     `.trim();
 
-    console.log('📧 Attempting to send verification email to:', dealer.email);
     const emailSent = await sendEmail(
       dealer.email,
       'Verify Your Trade Dealer Account - CarCatalog',
@@ -206,7 +205,6 @@ The CarCatalog Team
     if (!emailSent) {
       console.error('⚠️ Failed to send verification email to:', dealer.email);
     } else {
-      console.log('✅ Verification email sent successfully to:', dealer.email);
     }
 
     res.status(201).json({
@@ -360,7 +358,6 @@ exports.login = async (req, res) => {
     // CRITICAL: Sync listingsUsed with actual active cars count
     if (subscription) {
       await subscription.syncUsage();
-      console.log(`[Trade Login] Synced subscription usage: ${subscription.listingsUsed} active listings`);
     }
 
     res.json({
@@ -427,7 +424,6 @@ exports.getMe = async (req, res) => {
     // CRITICAL: Sync listingsUsed with actual active cars count
     if (subscription) {
       await subscription.syncUsage();
-      console.log(`[Trade GetMe] Synced subscription usage: ${subscription.listingsUsed} active listings`);
     }
 
     res.json({

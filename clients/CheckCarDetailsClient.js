@@ -22,8 +22,6 @@ class CheckCarDetailsClient {
     
     // Log configuration (without exposing full API key)
     const keyPreview = this.apiKey ? `${this.apiKey.substring(0, 8)}...` : 'NOT SET';
-    console.log(`CheckCarDetails Client initialized: ${this.isTestMode ? 'TEST' : 'PRODUCTION'} mode`);
-    console.log(`Base URL: ${this.baseURL}, API Key: ${keyPreview}`);
   }
 
   /**
@@ -70,7 +68,6 @@ class CheckCarDetailsClient {
       // API structure: /vehicledata/{Datapoint}?apikey={API_KEY}&vrm={Registration}
       const url = `${this.baseURL}/vehicledata/${datapoint}`;
       
-      console.log(`CheckCarDetails API request: ${url}?vrm=${registration.toUpperCase()} (attempt ${attempt}/${this.maxRetries + 1})`);
 
       const response = await axios.get(url, {
         params: {
@@ -83,7 +80,6 @@ class CheckCarDetailsClient {
         timeout: this.timeout
       });
 
-      console.log(`CheckCarDetails API success for ${registration} (${datapoint})`);
       return response.data;
 
     } catch (error) {
@@ -97,7 +93,6 @@ class CheckCarDetailsClient {
       if (shouldRetry) {
         // Exponential backoff: 2s, 4s
         const delay = Math.pow(2, attempt) * 1000;
-        console.log(`CheckCarDetails API retry attempt ${attempt}/${this.maxRetries} after ${delay}ms`);
         
         await new Promise(resolve => setTimeout(resolve, delay));
         return this.makeRequestWithRetry(datapoint, registration, attempt + 1);
@@ -298,7 +293,6 @@ class CheckCarDetailsClient {
         parsedData.emissionClass = `Euro ${euroStatus}`;
       }
 
-      console.log(`CheckCarDetails data parsed successfully for ${registration}`);
       return parsedData;
 
     } catch (error) {

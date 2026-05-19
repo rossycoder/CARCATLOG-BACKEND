@@ -19,12 +19,10 @@ class VariantOnlyService {
    * @returns {Promise<Object>} Vehicle variant data only
    */
   async getVariantOnly(registration, useCache = true) {
-    console.log(`[VariantOnly] Fetching variant for: ${registration}, useCache: ${useCache}`);
     
     // ALWAYS check cache first to prevent duplicate API calls
     const cachedData = await this.checkVariantCache(registration);
     if (cachedData && useCache) {
-      console.log(`✅ VARIANT CACHE HIT for ${registration} - Using cached variant`);
       return {
         variant: cachedData.variant,
         make: cachedData.make,
@@ -35,16 +33,13 @@ class VariantOnlyService {
       };
     }
     
-    console.log(`❌ VARIANT CACHE MISS for ${registration} - Making cheap API call`);
     
     try {
       // Call ONLY Vehiclespecs API (£0.05) - NOT the expensive history API (£1.82)
-      console.log(`[VariantOnly] Calling Vehiclespecs API for ${registration} (Cost: £0.05)`);
       
       const vehicleData = await CheckCarDetailsClient.getVehicleData(registration);
       
       if (!vehicleData) {
-        console.log(`⚠️  No vehicle data found for ${registration}`);
         return {
           variant: null,
           make: null,
@@ -69,8 +64,6 @@ class VariantOnlyService {
       const model = vehicleData.model || null;
       const engineSize = vehicleData.engineSize ? parseFloat(vehicleData.engineSize) : null;
       
-      console.log(`✅ Real API variant extracted: "${variant}"`);
-      console.log(`   Make: ${make}, Model: ${model}, Engine: ${engineSize}L`);
       
       // Cache the REAL API variant (not fallback)
       await this.cacheVariantOnly(registration, {
@@ -123,7 +116,6 @@ class VariantOnlyService {
       // Check if cache is still valid (within TTL - 30 days)
       const cacheAge = Date.now() - new Date(cached.checkDate).getTime();
       if (cacheAge > this.cacheTTL) {
-        console.log(`Cache expired for ${registration} (age: ${Math.round(cacheAge / (24 * 60 * 60 * 1000))} days)`);
         return null;
       }
 
@@ -163,7 +155,6 @@ class VariantOnlyService {
         existingHistory.checkDate = new Date();
         
         await existingHistory.save();
-        console.log(`✅ Updated existing cache with variant data for ${registration}`);
         return existingHistory;
       } else {
         // Create minimal cache entry with variant data only
@@ -180,7 +171,6 @@ class VariantOnlyService {
         });
         
         await minimalCache.save();
-        console.log(`✅ Created minimal cache with variant data for ${registration}`);
         return minimalCache;
       }
       

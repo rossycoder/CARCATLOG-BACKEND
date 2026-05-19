@@ -19,9 +19,6 @@ async function createBikeCheckoutSession(req, res) {
       advertId, advertData, vehicleData, contactDetails 
     } = req.body;
     
-    console.log('🏍️ [Bike Payment] Creating checkout session:', {
-      packageId, packageName, price, duration, advertId
-    });
     
     if (!packageId || !packageName || !price) {
       return res.status(400).json({
@@ -49,7 +46,6 @@ async function createBikeCheckoutSession(req, res) {
     });
 
     await purchase.save();
-    console.log('✅ [Bike Payment] Purchase record created:', purchase._id);
 
     // Create Stripe checkout session
     const session = await StripeService.createCheckoutSession({
@@ -72,7 +68,6 @@ async function createBikeCheckoutSession(req, res) {
     purchase.stripeSessionId = session.id;
     await purchase.save();
 
-    console.log('✅ [Bike Payment] Stripe session created:', session.id);
 
     res.json({
       success: true,

@@ -20,12 +20,10 @@ class LightweightVanService {
    * @returns {Promise<Object>} Basic van data only
    */
   async getBasicVanData(registration, mileage) {
-    console.log(`🚐 Van lookup for: ${registration} (basic data only)`);
     
     // Check cache first
     const cachedData = await this.checkCacheForBasicData(registration);
     if (cachedData) {
-      console.log(`✅ CACHE HIT for ${registration} - Using cached basic data`);
       return {
         success: true,
         data: cachedData,
@@ -35,7 +33,6 @@ class LightweightVanService {
       };
     }
     
-    console.log(`❌ CACHE MISS for ${registration} - Fetching from API`);
     
     try {
       // STEP 1: Try CheckCarDetails API FIRST (£0.05) - has complete van data
@@ -46,22 +43,16 @@ class LightweightVanService {
       let dvlaColor = null;
       
       try {
-        console.log(`💰 Calling CheckCarDetails API for ${registration} (£0.05)`);
         const client = new CheckCarDetailsClient();
         vehicleData = await client.getVehicleSpecs(registration);
         apiCost = 0.05;
         apiCalls = 1;
         apiProvider = 'checkcardetails-primary';
-        console.log(`✅ CheckCarDetails Vehiclespecs API success for ${registration}`);
       } catch (checkCarError) {
-        console.log(`❌ CheckCarDetails API failed for ${registration}: ${checkCarError.message}`);
-        console.log(`🔄 Falling back to FREE DVLA API`);
         
         // STEP 2: Fallback to FREE DVLA API (£0.00)
         try {
-          console.log(`🆓 Trying FREE DVLA API for ${registration}`);
           vehicleData = await dvlaService.lookupVehicle(registration);
-          console.log(`✅ DVLA API success for ${registration} - FREE data obtained`);
           apiCost = 0;
           apiCalls = 1;
           apiProvider = 'dvla-fallback';
@@ -88,15 +79,12 @@ class LightweightVanService {
         // If CheckCarDetails is missing color, try DVLA for color
         if (!parsedData.color || parsedData.color === 'Not specified') {
           try {
-            console.log(`🎨 CheckCarDetails missing color, trying FREE DVLA API for color`);
             const dvlaData = await dvlaService.lookupVehicle(registration);
             dvlaColor = dvlaData.colour || null;
             if (dvlaColor) {
               parsedData.color = dvlaColor;
-              console.log(`✅ Got color from DVLA: ${dvlaColor}`);
             }
           } catch (dvlaError) {
-            console.log(`⚠️  Could not get color from DVLA: ${dvlaError.message}`);
           }
         }
       }
@@ -166,8 +154,6 @@ class LightweightVanService {
       // Cache the basic data for future lookups
       await this.cacheBasicDataOnly(registration, basicData);
       
-      console.log(`✅ Van lookup successful for ${registration}`);
-      console.log(`   API Provider: ${apiProvider}, Cost: £${apiCost}, Data: ${basicData.make} ${basicData.model}`);
       
       return {
         success: true,
@@ -209,7 +195,6 @@ class LightweightVanService {
       // Check if cache is still valid (within TTL - 30 days)
       const cacheAge = Date.now() - new Date(cached.checkDate).getTime();
       if (cacheAge > this.cacheTTL) {
-        console.log(`Cache expired for ${registration} (age: ${Math.round(cacheAge / (24 * 60 * 60 * 1000))} days)`);
         return null;
       }
 
@@ -345,7 +330,6 @@ class LightweightVanService {
         existing.checkDate = new Date();
         
         await existing.save();
-        console.log(`✅ Updated existing cache for ${registration} (basic van data only)`);
         return existing;
       } else {
         // Create new record with basic data only
@@ -405,7 +389,6 @@ class LightweightVanService {
         const savedHistory = new VehicleHistory(cacheData);
         await savedHistory.save();
         
-        console.log(`✅ Created new cache for ${registration} with ID: ${savedHistory._id} (basic van data only)`);
         return savedHistory;
       }
       
@@ -548,7 +531,6 @@ class LightweightVanService {
       // Round to nearest £500
       estimatedPrice = Math.round(estimatedPrice / 500) * 500;
       
-      console.log(`🚐 Estimated price for ${make} ${vehicleData.model} (${vehicleYear}): £${estimatedPrice}`);
       
       return estimatedPrice;
       
@@ -566,7 +548,6 @@ class LightweightVanService {
    */
   parseDVLAResponse(dvlaResponse, registration) {
     try {
-      console.log(`🔍 Parsing DVLA response for van ${registration}`);
       
       // DVLA API response structure
       const parsed = {
@@ -602,7 +583,6 @@ class LightweightVanService {
         apiProvider: 'dvla-free'
       };
       
-      console.log(`✅ DVLA van data parsed: ${parsed.make} ${parsed.model} (${parsed.year})`);
       return parsed;
       
     } catch (error) {
@@ -640,7 +620,6 @@ class LightweightVanService {
         );
         runningCosts.annualTax = calculatedTax;
       } catch (error) {
-        console.log(`⚠️  Could not calculate tax: ${error.message}`);
       }
     }
     

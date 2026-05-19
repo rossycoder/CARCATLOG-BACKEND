@@ -292,7 +292,6 @@ function normalizeMakeModel(doc) {
   if (makeUpper === 'BMW') {
     const iSeriesPattern = /^I[0-9]/i;
     if (iSeriesPattern.test(doc.model) && doc.variant && iSeriesPattern.test(doc.variant)) {
-      console.log(`🔄 [Normalize] BMW i-series swap: model="${doc.model}" ↔ variant="${doc.variant}"`);
       [doc.model, doc.variant] = [doc.variant, doc.model];
     }
     // BMW numeric series (320d → "3 Series", variant="320d")
@@ -306,7 +305,6 @@ function normalizeMakeModel(doc) {
       if (hit) {
         const seriesModel = `${hit[1]} Series`;
         const fullVariant = (modelMatch ? modelStr : variantStr).trim();
-        console.log(`🔄 [Normalize] BMW series: "${doc.model}" → "${seriesModel}", variant="${fullVariant}"`);
         doc.model = seriesModel;
         if (!doc.variant || doc.variant === modelStr || doc.variant === 'null') {
           doc.variant = fullVariant;
@@ -319,7 +317,6 @@ function normalizeMakeModel(doc) {
   if (makeUpper === 'FIAT') {
     const match = (doc.model || '').match(/^(500X?L?)\s+(.+)$/i);
     if (match && doc.variant && doc.variant.match(/^500X?L?$/i)) {
-      console.log(`🔄 [Normalize] FIAT swap: "${doc.model}" → "${match[1]}", variant="${match[2]}"`);
       doc.model = match[1];
       doc.variant = match[2];
     }
@@ -330,7 +327,6 @@ function normalizeMakeModel(doc) {
     for (const base of ['Golf', 'Polo']) {
       if (doc.model.startsWith(`${base} `) && doc.model !== base) {
         const variantPart = doc.model.replace(`${base} `, '').trim();
-        console.log(`🔄 [Normalize] VW ${base}: "${doc.model}" → "${base}", variant="${variantPart}"`);
         doc.model = base;
         doc.variant = variantPart || doc.variant;
         break;
@@ -342,7 +338,6 @@ function normalizeMakeModel(doc) {
   if (makeUpper === 'AUDI') {
     const match = (doc.model || '').match(/^(A[1-8]|Q[2-8]|TT|R8)\s+(.+)$/i);
     if (match) {
-      console.log(`🔄 [Normalize] Audi: "${doc.model}" → "${match[1]}", variant="${match[2]}"`);
       doc.model = match[1];
       doc.variant = match[2] || doc.variant;
     }
@@ -354,7 +349,6 @@ function normalizeMakeModel(doc) {
       const match = (doc.model || '').match(/^([ABCEGMS])\s*(\d{3})/i);
       if (match) {
         const baseModel = `${match[1].toUpperCase()}-Class`;
-        console.log(`🔄 [Normalize] Mercedes: "${doc.model}" → "${baseModel}"`);
         if (!doc.variant || doc.variant === doc.model) doc.variant = doc.model;
         doc.model = baseModel;
       }
@@ -374,7 +368,6 @@ function normalizeMakeModel(doc) {
     const vUp = doc.variant.toUpperCase().trim();
     if (mUp.startsWith(vUp + ' ')) {
       const trueVariant = doc.model.substring(doc.variant.length).trim();
-      console.log(`🔄 [Car pre-save] Swap fixed: model="${doc.variant}" variant="${trueVariant}"`);
       doc.model = doc.variant;
       doc.variant = trueVariant || null;
     }
@@ -399,14 +392,12 @@ function clearEVFieldsIfNeeded(doc) {
       if (doc[f]) { doc[f] = null; cleared = true; }
       if (doc.runningCosts && doc.runningCosts[f]) { doc.runningCosts[f] = null; cleared = true; }
     });
-    if (cleared) console.log(`✅ [EV Cleanup] Removed EV fields from regular hybrid (${doc.fuelType})`);
-  }
+    if (cleared)  }
 
   const isPureICE = doc.fuelType === 'Petrol' || doc.fuelType === 'Diesel';
   if (isPureICE && (doc.batteryCapacity || doc.electricRange)) {
     ['batteryCapacity', 'electricRange', 'homeChargingSpeed', 'rapidChargingSpeed',
       'chargingPortType', 'electricMotorPower', 'electricMotorTorque'].forEach(f => { doc[f] = null; });
-    console.log(`✅ [EV Cleanup] Removed EV fields from pure ${doc.fuelType}`);
   }
 }
 
@@ -419,14 +410,12 @@ carSchema.pre('save', async function(next) {
   // If this save was triggered by code INSIDE this hook (e.g. a service that
   // calls car.save() internally), skip all hook logic to prevent infinite loops.
   if (this.$locals.inPreSaveHook) {
-    console.log(`⏭️  [Pre-Save] Loop guard triggered — skipping hook for ${this.registrationNumber || 'no-reg'}`);
     return next();
   }
   // Set the guard immediately — before ANY await
   this.$locals.inPreSaveHook = true;
 
   const reg = this.registrationNumber;
-  console.log(`🔧 [Pre-Save] START — ${this.make} ${this.model} (${reg || 'no-reg'})`);
 
   try {
 
@@ -458,7 +447,6 @@ carSchema.pre('save', async function(next) {
     const needsCoords = this.postcode && (!this.latitude || !this.longitude || !this.locationName);
     if (needsCoords) {
       try {
-        console.log(`📍 [Pre-Save] Fetching coordinates for: ${this.postcode}`);
         const postcodeService = require('../services/postcodeService');
         const postcodeData = await postcodeService.lookupPostcode(this.postcode);
         if (postcodeData) {
@@ -469,7 +457,6 @@ carSchema.pre('save', async function(next) {
           if (this.sellerContact && !this.sellerContact.city) {
             this.sellerContact.city = postcodeData.locationName;
           }
-          console.log(`✅ [Pre-Save] Coordinates set: ${this.latitude}, ${this.longitude} — ${this.locationName}`);
         } else if (!this.locationName) {
           const areaMap = { SW:'London',SE:'London',NW:'London',NE:'London',E:'London',W:'London',
             N:'London',EC:'London',WC:'London',M:'Manchester',B:'Birmingham',L:'Liverpool',
@@ -502,7 +489,6 @@ carSchema.pre('save', async function(next) {
           const axios = require('axios');
           const dvlaApiKey = process.env.DVLA_API_KEY;
           if (dvlaApiKey) {
-            console.log(`🔍 [Pre-Save] DVLA fetch for ${reg} (color=${needsColor}, tax=${needsTax}, mot=${needsMOT})`);
             const { data } = await axios.post(
               'https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles',
               { registrationNumber: reg },
@@ -511,19 +497,16 @@ carSchema.pre('save', async function(next) {
             if (needsColor && data.colour) {
               const { formatColor } = require('../utils/colorFormatter');
               this.color = formatColor(data.colour);
-              console.log(`✅ [DVLA] Color: ${this.color}`);
             }
             if (needsMOT && data.motExpiryDate) {
               const motDate = new Date(data.motExpiryDate);
               this.motDue    = motDate;
               this.motExpiry = motDate;
               this.motStatus = data.motStatus || 'Valid';
-              console.log(`✅ [DVLA] MOT expiry: ${motDate.toDateString()}, status: ${this.motStatus}`);
             }
             if (needsTax && data.taxStatus) {
               this.taxStatus = data.taxStatus;
               if (data.taxDueDate) this.taxDueDate = new Date(data.taxDueDate);
-              console.log(`✅ [DVLA] Tax status: ${this.taxStatus}`);
             }
           }
         } catch (err) {
@@ -544,7 +527,6 @@ carSchema.pre('save', async function(next) {
     // SKIP if this is a RELIST (car already existed and has data)
     if (reg && (!this.variant || this.variant === 'null' || this.variant === 'undefined' || this.variant.trim() === '') && !isRelist) {
       try {
-        console.log(`🔍 [Pre-Save] Variant missing — fetching for ${reg}`);
         const variantOnlyService = require('../services/variantOnlyService');
 
         // CRITICAL: Tell the service NOT to call car.save() internally.
@@ -563,13 +545,11 @@ carSchema.pre('save', async function(next) {
           this.variant = extractedVariant.trim()
             .replace(/\s*(semi-auto|semi auto|automatic|manual|auto|cvt|dsg|tiptronic|powershift)\s*$/gi, '')
             .trim();
-          console.log(`✅ [Pre-Save] Variant set: "${this.variant}"`);
         } else {
           // Fallback variant from local data
           this.variant = this.engineSize && this.fuelType
             ? `${this.engineSize}L ${this.fuelType}`
             : (this.fuelType || 'Standard');
-          console.log(`✅ [Pre-Save] Fallback variant: "${this.variant}"`);
         }
 
         // Link history if available (just set the reference — no extra save)
@@ -590,14 +570,12 @@ carSchema.pre('save', async function(next) {
         this.variant = this.engineSize && this.fuelType
           ? `${this.engineSize}L ${this.fuelType}`
           : (this.fuelType || 'Standard');
-        console.log(`🚨 [Pre-Save] Emergency variant: "${this.variant}"`);
       }
     } else if (!this.variant && !reg) {
       // No registration and no variant — generate from specs
       this.variant = this.engineSize && this.fuelType
         ? `${this.engineSize}L ${this.fuelType}`
         : (this.fuelType || 'Standard');
-      console.log(`✅ [Pre-Save] No-reg variant: "${this.variant}"`);
     }
 
     // ── STEP 8: Re-run normalization now that variant is populated ───────────
@@ -606,8 +584,7 @@ carSchema.pre('save', async function(next) {
     // ── STEP 9: displayTitle ────────────────────────────────────────────────
     if (!this.displayTitle) {
       this.displayTitle = buildDisplayTitle(this);
-      if (this.displayTitle) console.log(`🎯 [Pre-Save] displayTitle: "${this.displayTitle}"`);
-    }
+      if (this.displayTitle)    }
 
     // ── STEP 10: EV / hybrid field cleanup ──────────────────────────────────
     clearEVFieldsIfNeeded(this);
@@ -621,7 +598,6 @@ carSchema.pre('save', async function(next) {
         const enhanced  = ElectricVehicleEnhancementService.enhanceWithEVData(this.toObject());
         const populated = AutoDataPopulationService.populateMissingData(enhanced);
         Object.keys(populated).forEach(k => { if (k !== '_id' && k !== '__v') this[k] = populated[k]; });
-        console.log(`✅ [Pre-Save] EV enhanced: ${this.electricRange}mi, ${this.batteryCapacity}kWh`);
       } catch (err) {
         console.error(`❌ [Pre-Save] EV enhancement failed: ${err.message}`);
       }
@@ -660,7 +636,6 @@ carSchema.pre('save', async function(next) {
         try {
           const ValuationService = require('../services/valuationService');
           const valuationService = new ValuationService();
-          console.log(`💰 [Pre-Save] Fetching valuation for ${reg}`);
           const val = await valuationService.getValuation(reg, this.mileage);
           this.valuation = {
             privatePrice:     val.estimatedValue.private,
@@ -671,7 +646,6 @@ carSchema.pre('save', async function(next) {
           };
           this.price          = val.estimatedValue.private;
           this.estimatedValue = val.estimatedValue.private;
-          console.log(`✅ [Pre-Save] Price set to £${this.price} (private valuation)`);
         } catch (err) {
           console.warn(`⚠️  [Pre-Save] Valuation fetch failed: ${err.message}`);
         }
@@ -685,7 +659,6 @@ carSchema.pre('save', async function(next) {
         const user = await User.findOne({ email: this.sellerContact.email });
         if (user) {
           this.userId = user._id;
-          console.log(`✅ [Pre-Save] userId set: ${this.userId}`);
         } else {
           console.warn(`⚠️  [Pre-Save] No user found for ${this.sellerContact.email} — car won't appear in My Listings`);
         }
@@ -704,7 +677,6 @@ carSchema.pre('save', async function(next) {
     // ── STEP 18: publishedAt for new active listings ────────────────────────
     if (this.isNew && this.advertStatus === 'active' && !this.publishedAt) {
       this.publishedAt = new Date();
-      console.log(`✅ [Pre-Save] publishedAt: ${this.publishedAt}`);
     }
 
   } catch (err) {
@@ -712,7 +684,6 @@ carSchema.pre('save', async function(next) {
     console.error(`❌ [Pre-Save] Unhandled error: ${err.message}`, err);
   }
 
-  console.log(`✅ [Pre-Save] DONE — ${this.make} ${this.model} (${reg || 'no-reg'})`);
   next();
 });
 
@@ -723,7 +694,6 @@ carSchema.pre(['deleteOne', 'findOneAndDelete', 'findByIdAndDelete'], async func
     if (car && car.historyCheckId) {
       const VehicleHistory = require('./VehicleHistory');
       await VehicleHistory.findByIdAndDelete(car.historyCheckId);
-      console.log(`🗑️  [Delete] Removed VehicleHistory ${car.historyCheckId}`);
     }
   } catch (err) {
     console.error('❌ [Delete] Cleanup error:', err);
@@ -733,10 +703,6 @@ carSchema.pre(['deleteOne', 'findOneAndDelete', 'findByIdAndDelete'], async func
 // ─── Post-save: EV logging only ─────────────────────────────────────────────
 carSchema.post('save', function(doc) {
   if (doc.fuelType === 'Electric') {
-    console.log(`🎉 [Post-Save] EV saved: ${doc.make} ${doc.model} (${doc.registrationNumber})`);
-    console.log(`   Range: ${doc.electricRange || doc.runningCosts?.electricRange || 'N/A'}mi`);
-    console.log(`   Battery: ${doc.batteryCapacity || doc.runningCosts?.batteryCapacity || 'N/A'}kWh`);
-    console.log(`   Features: ${doc.features?.length || 0}`);
   }
 });
 

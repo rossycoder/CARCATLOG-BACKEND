@@ -40,10 +40,7 @@ class StripeService {
     try {
       const sessionId = uuidv4();
       
-      console.log(`Creating Stripe checkout session for advertising package: ${packageName}`);
-      console.log(`⚠️  PAYMENT - Price: £${(price / 100).toFixed(2)}`);
       if (advertId) {
-        console.log(`📝 Advert ID: ${advertId}`);
       }
       
       const sessionParams = {
@@ -135,8 +132,6 @@ class StripeService {
       const sessionId = uuidv4();
       
       // Using live Stripe integration
-      console.log(`Creating live Stripe checkout session for VRM: ${vrm.toUpperCase()}`);
-      console.log('⚠️  LIVE PAYMENT - This will charge real money!');
       
       const sessionParams = {
         payment_method_types: ['card'],

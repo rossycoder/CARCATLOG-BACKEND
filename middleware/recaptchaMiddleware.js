@@ -9,7 +9,6 @@ const verifyRecaptcha = async (req, res, next) => {
 
     // Skip verification in development if no token provided
     if (process.env.NODE_ENV === 'development' && !recaptchaToken) {
-      console.log('⚠️ reCAPTCHA verification skipped in development');
       return next();
     }
 
@@ -43,7 +42,6 @@ const verifyRecaptcha = async (req, res, next) => {
     const { success, score, 'error-codes': errorCodes } = response.data;
 
     if (!success) {
-      console.log('❌ reCAPTCHA verification failed:', errorCodes);
       return res.status(400).json({
         success: false,
         message: 'reCAPTCHA verification failed. Please try again.',
@@ -54,21 +52,18 @@ const verifyRecaptcha = async (req, res, next) => {
     // For reCAPTCHA v2, success is boolean
     // For v3, you can check score (0.0 - 1.0, higher is better)
     if (score !== undefined && score < 0.5) {
-      console.log('⚠️ Low reCAPTCHA score:', score);
       return res.status(400).json({
         success: false,
         message: 'Suspicious activity detected. Please try again.'
       });
     }
 
-    console.log('✅ reCAPTCHA verified successfully');
     next();
   } catch (error) {
     console.error('❌ reCAPTCHA verification error:', error.message);
     
     // Don't block the request if reCAPTCHA service is down
     // Log the error and proceed
-    console.log('⚠️ Proceeding without reCAPTCHA verification due to service error');
     next();
   }
 };

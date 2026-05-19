@@ -49,7 +49,6 @@ class StripeSubscriptionService {
       // Create checkout session
       // Force localhost:3000 for development
       const frontendUrl = 'http://localhost:3000';
-      console.log('Creating checkout session with frontend URL:', frontendUrl);
       
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
@@ -210,7 +209,6 @@ class StripeSubscriptionService {
           break;
 
         default:
-          console.log(`Unhandled event type: ${event.type}`);
       }
     } catch (error) {
       console.error('Error handling webhook:', error);
@@ -223,21 +221,11 @@ class StripeSubscriptionService {
       const dealerId = session.metadata.dealerId;
       const planId = session.metadata.planId;
 
-      console.log('\n🔔 WEBHOOK: Checkout completed');
-      console.log('📋 Dealer ID:', dealerId);
-      console.log('📋 Plan ID:', planId);
-      console.log('📋 Session ID:', session.id);
-      console.log('📋 Customer:', session.customer);
-      console.log('📋 Subscription:', session.subscription);
 
       // Get the subscription from Stripe
-      console.log('🔄 Retrieving Stripe subscription...');
       const subscription = await stripe.subscriptions.retrieve(session.subscription);
-      console.log('✅ Stripe subscription retrieved:', subscription.id);
-      console.log('   Status:', subscription.status);
       
       // Create local subscription record
-      console.log('🔍 Looking up plan and dealer...');
       const plan = await SubscriptionPlan.findById(planId);
       const dealer = await TradeDealer.findById(dealerId);
 
@@ -248,23 +236,18 @@ class StripeSubscriptionService {
         return;
       }
 
-      console.log('✅ Plan found:', plan.name);
-      console.log('✅ Dealer found:', dealer.businessName);
 
       // Check if subscription already exists (prevent duplicates)
-      console.log('🔍 Checking for existing subscription...');
       let tradeSubscription = await TradeSubscription.findOne({
         stripeSubscriptionId: subscription.id
       });
 
       if (!tradeSubscription) {
-        console.log('📝 Creating new subscription record...');
         
         // Ensure timestamps are valid numbers before converting
         const startTime = subscription.current_period_start;
         const endTime = subscription.current_period_end;
         
-        console.log('   Raw timestamps:', { startTime, endTime });
         
         const currentPeriodStart = startTime && !isNaN(startTime) 
           ? new Date(startTime * 1000)
@@ -273,7 +256,6 @@ class StripeSubscriptionService {
           ? new Date(endTime * 1000)
           : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
         
-        console.log('   Converted dates:', { currentPeriodStart, currentPeriodEnd });
         
         tradeSubscription = new TradeSubscription({
           dealerId: dealer._id,
@@ -291,42 +273,34 @@ class StripeSubscriptionService {
           trialEnd: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null
         });
 
-        console.log('💾 Saving subscription to database...');
         try {
           await tradeSubscription.save();
-          console.log('✅ Subscription saved successfully:', tradeSubscription._id);
         } catch (saveError) {
           console.error('❌ Failed to save subscription:', saveError.message);
           console.error('   Error details:', saveError);
           throw saveError;
         }
       } else {
-        console.log('ℹ️ Subscription already exists:', tradeSubscription._id);
-        console.log('   Status:', tradeSubscription.status);
         
         // Update status if needed
         if (tradeSubscription.status !== subscription.status) {
-          console.log('🔄 Updating subscription status:', tradeSubscription.status, '->', subscription.status);
           tradeSubscription.status = subscription.status;
           await tradeSubscription.save();
         }
       }
 
       // Update dealer
-      console.log('📝 Updating dealer record...');
       dealer.currentSubscriptionId = tradeSubscription._id;
       dealer.status = 'active';
       dealer.hasActiveSubscription = true;
       
       try {
         await dealer.save();
-        console.log('✅ Dealer updated successfully');
       } catch (dealerError) {
         console.error('❌ Failed to update dealer:', dealerError.message);
         throw dealerError;
       }
 
-      console.log('✅ WEBHOOK PROCESSING COMPLETE\n');
     } catch (error) {
       console.error('\n❌ WEBHOOK ERROR:', error.message);
       console.error('Stack:', error.stack);
@@ -335,7 +309,6 @@ class StripeSubscriptionService {
   }
 
   async handleSubscriptionCreated(subscription) {
-    console.log('Subscription created:', subscription.id);
   }
 
   async handleSubscriptionUpdated(subscription) {
@@ -354,13 +327,11 @@ class StripeSubscriptionService {
 
       // Send email if subscription was renewed (status changed from trialing to active, or period updated)
       if (oldStatus === 'trialing' && subscription.status === 'active') {
-        console.log('📧 Subscription converted from trial to active, sending renewal email');
         const EmailService = require('./emailService');
         const emailService = new EmailService();
         await emailService.sendSubscriptionRenewed(tradeSubscription.dealerId, tradeSubscription);
       } else if (subscription.status === 'active' && oldStatus === 'active') {
         // Period was renewed
-        console.log('📧 Subscription renewed, sending confirmation email');
         const EmailService = require('./emailService');
         const emailService = new EmailService();
         await emailService.sendSubscriptionRenewed(tradeSubscription.dealerId, tradeSubscription);
@@ -382,7 +353,6 @@ class StripeSubscriptionService {
 
   async handlePaymentSucceeded(invoice) {
     // Payment successful - subscription is active
-    console.log('Payment succeeded for invoice:', invoice.id);
     
     // Send renewal confirmation email
     if (invoice.subscription) {
@@ -391,7 +361,6 @@ class StripeSubscriptionService {
       }).populate('planId dealerId');
 
       if (tradeSubscription && tradeSubscription.dealerId && tradeSubscription.planId) {
-        console.log('📧 Sending subscription renewal confirmation email');
         const EmailService = require('./emailService');
         const emailService = new EmailService();
         await emailService.sendSubscriptionRenewed(tradeSubscription.dealerId, tradeSubscription);
@@ -410,7 +379,6 @@ class StripeSubscriptionService {
 
       // Send payment failed email
       if (subscription.dealerId && subscription.planId) {
-        console.log('📧 Sending payment failed notification email');
         const EmailService = require('./emailService');
         const emailService = new EmailService();
         await emailService.sendSubscriptionPaymentFailed(subscription.dealerId, subscription);

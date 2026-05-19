@@ -514,7 +514,6 @@ const vanSchema = new mongoose.Schema({
 
 // Pre-save middleware to normalize van data and generate display title
 vanSchema.pre('save', async function(next) {
-  console.log(`🔧 [Van Pre-Save Hook] Starting for ${this.make} ${this.model} (${this.registrationNumber})`);
   
   // CRITICAL: Normalize make names
   if (this.make) {
@@ -546,7 +545,6 @@ vanSchema.pre('save', async function(next) {
       const oldMake = this.make;
       this.make = makeNormalization[makeUpper];
       if (oldMake !== this.make) {
-        console.log(`✅ [Van Make] Normalized: "${oldMake}" → "${this.make}"`);
       }
     }
   }
@@ -571,7 +569,6 @@ vanSchema.pre('save', async function(next) {
       const oldFuel = this.fuelType;
       this.fuelType = fuelNormalization[fuelUpper];
       if (oldFuel !== this.fuelType) {
-        console.log(`✅ [Van Fuel] Normalized: "${oldFuel}" → "${this.fuelType}"`);
       }
     }
   }
@@ -583,7 +580,6 @@ vanSchema.pre('save', async function(next) {
     
     if (needsCoordinates || needsLocationName) {
       try {
-        console.log(`📍 [Van Model] Fetching coordinates for postcode: ${this.postcode}`);
         const postcodeService = require('../services/postcodeService');
         const postcodeData = await postcodeService.lookupPostcode(this.postcode);
         
@@ -598,10 +594,7 @@ vanSchema.pre('save', async function(next) {
           
           this.locationName = postcodeData.locationName;
           
-          console.log(`✅ [Van Model] Coordinates set: ${postcodeData.latitude}, ${postcodeData.longitude}`);
-          console.log(`✅ [Van Model] Location name set: ${postcodeData.locationName}`);
         } else {
-          console.log(`⚠️  [Van Model] Could not fetch coordinates for postcode: ${this.postcode}`);
         }
       } catch (error) {
         console.error(`❌ [Van Model] Error fetching coordinates:`, error.message);

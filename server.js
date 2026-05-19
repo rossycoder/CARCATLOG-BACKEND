@@ -28,20 +28,37 @@ connectDB();
 const app = express();
 
 // Middleware
-app.use(cors({
-  origin: [
-    process.env.FRONTEND_URL || 'http://localhost:3000',
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://localhost:5173',  // Vite default port
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:3000',
-    'https://carcatlog.vercel.app',  // Production frontend
-    'https://carcatlog-git-main-rozeenas-projects.vercel.app',  // Vercel preview deployments
-    /^https:\/\/carcatlog-.*\.vercel\.app$/  // All Vercel preview URLs
-  ],
-  credentials: true
-}));
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000',
+  'https://carcatlog.vercel.app',
+  'https://carcatlog-git-main-rozeenas-projects.vercel.app',
+  'https://carcatlog-frontend.onrender.com',
+].filter(Boolean);
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    // Allow Vercel preview URLs
+    if (/^https:\/\/carcatlog-.*\.vercel\.app$/.test(origin)) return callback(null, true);
+    // Allow Render preview URLs
+    if (/^https:\/\/carcatlog-.*\.onrender\.com$/.test(origin)) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+};
+
+app.use(cors(corsOptions));
+// Explicitly handle preflight OPTIONS requests for all routes
+app.options('*', cors(corsOptions));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -92,40 +109,6 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// Test endpoint for debugging
-app.get('/test-advert', async (req, res) => {
-  try {
-    const Car = require('./models/Car');
-    const testCar = new Car({
-      advertId: 'test-' + Date.now(),
-      make: 'Test',
-      model: 'Car',
-      year: 2020,
-      mileage: 50000,
-      price: 10000,
-      color: 'Blue',
-      fuelType: 'Petrol',
-      transmission: 'manual',
-      advertStatus: 'active',
-      publishedAt: new Date()
-    });
-    
-    await testCar.save();
-    
-    res.json({
-      success: true,
-      message: 'Test car created successfully',
-      carId: testCar._id
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      errorName: error.name,
-      stack: error.stack
-    });
-  }
-});
 
 // API Routes
 const authRoutes = require('./routes/authRoutes');
@@ -143,8 +126,8 @@ const tradeDealerRoutes = require('./routes/tradeDealerRoutes');
 const tradeInventoryRoutes = require('./routes/tradeInventoryRoutes');
 const tradeSubscriptionRoutes = require('./routes/tradeSubscriptionRoutes');
 const tradeAnalyticsRoutes = require('./routes/tradeAnalyticsRoutes');
-const bikeRoutes = require('./routes/bikeRoutes');
-const vanRoutes = require('./routes/vanRoutes');
+// const bikeRoutes = require('./routes/bikeRoutes'); // DISABLED - Car-only deployment
+// const vanRoutes = require('./routes/vanRoutes'); // DISABLED - Car-only deployment
 const seoRoutes = require('./routes/seoRoutes');
 const electricVehicleRoutes = require('./routes/electricVehicles');
 const demoRoutes = require('./routes/demo');
@@ -167,8 +150,8 @@ app.use('/api/trade/auth', tradeDealerRoutes);
 app.use('/api/trade/inventory', tradeInventoryRoutes);
 app.use('/api/trade/subscriptions', tradeSubscriptionRoutes);
 app.use('/api/trade/analytics', tradeAnalyticsRoutes);
-app.use('/api/bikes', bikeRoutes);
-app.use('/api/vans', vanRoutes);
+// app.use('/api/bikes', bikeRoutes); // DISABLED - Car-only deployment
+// app.use('/api/vans', vanRoutes); // DISABLED - Car-only deployment
 app.use('/api/seo', seoRoutes);
 app.use('/api/refresh-mot', refreshMOTRoutes); // Refresh MOT history for cars
 
@@ -197,9 +180,6 @@ initSubscriptionCron();
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🌐 API URL: http://localhost:${PORT}`);
 });
 
 module.exports = app; 

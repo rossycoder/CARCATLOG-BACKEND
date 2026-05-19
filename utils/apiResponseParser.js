@@ -6,7 +6,6 @@
  * API clients should delegate parsing to these methods to maintain separation of concerns.
  */
 
-console.log('🔧 [ApiResponseParser] Loading VERSION 2.0 - FIXED PARSER');
 
 /**
  * Extract numeric value from various formats
@@ -111,7 +110,6 @@ function normalizeTransmission(transmission) {
  * @returns {Object} Parsed vehicle data
  */
 function parseCheckCarDetailsResponse(data) {
-  console.log('🔧 [ApiResponseParser] parseCheckCarDetailsResponse called - VERSION 2.0');
   
   if (!data) {
     return {};
@@ -132,40 +130,26 @@ function parseCheckCarDetailsResponse(data) {
   const smmtDetails = dataItems.SmmtDetails || {};
   
   // CRITICAL: Log ALL available fields to debug bike model issue
-  console.log('🔍 [Parser] ALL DataItems keys:', Object.keys(dataItems));
-  console.log('🔍 [Parser] VehicleIdentification keys:', Object.keys(vehicleId));
-  console.log('🔍 [Parser] VehicleRegistration keys:', Object.keys(vehicleReg));
-  console.log('🔍 [Parser] ModelData keys:', Object.keys(modelData));
-  console.log('🔍 [Parser] SmmtDetails keys:', Object.keys(smmtDetails));
   
   // CRITICAL: Log ALL available fields to debug bike model issue
-  console.log('🔍 [Parser] ALL DataItems keys:', Object.keys(dataItems));
-  console.log('🔍 [Parser] VehicleIdentification keys:', Object.keys(vehicleId));
-  console.log('🔍 [Parser] VehicleRegistration keys:', Object.keys(vehicleReg));
-  console.log('🔍 [Parser] ModelData keys:', Object.keys(modelData));
-  console.log('🔍 [Parser] SmmtDetails keys:', Object.keys(smmtDetails));
   
   // Log actual values for debugging
-  console.log('🔍 [Parser] VehicleIdentification values:', JSON.stringify({
     DvlaMake: vehicleId.DvlaMake,
     DvlaModel: vehicleId.DvlaModel,
     Make: vehicleId.Make,
     Model: vehicleId.Model,
     Manufacturer: vehicleId.Manufacturer
   }));
-  console.log('🔍 [Parser] VehicleRegistration values:', JSON.stringify({
     Make: vehicleReg.Make,
     Model: vehicleReg.Model,
     MakeModel: vehicleReg.MakeModel,
     Manufacturer: vehicleReg.Manufacturer
   }));
-  console.log('🔍 [Parser] ModelData values:', JSON.stringify({
     Make: modelData.Make,
     Model: modelData.Model,
     ModelVariant: modelData.ModelVariant,
     Range: modelData.Range
   }));
-  console.log('🔍 [Parser] SmmtDetails values:', JSON.stringify({
     Marque: smmtDetails.Marque,
     Model: smmtDetails.Model,
     ModelVariant: smmtDetails.ModelVariant,
@@ -173,20 +157,6 @@ function parseCheckCarDetailsResponse(data) {
     Series: smmtDetails.Series
   }));
   
-  console.log('🔍 [Parser] fuelType from modelData:', modelData.FuelType);
-  console.log('🔍 [Parser] bodyType from bodyDetails:', bodyDetails.BodyStyle);
-  console.log('🔍 [Parser] engineSize from dvlaTech:', dvlaTech.EngineCapacityCc);
-  console.log('🔍 [Parser] combinedMpg from fuelEconomy:', fuelEconomy.CombinedMpg);
-  console.log('🔍 [Parser] SmmtDetails available:', !!smmtDetails);
-  console.log('🔍 [Parser] SmmtDetails.CombinedMpg:', smmtDetails.CombinedMpg);
-  console.log('🔍 [Parser] SmmtDetails.UrbanColdMpg:', smmtDetails.UrbanColdMpg);
-  console.log('🔍 [Parser] SmmtDetails.Co2:', smmtDetails.Co2);
-  console.log('🔍 [Parser] ModelData.Model:', modelData.Model);
-  console.log('🔍 [Parser] ModelData.ModelVariant:', modelData.ModelVariant);
-  console.log('🔍 [Parser] VehicleId.DvlaModel:', vehicleId.DvlaModel);
-  console.log('🔍 [Parser] VehicleReg.Make:', vehicleReg.Make);
-  console.log('🔍 [Parser] VehicleReg.Model:', vehicleReg.Model);
-  console.log('🔍 [Parser] VehicleReg.MakeModel:', vehicleReg.MakeModel);
 
   // CRITICAL: For bikes, make/model often in VehicleRegistration instead of ModelData
   // Also handle empty strings as null
@@ -196,8 +166,6 @@ function parseCheckCarDetailsResponse(data) {
                         (vehicleId.DvlaModel && vehicleId.DvlaModel.trim() !== '' ? vehicleId.DvlaModel : null) || 
                         smmtDetails.Model || null;
   
-  console.log('🔍 [Parser] EXTRACTED make:', extractedMake);
-  console.log('🔍 [Parser] EXTRACTED model:', extractedModel);
 
   return {
     make: extractedMake,

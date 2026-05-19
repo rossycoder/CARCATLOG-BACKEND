@@ -29,7 +29,6 @@ const { formatErrorResponse }      = require('../utils/errorHandlers');
 async function fetchVehicleAPIs(registrationNumber, forceRefresh = false) {
   if (!registrationNumber) return {};
 
-  console.log(`📞 [fetchVehicleAPIs] START — ${registrationNumber} (forceRefresh=${forceRefresh})`);
 
   const HistoryService    = require('../services/historyService');
   const MOTHistoryService = require('../services/motHistoryService');
@@ -56,7 +55,6 @@ async function fetchVehicleAPIs(registrationNumber, forceRefresh = false) {
         out.motExpiry = latest.expiryDate;
         out.motStatus = latest.testResult === 'PASSED' ? 'Valid' : 'Expired';
       }
-      console.log(`✅ [fetchVehicleAPIs] MOT: ${tests.length} tests`);
     }
   } else {
     console.warn(`⚠️  [fetchVehicleAPIs] MOT failed: ${motResult.reason?.message}`);
@@ -73,12 +71,10 @@ async function fetchVehicleAPIs(registrationNumber, forceRefresh = false) {
     if (h.previousOwners  !== undefined) out.previousOwners  = h.previousOwners;
     if (h.colourChanges   !== undefined) out.colourChanges   = h.colourChanges;
     if (h.plateChanges    !== undefined) out.plateChanges    = h.plateChanges;
-    console.log(`✅ [fetchVehicleAPIs] History: historyCheckId=${out.historyCheckId}`);
   } else {
     console.warn(`⚠️  [fetchVehicleAPIs] History failed: ${histResult.reason?.message}`);
   }
 
-  console.log(`✅ [fetchVehicleAPIs] DONE — ${registrationNumber}`);
   return out;
 }
 
@@ -181,7 +177,6 @@ async function createAdvertCheckoutSession(req, res) {
       vehicleType, priceExVat, vatAmount, actualVehicleValue
     } = req.body;
 
-    console.log('📦 createAdvertCheckoutSession:', { packageId, packageName, price, duration, sellerType });
 
     if (!packageId || !packageName || !price) {
       return res.status(400).json({ success: false, error: 'Package details are required' });
@@ -235,7 +230,6 @@ async function createAdvertCheckoutSession(req, res) {
     });
 
     await purchase.save();
-    console.log(`✅ Purchase record created: ${purchase._id}`);
 
     res.json({
       success: true,
@@ -352,7 +346,6 @@ async function handleWebhook(req, res) {
 
     const stripeService = new StripeService();
     const event         = stripeService.verifyWebhookSignature(req.body, signature);
-    console.log('Stripe webhook:', event.type);
 
     switch (event.type) {
       case 'payment_intent.succeeded':
@@ -365,7 +358,6 @@ async function handleWebhook(req, res) {
         await handleCheckoutCompleted(event.data.object);
         break;
       default:
-        console.log(`Unhandled event: ${event.type}`);
     }
 
     res.json({ received: true });
@@ -378,7 +370,6 @@ async function handleWebhook(req, res) {
 // ─── handlePaymentSuccess ────────────────────────────────────────────────────
 async function handlePaymentSuccess(paymentIntent) {
   try {
-    console.log('💳 handlePaymentSuccess:', paymentIntent.id);
 
     // Idempotency guard — don't process same payment twice
     const alreadyDone = await AdvertisingPackagePurchase.findOne({
@@ -386,7 +377,6 @@ async function handlePaymentSuccess(paymentIntent) {
       paymentStatus: 'paid'
     });
     if (alreadyDone) {
-      console.log(`⚠️  Payment ${paymentIntent.id} already processed — skipping`);
       return;
     }
 
@@ -395,11 +385,9 @@ async function handlePaymentSuccess(paymentIntent) {
 
     // ── Vehicle history report purchase ──────────────────────────────────────
     if (paymentData.type === 'vehicle_history_report' && paymentData.vrm) {
-      console.log(`🔍 [Payment] Vehicle history report for: ${paymentData.vrm}`);
       try {
         // fetchVehicleAPIs is the ONLY place we call these services
         await fetchVehicleAPIs(paymentData.vrm, false);
-        console.log(`✅ [Payment] History report generated for: ${paymentData.vrm}`);
       } catch (err) {
         console.error(`❌ [Payment] History report failed:`, err.message);
       }
@@ -408,7 +396,6 @@ async function handlePaymentSuccess(paymentIntent) {
 
     // ── Credit package purchase ───────────────────────────────────────────────
     if (paymentData.type === 'credit_package') {
-      console.log(`Credits purchase: ${paymentData.creditAmount}`);
       // TODO: update user credit balance
       return;
     }
@@ -424,7 +411,6 @@ async function handlePaymentSuccess(paymentIntent) {
 
     await purchase.markAsPaid(paymentIntent.id);
     await purchase.activatePackage();
-    console.log(`✅ Package activated: ${purchase._id} — ${purchase.packageName}`);
 
     const advertId      = purchase.metadata.get('advertId');
     if (!advertId) {
@@ -490,7 +476,6 @@ async function handlePaymentSuccess(paymentIntent) {
 
       if (bike) {
         if (bike.status === 'active' && bike.advertisingPackage?.stripePaymentIntentId === paymentIntent.id) {
-          console.log(`⚠️  Bike already activated — skipping`);
         } else {
           // Update existing
           const isRelistBike = bike.status === 'draft' || bike.status === 'expired';
@@ -519,12 +504,10 @@ async function handlePaymentSuccess(paymentIntent) {
             const apiData = await fetchVehicleAPIs(bike.registrationNumber, true);
             applyAPIDataToVehicle(bike, apiData);
           } else if (isRelistBike) {
-            console.log(`🔄 [Bike Payment] RELIST detected — skipping API calls`);
           }
 
           bike._skipAPICallsInHooks = true;
           await bike.save();
-          console.log(`✅ Bike UPDATED and published: ${bike._id}`);
         }
       } else {
         // Create new bike
@@ -560,7 +543,6 @@ async function handlePaymentSuccess(paymentIntent) {
 
         bike._skipAPICallsInHooks = true;
         await bike.save();
-        console.log(`✅ Bike CREATED and published: ${bike._id}`);
       }
 
       await sendConfirmationEmail(purchase);
@@ -576,7 +558,6 @@ async function handlePaymentSuccess(paymentIntent) {
 
       if (van) {
         if (van.status === 'active' && van.advertisingPackage?.stripePaymentIntentId === paymentIntent.id) {
-          console.log(`⚠️  Van already activated — skipping`);
         } else {
           const isRelistVan = van.status === 'draft' || van.status === 'expired';
           
@@ -599,12 +580,10 @@ async function handlePaymentSuccess(paymentIntent) {
             const apiData = await fetchVehicleAPIs(van.registrationNumber, true);
             applyAPIDataToVehicle(van, apiData);
           } else if (isRelistVan) {
-            console.log(`🔄 [Van Payment] RELIST detected — skipping API calls`);
           }
 
           van._skipAPICallsInHooks = true;
           await van.save();
-          console.log(`✅ Van UPDATED and published: ${van._id}`);
         }
       } else {
         van = new (require('../models/Van'))({
@@ -640,7 +619,6 @@ async function handlePaymentSuccess(paymentIntent) {
 
         van._skipAPICallsInHooks = true;
         await van.save();
-        console.log(`✅ Van CREATED and published: ${van._id}`);
       }
 
       await sendConfirmationEmail(purchase);
@@ -658,7 +636,6 @@ async function handlePaymentSuccess(paymentIntent) {
 
     // Idempotency: skip if already activated for this payment
     if (car && car.advertStatus === 'active' && car.advertisingPackage?.stripePaymentIntentId === paymentIntent.id) {
-      console.log(`⚠️  Car already activated for payment ${paymentIntent.id} — skipping`);
       return;
     }
 
@@ -666,7 +643,6 @@ async function handlePaymentSuccess(paymentIntent) {
     if (!car) {
       const byPayment = await Car.findOne({ 'advertisingPackage.stripePaymentIntentId': paymentIntent.id });
       if (byPayment) {
-        console.log(`⚠️  Car already exists for payment ${paymentIntent.id} — skipping`);
         return;
       }
     }
@@ -686,19 +662,13 @@ async function handlePaymentSuccess(paymentIntent) {
     const isRelist = car && (car.advertStatus === 'draft' || car.advertStatus === 'expired');
     
     if (vehicleData.registrationNumber && !isRelist) {
-      console.log(`📞 [Car Payment] Fetching MOT + History for: ${vehicleData.registrationNumber}`);
       try {
         apiData = await fetchVehicleAPIs(vehicleData.registrationNumber, false); // use cache
-        console.log(`✅ [Car Payment] API data fetched:`, {
-          motHistory: apiData.motHistory?.length || 0,
-          historyCheckId: apiData.historyCheckId || 'none'
-        });
       } catch (error) {
         console.error(`❌ [Car Payment] fetchVehicleAPIs failed:`, error.message);
         // Continue without API data - car will still be created
       }
     } else if (isRelist) {
-      console.log(`🔄 [Car Payment] RELIST detected — skipping API calls (data already in database)`);
     }
 
     // Build the base price
@@ -712,7 +682,6 @@ async function handlePaymentSuccess(paymentIntent) {
 
     if (car) {
       // ── UPDATE existing car ─────────────────────────────────────────────
-      console.log(`📝 Updating existing car: ${car._id}`);
 
       if (resolvedUserId && !car.userId) car.userId = resolvedUserId;
 
@@ -741,11 +710,9 @@ async function handlePaymentSuccess(paymentIntent) {
       // Car.js pre-save hook will handle DVLA, variant, coordinates
       // History/MOT already fetched above via fetchVehicleAPIs()
       await car.save();
-      console.log(`✅ Car UPDATED and published: ${car._id}`);
 
     } else {
       // ── CREATE new car ──────────────────────────────────────────────────
-      console.log(`📝 Creating new car`);
 
       // Check for orphaned pending car with same registration
       let existingPending = null;
@@ -802,7 +769,6 @@ async function handlePaymentSuccess(paymentIntent) {
 
       if (existingPending) {
         // Smart-merge into existing pending document
-        console.log(`🔄 Merging into existing pending car: ${existingPending._id}`);
         Object.assign(existingPending, cleanedData);
         // Car.js pre-save hook must run — do NOT set _skipAPICallsInHooks
         car = existingPending;
@@ -812,14 +778,8 @@ async function handlePaymentSuccess(paymentIntent) {
       }
 
       await car.save();
-      console.log(`✅ Car CREATED and published: ${car._id}`);
     }
 
-    console.log(`   Make/Model: ${car.make} ${car.model}`);
-    console.log(`   Price: £${car.price}`);
-    console.log(`   userId: ${car.userId || 'NOT SET'}`);
-    console.log(`   MOT tests: ${car.motHistory?.length || 0}`);
-    console.log(`   historyCheckId: ${car.historyCheckId || 'not set'}`);
 
     await sendConfirmationEmail(purchase);
 
@@ -903,9 +863,7 @@ async function ensureUser(userId, email) {
       name: email.split('@')[0], email,
       password: hashed, isEmailVerified: true, provider: 'local', role: 'user'
     }).save();
-    console.log(`✅ Auto-created user: ${user._id} (${email})`);
   } else {
-    console.log(`✅ Existing user: ${user._id}`);
   }
   return user._id;
 }
@@ -915,7 +873,6 @@ async function sendConfirmationEmail(purchase) {
   try {
     const emailService = new EmailService();
     await emailService.sendAdvertisingPackageConfirmation(purchase);
-    console.log(`📧 Confirmation email sent to: ${purchase.customerEmail}`);
   } catch (err) {
     console.warn(`⚠️  Email send failed: ${err.message}`);
   }
@@ -924,7 +881,6 @@ async function sendConfirmationEmail(purchase) {
 // ─── handlePaymentFailure ────────────────────────────────────────────────────
 async function handlePaymentFailure(paymentIntent) {
   try {
-    console.log('Payment failure:', paymentIntent.id);
     // TODO: log + notify if needed
   } catch (error) {
     console.error('Error handling payment failure:', error);
@@ -934,14 +890,12 @@ async function handlePaymentFailure(paymentIntent) {
 // ─── handleCheckoutCompleted ─────────────────────────────────────────────────
 async function handleCheckoutCompleted(session) {
   try {
-    console.log('Checkout completed:', session.id);
     if (session.metadata?.type === 'advertising_package') {
       const purchase = await AdvertisingPackagePurchase.findBySessionId(session.id);
       if (purchase && session.customer_details) {
         purchase.customerEmail = session.customer_details.email;
         purchase.customerName  = session.customer_details.name;
         await purchase.save();
-        console.log(`✅ Purchase customer details saved: ${purchase._id}`);
       }
     }
   } catch (error) {

@@ -131,10 +131,6 @@ function validateAndInitialize() {
   try {
     const credentials = loadAPICredentials();
     
-    console.log('✓ API Credentials validated successfully');
-    console.log(`  Environment: ${credentials.environment}`);
-    console.log(`  History API: ${getActiveBaseUrl(credentials.historyAPI, credentials.environment)}`);
-    console.log(`  Valuation API: ${getActiveBaseUrl(credentials.valuationAPI, credentials.environment)}`);
     
     return credentials;
   } catch (error) {

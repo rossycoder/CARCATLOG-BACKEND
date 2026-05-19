@@ -475,7 +475,6 @@ const activateVan = async (req, res) => {
     const { id } = req.params;
     const Van = require('../models/Van');
     
-    console.log(`🔧 [Admin] Manually activating van: ${id}`);
     
     // Find van
     const van = await Van.findById(id);
@@ -514,10 +513,6 @@ const activateVan = async (req, res) => {
     
     await van.save();
     
-    console.log(`✅ [Admin] Van activated: ${van._id}`);
-    console.log(`   Make/Model: ${van.make} ${van.model}`);
-    console.log(`   Registration: ${van.registrationNumber}`);
-    console.log(`   Status: ${van.status}`);
     
     res.json({
       success: true,
@@ -552,7 +547,6 @@ const getVansWithPaymentIssues = async (req, res) => {
     .sort({ createdAt: -1 })
     .lean();
     
-    console.log(`🔍 [Admin] Found ${vans.length} vans with payment issues`);
     
     res.json({
       success: true,
@@ -682,10 +676,7 @@ const getAllUsers = async (req, res) => {
         return subDealerId === dealerId;
       });
       
-      console.log(`[Admin] Dealer: ${dealer.businessName}, ID: ${dealerId}`);
-      console.log(`[Admin] Subscription found:`, subscription ? 'YES' : 'NO');
       if (subscription) {
-        console.log(`[Admin] Plan: ${subscription.planId?.name}, Status: ${subscription.status}`);
       }
 
       // Only include dealers with vehicles or if no filter
@@ -753,7 +744,6 @@ const getUserVehicles = async (req, res) => {
     const { userId } = req.params;
     const { dealerId } = req.query;
 
-    console.log('[Admin] Fetching vehicles for userId:', userId, 'dealerId:', dealerId);
 
     let vehicles = [];
     let dealerSubscription = null;
@@ -769,8 +759,6 @@ const getUserVehicles = async (req, res) => {
           .lean()
       ]);
 
-      console.log('[Admin] Found dealer vehicles - Cars:', cars.length, 'Bikes:', bikes.length, 'Vans:', vans.length);
-      console.log('[Admin] Dealer subscription:', subscription);
 
       dealerSubscription = subscription;
 
@@ -815,11 +803,9 @@ const getUserVehicles = async (req, res) => {
         Van.find({ userId: userId }).lean()
       ]);
 
-      console.log('[Admin] Found user vehicles - Cars:', cars.length, 'Bikes:', bikes.length, 'Vans:', vans.length);
       
       // Debug: Check sellerContact in first car
       if (cars.length > 0) {
-        console.log('[Admin] Sample car sellerContact:', cars[0].sellerContact);
       }
 
       vehicles = [
@@ -832,7 +818,6 @@ const getUserVehicles = async (req, res) => {
     // Sort by creation date (newest first)
     vehicles.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    console.log('[Admin] Returning', vehicles.length, 'total vehicles');
 
     return res.json({
       success: true,

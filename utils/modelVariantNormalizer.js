@@ -113,7 +113,6 @@ function normalizeModelVariant(model, variant, make) {
     // Special case: model starts with variant (e.g. "FIESTA ZETEC CLIMATE" starts with "Fiesta")
     if (variant && model.toUpperCase().startsWith(variant.toUpperCase() + ' ')) {
       const trueVariant = model.substring(variant.length).trim();
-      console.log(`[Model/Variant Normalizer] Starts-with swap: Model="${model}" → "${variant}", Variant="${trueVariant}"`);
       return { model: variant, variant: trueVariant, wasSwapped: true };
     }
 
@@ -124,9 +123,6 @@ function normalizeModelVariant(model, variant, make) {
       // Swap: short model becomes model, long model becomes variant
       const newVariant = model.replace(shortModel, '').trim();
       
-      console.log(`[Model/Variant Normalizer] Detected swap:`);
-      console.log(`  Old: Model="${model}", Variant="${variant}"`);
-      console.log(`  New: Model="${shortModel}", Variant="${newVariant}"`);
       
       return {
         model: shortModel,

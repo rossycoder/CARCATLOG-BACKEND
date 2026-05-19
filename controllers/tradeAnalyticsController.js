@@ -9,8 +9,6 @@ exports.getAnalytics = async (req, res) => {
     const { timeRange = '30days' } = req.query;
     const dealerId = req.dealerId;
 
-    console.log('[Analytics Controller] Fetching analytics for dealer:', dealerId);
-    console.log('[Analytics Controller] Time range:', timeRange);
 
     if (!dealerId) {
       console.error('[Analytics Controller] No dealerId found in request');
@@ -39,16 +37,13 @@ exports.getAnalytics = async (req, res) => {
     }
 
     // Get all dealer listings (not filtered by date - we'll show all listings)
-    console.log('[Analytics Controller] Querying listings with dealerId:', dealerId);
     const listings = await Car.find({
       dealerId,
       isDealerListing: true
     });
 
-    console.log('[Analytics Controller] Found', listings.length, 'listings');
 
     if (listings.length === 0) {
-      console.log('[Analytics Controller] No listings found, returning empty analytics');
       return res.json({
         success: true,
         data: {
@@ -73,11 +68,6 @@ exports.getAnalytics = async (req, res) => {
     const totalInquiries = listings.reduce((sum, car) => sum + (car.inquiryCount || 0), 0);
     const conversionRate = totalViews > 0 ? parseFloat(((totalInquiries / totalViews) * 100).toFixed(1)) : 0;
 
-    console.log('[Analytics Controller] Overview stats:', {
-      totalViews,
-      totalInquiries,
-      conversionRate: `${conversionRate}%`
-    });
 
     // Calculate average time to sell
     const soldListings = listings.filter(car => car.advertStatus === 'sold' && car.soldAt);
@@ -92,10 +82,6 @@ exports.getAnalytics = async (req, res) => {
       avgTimeToSell = soldListings.length > 0 ? Math.round(totalDays / soldListings.length) : 0;
     }
 
-    console.log('[Analytics Controller] Avg time to sell:', {
-      soldListingsCount: soldListings.length,
-      avgTimeToSell: `${avgTimeToSell} days`
-    });
 
     // Count active and sold listings
     const activeListings = listings.filter(car => car.advertStatus === 'active').length;
@@ -109,11 +95,6 @@ exports.getAnalytics = async (req, res) => {
              new Date(car.soldAt) >= firstDayOfMonth;
     }).length;
 
-    console.log('[Analytics Controller] Sold this month:', {
-      soldThisMonth,
-      firstDayOfMonth: firstDayOfMonth.toISOString(),
-      currentDate: now.toISOString()
-    });
 
     // Get top performers (sorted by view count)
     const topPerformers = listings

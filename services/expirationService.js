@@ -18,7 +18,6 @@ class ExpirationService {
         'advertisingPackage.expiryDate': { $lte: now }
       });
 
-      console.log(`Found ${expiredCars.length} expired listings to move to draft`);
 
       const results = {
         movedToDraft: 0,
@@ -49,7 +48,6 @@ class ExpirationService {
           });
           results.movedToDraft++;
 
-          console.log(`Moved to draft: ${car.advertId} - ${car.make} ${car.model} (${car.sellerContact?.type || 'unknown'})`);
         } catch (error) {
           console.error(`Error moving car ${car._id} to draft:`, error);
           results.errors.push({
@@ -93,7 +91,6 @@ class ExpirationService {
         ]
       });
 
-      console.log(`Found ${expiringCars.length} private seller listings expiring in ${daysBeforeExpiry} days`);
 
       const results = {
         warned: 0,
@@ -282,7 +279,6 @@ Best regards,
 The CarCatalog Team`;
 
       await sendEmail(email, subject, text, html);
-      console.log(`Expiration notification sent to ${email} for car ${car.advertId}`);
     } catch (error) {
       console.error('Error sending expiration notification:', error);
       throw error;
@@ -399,7 +395,6 @@ View My Listings: ${process.env.FRONTEND_URL || 'http://localhost:3000'}/my-list
 If you have any questions, please contact our support team.`;
 
       await sendEmail(email, subject, text, html);
-      console.log(`Expiration warning sent to ${email} for car ${car.advertId}`);
     } catch (error) {
       console.error('Error sending expiration warning:', error);
       throw error;

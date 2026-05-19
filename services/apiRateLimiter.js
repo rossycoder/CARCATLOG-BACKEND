@@ -49,9 +49,6 @@ class APIRateLimiter {
       const oldestCall = Math.min(...recentEndpointCalls);
       const retryAfter = Math.ceil((oldestCall + this.ENDPOINT_WINDOW - now) / 1000);
       
-      console.log(`🚫 [Rate Limit] Endpoint limit exceeded for ${endpoint}`);
-      console.log(`   ${recentEndpointCalls.length}/${this.ENDPOINT_LIMIT} calls in last minute`);
-      console.log(`   Retry after ${retryAfter} seconds`);
       
       return {
         allowed: false,
@@ -69,8 +66,6 @@ class APIRateLimiter {
         const oldestCall = Math.min(...recentUserCalls);
         const retryAfter = Math.ceil((oldestCall + this.USER_WINDOW - now) / 1000);
         
-        console.log(`🚫 [Rate Limit] User limit exceeded for ${userId}`);
-        console.log(`   ${recentUserCalls.length}/${this.USER_LIMIT} calls in last hour`);
         
         return {
           allowed: false,
@@ -87,8 +82,6 @@ class APIRateLimiter {
       const oldestCall = Math.min(...recentGlobalCalls);
       const retryAfter = Math.ceil((oldestCall + this.GLOBAL_WINDOW - now) / 1000);
       
-      console.log(`🚫 [Rate Limit] Global limit exceeded`);
-      console.log(`   ${recentGlobalCalls.length}/${this.GLOBAL_LIMIT} calls in last 24 hours`);
       
       return {
         allowed: false,
@@ -124,7 +117,6 @@ class APIRateLimiter {
     // Record global call
     this.globalCalls.push(now);
     
-    console.log(`✅ [Rate Limit] Recorded call to ${endpoint}`);
   }
 
   /**
@@ -156,10 +148,6 @@ class APIRateLimiter {
     // Cleanup global calls
     this.globalCalls = this.globalCalls.filter(t => now - t < this.GLOBAL_WINDOW);
     
-    console.log(`🧹 [Rate Limit] Cleanup complete`);
-    console.log(`   Endpoints tracked: ${this.endpointCalls.size}`);
-    console.log(`   Users tracked: ${this.userCalls.size}`);
-    console.log(`   Global calls (24h): ${this.globalCalls.length}`);
   }
 
   /**
@@ -198,7 +186,6 @@ class APIRateLimiter {
     this.endpointCalls.clear();
     this.userCalls.clear();
     this.globalCalls = [];
-    console.log(`🔄 [Rate Limit] All limits reset`);
   }
 }
 

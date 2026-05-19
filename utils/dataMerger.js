@@ -210,7 +210,6 @@ class DataMerger {
     // Rest is the model (take up to first 5 words to avoid getting too much)
     const model = parts.slice(1, Math.min(parts.length, 6)).join(' ');
 
-    console.log(`Extracted from valuation description: Make="${make}", Model="${model}", FuelType="${fuelType}"`);
     
     return { make, model, fuelType };
   }
@@ -358,7 +357,6 @@ class DataMerger {
     const engineSizePattern = /^\d+\.?\d*\s*(L|l|litre|liter)?\s*(petrol|diesel|hybrid|electric)?$/i;
     
     if (engineSizePattern.test(trimmed)) {
-      console.log(`Rejecting invalid model value: "${modelValue}" (appears to be engine size)`);
       return null;
     }
 
@@ -380,7 +378,6 @@ class DataMerger {
 
   validateApiData(data, source) {
     if (!data || typeof data !== 'object') {
-      console.log(`${source} data is invalid or missing`);
       return false;
     }
 
@@ -397,11 +394,9 @@ class DataMerger {
 
     // Accept data if it has ANY useful information
     if (!hasBasicInfo && !hasRunningCosts && !hasPerformance && !hasAdditionalInfo && !hasValuation) {
-      console.log(`${source} data contains no useful vehicle information`);
       return false;
     }
 
-    console.log(`${source} data validation passed`);
     return true;
   }
 
