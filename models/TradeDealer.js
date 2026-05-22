@@ -155,7 +155,6 @@ const tradeDealerSchema = new mongoose.Schema({
 });
 
 // Indexes
-tradeDealerSchema.index({ email: 1 });
 tradeDealerSchema.index({ status: 1 });
 
 // Hash password before saving

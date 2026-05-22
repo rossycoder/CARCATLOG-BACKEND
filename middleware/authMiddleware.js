@@ -50,3 +50,31 @@ const protect = async (req, res, next) => {
 };
 
 module.exports = { protect };
+
+/**
+ * Optional auth - sets req.user if token is valid, but doesn't block if no token
+ */
+const optionalAuth = async (req, res, next) => {
+  let token;
+
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    token = req.headers.authorization.split(' ')[1];
+  }
+
+  if (!token) {
+    return next(); // No token - continue without user
+  }
+
+  try {
+    const decoded = verifyToken(token);
+    if (decoded) {
+      req.user = await User.findById(decoded.id).select('-password');
+    }
+  } catch (error) {
+    // Invalid token - continue without user
+  }
+
+  next();
+};
+
+module.exports = { protect, optionalAuth };
