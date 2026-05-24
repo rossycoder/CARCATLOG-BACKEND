@@ -91,7 +91,7 @@ const carSchema = new mongoose.Schema({
   doors: { type: Number, min: 2, max: 5 },
   seats: { type: Number, min: 2, max: 9 },
   engineSize: { type: Number, min: 0 },
-  registrationNumber: { type: String, trim: true, uppercase: true, sparse: true },
+  registrationNumber: { type: String, trim: true, uppercase: true },
   displayTitle: { type: String, trim: true },
   dataSource: { type: String, enum: ['DVLA', 'manual'], default: 'manual' },
   co2Emissions: { type: Number, min: 0 },

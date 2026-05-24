@@ -108,7 +108,7 @@ const createAdvert = async (req, res) => {
       variant: carDataToSave.variant || null, // Will be auto-fetched in pre-save hook if missing
       year: parseInt(carDataToSave.year) || new Date().getFullYear(),
       mileage: parseInt(carDataToSave.mileage) || 0,
-      color: carDataToSave.color || null, // Leave null so API can populate it, frontend will handle display
+      color: carDataToSave.color || carDataToSave.colour || null, // Handle both spellings (DVLA uses 'colour')
       fuelType: normalizedFuelType,
       transmission: normalizedTransmission,
       price: estimatedPrice,

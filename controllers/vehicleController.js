@@ -197,13 +197,13 @@ class VehicleController {
       
       // Check if data already cached
       const safeAPI = require('../services/safeAPIService');
-      const summary = await safeAPI.getVehicleSummary(registration);
+      const summary = await safeAPI.getVehicleSummary(registrationNumber);
       
       if (summary && summary.hasCachedData) {
         
         // Load cached data from VehicleHistory
         const VehicleHistory = require('../models/VehicleHistory');
-        const cached = await VehicleHistory.findOne({ vrm: registration.toUpperCase().replace(/\s/g, '') })
+        const cached = await VehicleHistory.findOne({ vrm: registrationNumber.toUpperCase().replace(/\s/g, '') })
           .sort({ checkDate: -1 })
           .lean();
         
@@ -1974,7 +1974,7 @@ class VehicleController {
             engineSize: dvlaTech.EngineCapacityCc ? dvlaTech.EngineCapacityCc / 1000 : null,
             doors: bodyDetails.NumberOfDoors,
             seats: bodyDetails.NumberOfSeats || dvlaTech.SeatCountIncludingDriver,
-            color: null, // Not in vehicleSpecs API
+            color: null, // Will be fetched from DVLA below
             urbanMpg: fuelEconomy.UrbanColdMpg,
             extraUrbanMpg: fuelEconomy.ExtraUrbanMpg,
             combinedMpg: fuelEconomy.CombinedMpg,
@@ -1985,6 +1985,28 @@ class VehicleController {
           // CRITICAL FIX: Calculate annual tax if not provided by API
           const vedDetails = rawApiData.VehicleExciseDutyDetails || {};
           apiData.annualTax = vedDetails.VedRate?.Standard?.TwelveMonths || null;
+
+          // Fetch color from DVLA (vehicleSpecs API doesn't have colour)
+          try {
+            const dvlaApiKey = process.env.DVLA_API_KEY;
+            if (dvlaApiKey) {
+              const axios = require('axios');
+              const dvlaResp = await axios.post(
+                'https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles',
+                { registrationNumber: cleanedReg },
+                { headers: { 'x-api-key': dvlaApiKey, 'Content-Type': 'application/json' }, timeout: 5000 }
+              );
+              if (dvlaResp.data?.colour) {
+                const { formatColor } = require('../utils/colorFormatter');
+                apiData.color = formatColor(dvlaResp.data.colour);
+              }
+              // Also grab motStatus/taxStatus while we're here
+              if (!apiData.motStatus && dvlaResp.data?.motStatus) apiData.motStatus = dvlaResp.data.motStatus;
+              if (!apiData.taxStatus && dvlaResp.data?.taxStatus) apiData.taxStatus = dvlaResp.data.taxStatus;
+            }
+          } catch (dvlaErr) {
+            console.warn(`⚠️  [basicVehicleLookup] DVLA color fetch failed: ${dvlaErr.message}`);
+          }
           
           if (!apiData.annualTax && apiData.co2Emissions && apiData.year) {
             const { calculateAnnualTax } = require('../utils/taxCalculator');

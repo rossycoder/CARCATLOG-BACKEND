@@ -704,7 +704,9 @@ exports.publishVehicle = async (req, res) => {
       isDealerListing: true,
       sellerType: 'dealer',
       advertStatus: 'active',
-      publishedAt: new Date()
+      publishedAt: new Date(),
+      // Set dealer email so car appears correctly (pre-save hook requires userId or email)
+      email: req.dealer.email
     };
     
     // CRITICAL: Fetch location data from postcode for radius-based search
@@ -828,10 +830,12 @@ exports.publishVehicle = async (req, res) => {
       }
       
       try {
-        const motHistoryService = require('../services/motHistoryService');
+        const MOTHistoryService = require('../services/motHistoryService');
+        const motHistoryService = new MOTHistoryService();
         
         // Fetch MOT history from CheckCarDetails API
-        const motHistory = await motHistoryService.fetchMOTHistory(car.registrationNumber);
+        const result = await motHistoryService.fetchAndSaveMOTHistory(car.registrationNumber);
+        const motHistory = result?.data || [];
         
         if (motHistory && motHistory.length > 0) {
           updateData.motHistory = motHistory;

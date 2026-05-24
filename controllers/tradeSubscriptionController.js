@@ -204,95 +204,80 @@ exports.createCheckoutSession = async (req, res) => {
       });
     }
 
-    // PRODUCTION: Create Stripe checkout with trial price payment
-    
+    // PRODUCTION: Create Stripe checkout session with 30-day free trial
     const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
     const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
     // Create or get Stripe customer
     let customerId = dealer.stripeCustomerId;
-    
     if (!customerId || customerId.length < 15 || !customerId.startsWith('cus_')) {
       const customer = await stripe.customers.create({
         email: dealer.email,
         name: dealer.businessName,
-        metadata: {
-          dealerId: dealer._id.toString()
-        }
+        metadata: { dealerId: dealer._id.toString() }
       });
       customerId = customer.id;
       dealer.stripeCustomerId = customerId;
       await dealer.save();
     }
 
-    // Determine which price to use
-    const useTrialPrice = !hasUsedTrial && !!plan.trialPriceId;
-    const priceId = useTrialPrice ? plan.trialPriceId : plan.stripePriceId;
-    const priceAmount = useTrialPrice ? plan.trialPrice : plan.price;
-    
-
+    const priceId = plan.stripePriceId;
     if (!priceId) {
       return res.status(500).json({
         success: false,
         message: 'Plan pricing not configured. Please contact support.'
       });
     }
-    
-    // If trial price is not configured, fall back to full price with subscription mode
-    if (!hasUsedTrial && !plan.trialPriceId) {
-    }
 
-    // Create Stripe Checkout Session
+    // subscription mode + trial_period_days:
+    // - Card is saved on file
+    // - 30 days free trial
+    // - After trial, auto-charges monthly
     const sessionConfig = {
-      mode: useTrialPrice ? 'payment' : 'subscription',
+      mode: 'subscription',
       customer: customerId,
       payment_method_types: ['card'],
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
+      line_items: [{ price: priceId, quantity: 1 }],
+      subscription_data: {
+        trial_period_days: hasUsedTrial ? 0 : 30,
+        metadata: {
+          dealerId: dealer._id.toString(),
+          planId: plan._id.toString(),
+          planSlug: plan.slug
+        }
+      },
       success_url: `${baseUrl}/trade/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/trade/subscription?cancelled=true`,
       metadata: {
         dealerId: dealer._id.toString(),
         planId: plan._id.toString(),
         planSlug: plan.slug,
-        isTrial: useTrialPrice.toString(),
-        trialPrice: useTrialPrice ? priceAmount.toString() : '0',
-        fullPrice: plan.price.toString()
+        isTrial: (!hasUsedTrial).toString()
       }
     };
 
-    // For trial payment, we need to set up future subscription
-    if (useTrialPrice) {
-      sessionConfig.payment_intent_data = {
-        metadata: {
-          dealerId: dealer._id.toString(),
-          planId: plan._id.toString(),
-          setupFutureUsage: 'off_session' // Save payment method for future charges
-        },
-        setup_future_usage: 'off_session'
+    // Add upfront trial fee as invoice item if first time trial
+    if (!hasUsedTrial && plan.trialPriceId) {
+      sessionConfig.invoice_creation = {
+        enabled: true
       };
+      // Charge trial fee upfront alongside subscription setup
+      sessionConfig.line_items.push({
+        price: plan.trialPriceId,
+        quantity: 1
+      });
     }
 
     const session = await stripe.checkout.sessions.create(sessionConfig);
 
-    if (useTrialPrice) {
-    } else {
-    }
-
-    // Return Stripe checkout URL
     res.json({
       success: true,
       sessionId: session.id,
       url: session.url,
       message: 'Redirecting to Stripe checkout...',
       trial: {
-        enabled: useTrialPrice,
-        price: useTrialPrice ? priceAmount : 0,
-        days: useTrialPrice ? 30 : 0
+        enabled: !hasUsedTrial,
+        days: hasUsedTrial ? 0 : 30
       }
     });
   } catch (error) {

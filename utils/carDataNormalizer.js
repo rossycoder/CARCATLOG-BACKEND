@@ -91,6 +91,19 @@ class CarDataNormalizer {
       normalized.fuelType = this.normalizeFuelType(normalized.fuelType);
     }
     
+    // Normalize colour → color (DVLA uses British spelling)
+    if (!normalized.color && normalized.colour) {
+      normalized.color = normalized.colour;
+    }
+    if (normalized.color && typeof normalized.color === 'string') {
+      // Title case: "SILVER" → "Silver", "DARK BLUE" → "Dark Blue"
+      normalized.color = normalized.color
+        .toLowerCase()
+        .split(' ')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+    }
+
     // Ensure numeric fields are numbers
     if (normalized.year !== undefined && normalized.year !== null) {
       normalized.year = parseInt(normalized.year) || new Date().getFullYear();
