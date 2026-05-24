@@ -256,11 +256,8 @@ exports.createCheckoutSession = async (req, res) => {
       }
     };
 
-    // Add upfront trial fee as invoice item if first time trial
+    // Add upfront trial fee as line item if first time trial
     if (!hasUsedTrial && plan.trialPriceId) {
-      sessionConfig.invoice_creation = {
-        enabled: true
-      };
       // Charge trial fee upfront alongside subscription setup
       sessionConfig.line_items.push({
         price: plan.trialPriceId,
