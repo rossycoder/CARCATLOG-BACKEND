@@ -438,7 +438,8 @@ exports.verifyPayment = async (req, res) => {
     }
 
     // Check if payment was successful
-    if (session.payment_status !== 'paid') {
+    // For subscriptions with trial, payment_status can be 'no_payment_required'
+    if (session.payment_status !== 'paid' && session.payment_status !== 'no_payment_required') {
       return res.status(400).json({
         success: false,
         message: 'Payment not completed'
