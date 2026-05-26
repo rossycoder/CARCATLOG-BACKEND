@@ -195,16 +195,16 @@ Best regards,
 The CarCatalog Team
     `.trim();
 
-    const emailSent = await sendEmail(
-      dealer.email,
-      'Verify Your Trade Dealer Account - CarCatalog',
-      emailText,
-      emailHtml
-    );
-
-    if (!emailSent) {
-      console.error('⚠️ Failed to send verification email to:', dealer.email);
-    } else {
+    try {
+      await sendEmail(
+        dealer.email,
+        'Verify Your Trade Dealer Account - CarCatalog',
+        emailText,
+        emailHtml
+      );
+    } catch (emailErr) {
+      console.error('⚠️ Failed to send verification email to:', dealer.email, emailErr.message);
+      // Don't fail registration if email fails
     }
 
     res.status(201).json({

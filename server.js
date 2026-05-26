@@ -1,5 +1,7 @@
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 const dotenv = require('dotenv');
 const passport = require('passport');
 const connectDB = require('./config/database');
@@ -61,6 +63,31 @@ const corsOptions = {
 app.use(cors(corsOptions));
 // Explicitly handle preflight OPTIONS requests for all routes
 app.options('*', cors(corsOptions));
+
+// Gzip compression - reduces response size by ~70%
+app.use(compression());
+
+// Rate limiting - prevent abuse and protect under load
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 500, // 500 requests per IP per 15 min
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests, please try again later.' }
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20, // stricter for auth endpoints
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many login attempts, please try again later.' }
+});
+
+app.use('/api/', generalLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -134,6 +161,7 @@ const seoRoutes = require('./routes/seoRoutes');
 const electricVehicleRoutes = require('./routes/electricVehicles');
 const demoRoutes = require('./routes/demo');
 const refreshMOTRoutes = require('./routes/refreshMOT');
+const callRoutes = require('./routes/callRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/vehicles', vehicleRoutes);
@@ -156,6 +184,8 @@ app.use('/api/trade/analytics', tradeAnalyticsRoutes);
 // app.use('/api/vans', vanRoutes); // DISABLED - Car-only deployment
 app.use('/api/seo', seoRoutes);
 app.use('/api/refresh-mot', refreshMOTRoutes); // Refresh MOT history for cars
+app.use('/api/calls', callRoutes); // Call masking / proxy number system
+app.use('/api/notify', require('./routes/notifyRoutes')); // Coming soon notify me
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -189,6 +219,36 @@ initializeCronJobs();
 // Initialize subscription cron jobs for renewal reminders and expiration handling
 const { initSubscriptionCron } = require('./jobs/subscriptionCron');
 initSubscriptionCron();
+
+// Cleanup expired call sessions every 10 minutes — release proxy numbers back to pool
+const cron = require('node-cron');
+const CallSession = require('./models/CallSession');
+const PhoneNumberPool = require('./models/PhoneNumberPool');
+cron.schedule('*/10 * * * *', async () => {
+  try {
+    const expired = await CallSession.find({
+      status: 'active',
+      expiresAt: { $lt: new Date() }
+    }).select('proxyNumber');
+
+    if (expired.length === 0) return;
+
+    const proxyNumbers = expired.map(s => s.proxyNumber);
+
+    await Promise.all([
+      CallSession.updateMany(
+        { _id: { $in: expired.map(s => s._id) } },
+        { $set: { status: 'expired' } }
+      ),
+      PhoneNumberPool.updateMany(
+        { proxyNumber: { $in: proxyNumbers } },
+        { $set: { status: 'available' } }
+      )
+    ]);
+  } catch (err) {
+    console.error('❌ Call session cleanup error:', err.message);
+  }
+});
 
 // Start server
 const PORT = process.env.PORT || 5000;

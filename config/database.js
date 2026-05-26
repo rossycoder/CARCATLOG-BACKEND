@@ -3,11 +3,13 @@ const mongoose = require('mongoose');
 const connectDB = async () => {
   try {
     const options = {
-      // Connection pool settings
-      maxPoolSize: 10,
-      minPoolSize: 2,
+      // Connection pool settings - increased for high traffic
+      maxPoolSize: 50,
+      minPoolSize: 5,
       socketTimeoutMS: 45000,
       serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 10000,
+      maxIdleTimeMS: 30000,
       
       // TLS/SSL settings - only for Atlas (not localhost)
       ...(process.env.MONGODB_URI && !process.env.MONGODB_URI.includes('localhost') ? {
