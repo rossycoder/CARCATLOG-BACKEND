@@ -9,7 +9,8 @@ const adminAuth = require('../middleware/adminAuth');
 const sessionLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 10,
-  keyGenerator: (req) => req.user?.id || req.ip,
+  keyGenerator: (req) => req.user?.id || req.socket.remoteAddress,
+  validate: { xForwardedForHeader: false },
   message: { success: false, message: 'Too many call requests. Please try again later.' }
 });
 

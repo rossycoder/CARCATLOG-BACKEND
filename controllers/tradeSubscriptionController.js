@@ -229,10 +229,7 @@ exports.createCheckoutSession = async (req, res) => {
       });
     }
 
-    // subscription mode + trial_period_days:
-    // - Card is saved on file
-    // - 30 days free trial
-    // - After trial, auto-charges monthly
+    // subscription mode with trial_period_days — card saved, 30 days free, then auto-charges monthly
     const sessionConfig = {
       mode: 'subscription',
       customer: customerId,
@@ -255,15 +252,6 @@ exports.createCheckoutSession = async (req, res) => {
         isTrial: (!hasUsedTrial).toString()
       }
     };
-
-    // Add upfront trial fee as line item if first time trial
-    if (!hasUsedTrial && plan.trialPriceId) {
-      // Charge trial fee upfront alongside subscription setup
-      sessionConfig.line_items.push({
-        price: plan.trialPriceId,
-        quantity: 1
-      });
-    }
 
     const session = await stripe.checkout.sessions.create(sessionConfig);
 

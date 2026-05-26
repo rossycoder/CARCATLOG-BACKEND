@@ -23,11 +23,12 @@ class EmailService {
         auth: {
           user: process.env.EMAIL_USER,
           pass: process.env.EMAIL_PASSWORD
-        }
+        },
+        tls: { rejectUnauthorized: false }
       });
       this.enabled = true;
     }
-    // Configure SendGrid (Fallback)
+    // Configure SendGrid (works on Render — no SMTP port restrictions)
     else if (this.emailService === 'sendgrid' && process.env.SENDGRID_API_KEY) {
       sgMail.setApiKey(process.env.SENDGRID_API_KEY);
       this.enabled = true;

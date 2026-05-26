@@ -29,6 +29,9 @@ connectDB();
 // Initialize Express app
 const app = express();
 
+// Trust proxy — required for Render/reverse proxy deployments
+app.set('trust proxy', 1);
+
 // Middleware
 const allowedOrigins = [
   process.env.FRONTEND_URL,
