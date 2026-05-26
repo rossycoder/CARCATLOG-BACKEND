@@ -229,7 +229,7 @@ exports.createCheckoutSession = async (req, res) => {
       });
     }
 
-    // subscription mode with trial_period_days — card saved, 30 days free, then auto-charges monthly
+    // subscription mode with optional upfront trial fee via invoice item
     const sessionConfig = {
       mode: 'subscription',
       customer: customerId,
@@ -237,6 +237,9 @@ exports.createCheckoutSession = async (req, res) => {
       line_items: [{ price: priceId, quantity: 1 }],
       subscription_data: {
         trial_period_days: hasUsedTrial ? 0 : 30,
+        ...((!hasUsedTrial && plan.trialPriceId) && {
+          add_invoice_items: [{ price: plan.trialPriceId, quantity: 1 }]
+        }),
         metadata: {
           dealerId: dealer._id.toString(),
           planId: plan._id.toString(),
