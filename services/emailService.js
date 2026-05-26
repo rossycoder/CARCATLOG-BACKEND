@@ -12,10 +12,13 @@ class EmailService {
     this.fromEmail = process.env.EMAIL_FROM || 'noreply@carcatalog.com';
     
     
-    // Configure Gmail with Nodemailer (Primary)
+    // Configure Gmail/Google Workspace with Nodemailer (Primary)
     if (this.emailService === 'gmail' && process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
+      // Google Workspace (custom domain) and Gmail both use smtp.gmail.com
       this.transporter = nodemailer.createTransport({
-        service: 'gmail',
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true,
         auth: {
           user: process.env.EMAIL_USER,
           pass: process.env.EMAIL_PASSWORD
