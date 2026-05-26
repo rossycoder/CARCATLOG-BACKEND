@@ -236,10 +236,6 @@ exports.createCheckoutSession = async (req, res) => {
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       subscription_data: {
-        trial_period_days: hasUsedTrial ? 0 : 30,
-        ...((!hasUsedTrial && plan.trialPriceId) && {
-          add_invoice_items: [{ price: plan.trialPriceId, quantity: 1 }]
-        }),
         metadata: {
           dealerId: dealer._id.toString(),
           planId: plan._id.toString(),
@@ -255,6 +251,14 @@ exports.createCheckoutSession = async (req, res) => {
         isTrial: (!hasUsedTrial).toString()
       }
     };
+
+    // Add trial price as separate line item for first-time users
+    if (!hasUsedTrial && plan.trialPriceId) {
+      sessionConfig.line_items.push({
+        price: plan.trialPriceId,
+        quantity: 1
+      });
+    }
 
     const session = await stripe.checkout.sessions.create(sessionConfig);
 
