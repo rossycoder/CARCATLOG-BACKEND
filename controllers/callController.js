@@ -18,16 +18,16 @@ exports.createSession = async (req, res) => {
       return res.status(400).json({ success: false, message: 'listingId is required' });
     }
 
-    // Get listing with seller phone — select it explicitly since it may be hidden
+    // Get listing with seller phone
     const listing = await Car.findById(listingId)
-      .select('+sellerContact.phone sellerContact userId dealerId')
+      .select('sellerContact userId dealerId')
       .lean();
 
     if (!listing) {
       return res.status(404).json({ success: false, message: 'Listing not found' });
     }
 
-    const sellerRealNumber = listing.sellerContact?.phone;
+    const sellerRealNumber = listing.sellerContact?.phoneNumber;
     if (!sellerRealNumber) {
       return res.status(400).json({ success: false, message: 'Seller has no phone number on file' });
     }
