@@ -1,6 +1,8 @@
 const cron = require('node-cron');
 const expirationService = require('../services/expirationService');
 const { runDailyCleanup } = require('./cleanupPendingCars');
+const CallSession = require('../models/CallSession');
+const PhoneNumberPool = require('../models/PhoneNumberPool');
 
 /**
  * Cron job to check and expire listings
@@ -52,18 +54,52 @@ const startCleanupCron = () => {
 };
 
 /**
+ * Cron job to release expired call session proxy numbers back to pool
+ * Runs every 5 minutes
+ */
+const startCallSessionCleanupCron = () => {
+  cron.schedule('*/5 * * * *', async () => {
+    try {
+      const expiredSessions = await CallSession.find({
+        status: 'active',
+        expiresAt: { $lt: new Date() }
+      }).select('proxyNumber');
+
+      if (expiredSessions.length === 0) return;
+
+      const proxyNumbers = expiredSessions.map(s => s.proxyNumber);
+
+      await PhoneNumberPool.updateMany(
+        { proxyNumber: { $in: proxyNumbers } },
+        { $set: { status: 'available' } }
+      );
+
+      await CallSession.updateMany(
+        { status: 'active', expiresAt: { $lt: new Date() } },
+        { $set: { status: 'expired' } }
+      );
+
+      console.log(`✅ Released ${proxyNumbers.length} proxy number(s) back to pool`);
+    } catch (error) {
+      console.error('Error in call session cleanup cron:', error);
+    }
+  });
+};
+
+/**
  * Initialize all cron jobs
  */
 const initializeCronJobs = () => {
   startExpirationCron();
   startWarningCron();
-  startCleanupCron(); // NEW: Cleanup pending payment cars
-  
+  startCleanupCron();
+  startCallSessionCleanupCron();
 };
 
 module.exports = {
   initializeCronJobs,
   startExpirationCron,
   startWarningCron,
-  startCleanupCron
+  startCleanupCron,
+  startCallSessionCleanupCron
 };
