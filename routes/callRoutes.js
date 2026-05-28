@@ -17,6 +17,7 @@ const sessionLimiter = rateLimit({
 // Public — Twilio webhook (no auth, Twilio signs requests)
 router.post('/webhook/voice', callController.voiceWebhook);
 router.post('/webhook/whisper', callController.whisperWebhook);
+router.post('/webhook/call-status', callController.callStatusWebhook);
 
 // Authenticated buyer routes
 router.post('/create-session', protect, sessionLimiter, callController.createSession);

@@ -3,7 +3,12 @@ const PhoneNumberPool = require('../models/PhoneNumberPool');
 const CallSession = require('../models/CallSession');
 const Car = require('../models/Car');
 
-const SESSION_DURATION_MS = 30 * 60 * 1000; // 30 minutes
+// ── Call masking settings (per Shahzad spec) ─────────────────────────────────
+const SESSION_DURATION_MS   = 10 * 60 * 1000; // 10 min number hold
+const RING_TIMEOUT_SEC      = 20;              // 20s ring before no-answer
+const MAX_CALL_DURATION_SEC = 30 * 60;         // 30 min max call
+const REPEAT_CALL_COOLDOWN_MS = 60 * 1000;    // 1 min between calls per buyer
+const MAX_DAILY_CALLS       = 15;              // per buyer per day
 
 /**
  * POST /api/calls/create-session
@@ -20,7 +25,7 @@ exports.createSession = async (req, res) => {
 
     // Get listing with seller phone
     const listing = await Car.findById(listingId)
-      .select('sellerContact userId dealerId')
+      .select('sellerContact userId dealerId isDealerListing')
       .lean();
 
     if (!listing) {
@@ -32,7 +37,39 @@ exports.createSession = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Seller has no phone number on file' });
     }
 
+    // Trade listings (dealer subscription or trade PAYG) — return real number directly, no proxy
+    if (listing.isDealerListing || listing.dealerId) {
+      return res.json({
+        success: true,
+        proxyNumber: sellerRealNumber,
+        isDirectNumber: true,
+        expiresIn: null,
+        sessionId: null
+      });
+    }
+
     const sellerUserId = listing.userId || listing.dealerId;
+
+    // ── Spam protection ───────────────────────────────────────────────────────
+    if (buyerUserId) {
+      const oneMinuteAgo = new Date(Date.now() - REPEAT_CALL_COOLDOWN_MS);
+      const recentCall = await CallSession.findOne({
+        buyerUserId,
+        createdAt: { $gt: oneMinuteAgo }
+      });
+      if (recentCall) {
+        return res.status(429).json({ success: false, message: 'Please wait a moment before requesting another call.' });
+      }
+
+      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+      const dailyCount = await CallSession.countDocuments({
+        buyerUserId,
+        createdAt: { $gt: todayStart }
+      });
+      if (dailyCount >= MAX_DAILY_CALLS) {
+        return res.status(429).json({ success: false, message: 'Daily call limit reached. Please try again tomorrow.' });
+      }
+    }
 
     // Check if buyer already has an active session for this listing (reuse it)
     if (buyerUserId) {
@@ -126,8 +163,10 @@ exports.voiceWebhook = async (req, res) => {
 
     // Optional whisper: announce to seller this is a CarCatalog call
     const dial = twiml.dial({
-      callerId: calledNumber, // Show proxy number to seller, not buyer's real number
-      timeout: 30,
+      callerId: calledNumber,
+      timeout: RING_TIMEOUT_SEC,
+      timeLimit: MAX_CALL_DURATION_SEC,
+      action: `${process.env.BACKEND_URL}/api/calls/webhook/call-status`,
       record: process.env.TWILIO_RECORD_CALLS === 'true' ? 'record-from-answer' : 'do-not-record'
     });
 
@@ -142,6 +181,40 @@ exports.voiceWebhook = async (req, res) => {
     twiml.say({ voice: 'alice', language: 'en-GB' }, 'Sorry, an error occurred. Please try again.');
     res.type('text/xml').send(twiml.toString());
   }
+};
+
+/**
+ * POST /api/calls/webhook/call-status
+ * Twilio calls this when dial completes (answered, no-answer, busy, failed)
+ * Immediately releases the proxy number back to pool
+ */
+exports.callStatusWebhook = async (req, res) => {
+  try {
+    const calledNumber = req.body.To;
+    const dialStatus = req.body.DialCallStatus; // answered, no-answer, busy, failed, canceled
+
+    // Release number immediately if not answered
+    if (dialStatus && dialStatus !== 'answered') {
+      const session = await CallSession.findOne({
+        proxyNumber: calledNumber,
+        status: 'active'
+      });
+
+      if (session) {
+        await CallSession.findByIdAndUpdate(session._id, { status: 'expired' });
+        await PhoneNumberPool.updateOne(
+          { proxyNumber: calledNumber },
+          { $set: { status: 'available' } }
+        );
+        console.log(`✅ Number ${calledNumber} released — dial status: ${dialStatus}`);
+      }
+    }
+  } catch (error) {
+    console.error('❌ Call status webhook error:', error);
+  }
+
+  // Always return empty TwiML
+  res.type('text/xml').send('<Response></Response>');
 };
 
 /**
