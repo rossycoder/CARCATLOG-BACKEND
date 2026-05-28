@@ -2,6 +2,8 @@ const twilio = require('twilio');
 const PhoneNumberPool = require('../models/PhoneNumberPool');
 const CallSession = require('../models/CallSession');
 const Car = require('../models/Car');
+const TradeDealer = require('../models/TradeDealer');
+const { verifyToken } = require('../utils/jwtUtils');
 
 // ── Call masking settings (per Shahzad spec) ─────────────────────────────────
 const SESSION_DURATION_MS   = 10 * 60 * 1000; // 10 min number hold
@@ -17,7 +19,26 @@ const MAX_DAILY_CALLS       = 15;              // per buyer per day
 exports.createSession = async (req, res) => {
   try {
     const { listingId } = req.body;
-    const buyerUserId = req.user?.id || null;
+
+    // Require authentication — accept both user and trade dealer tokens
+    let buyerUserId = req.user?.id || null;
+    if (!buyerUserId) {
+      // Try to decode token manually (trade dealer token)
+      const authHeader = req.headers.authorization;
+      if (authHeader?.startsWith('Bearer ')) {
+        try {
+          const decoded = verifyToken(authHeader.split(' ')[1]);
+          if (decoded?.id) {
+            const dealer = await TradeDealer.findById(decoded.id).select('_id').lean();
+            if (dealer) buyerUserId = dealer._id.toString();
+          }
+        } catch {}
+      }
+    }
+
+    if (!buyerUserId) {
+      return res.status(401).json({ success: false, message: 'Please sign in to call the seller.' });
+    }
 
     if (!listingId) {
       return res.status(400).json({ success: false, message: 'listingId is required' });

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
 const callController = require('../controllers/callController');
-const { protect } = require('../middleware/authMiddleware');
+const { protect, optionalAuth } = require('../middleware/authMiddleware');
 const adminAuth = require('../middleware/adminAuth');
 
 // Rate limit: max 10 session requests per user per hour
@@ -20,8 +20,8 @@ router.post('/webhook/whisper', callController.whisperWebhook);
 router.post('/webhook/call-status', callController.callStatusWebhook);
 
 // Authenticated buyer routes
-router.post('/create-session', protect, sessionLimiter, callController.createSession);
-router.get('/session/:listingId', protect, callController.getSession);
+router.post('/create-session', optionalAuth, sessionLimiter, callController.createSession);
+router.get('/session/:listingId', optionalAuth, callController.getSession);
 
 // Admin routes
 router.get('/pool/status', protect, adminAuth, callController.poolStatus);
