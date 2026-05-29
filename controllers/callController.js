@@ -58,8 +58,9 @@ exports.createSession = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Seller has no phone number on file' });
     }
 
-    // Trade listings (dealer subscription or trade PAYG) — return real number directly, no proxy
-    if (listing.isDealerListing || listing.dealerId) {
+    // Trade listings — return real number directly, no proxy
+    // Covers: trade dealers (isDealerListing/dealerId) AND private users who bought a trade package (sellerContact.type === 'trade')
+    if (listing.isDealerListing || listing.dealerId || listing.sellerContact?.type === 'trade') {
       return res.json({
         success: true,
         proxyNumber: sellerRealNumber,
