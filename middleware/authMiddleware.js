@@ -49,6 +49,27 @@ const protect = async (req, res, next) => {
   }
 };
 
+/**
+ * Require email verification - use after protect middleware
+ * Blocks unverified users from selling/listing vehicles
+ */
+const requireEmailVerified = (req, res, next) => {
+  // Admin users bypass email verification requirement
+  if (req.user?.isAdmin || req.user?.role === 'admin') {
+    return next();
+  }
+
+  if (!req.user?.isEmailVerified) {
+    return res.status(403).json({
+      success: false,
+      message: 'Please verify your email address before listing a vehicle.',
+      requiresVerification: true
+    });
+  }
+
+  next();
+};
+
 module.exports = { protect };
 
 /**
@@ -77,4 +98,4 @@ const optionalAuth = async (req, res, next) => {
   next();
 };
 
-module.exports = { protect, optionalAuth };
+module.exports = { protect, optionalAuth, requireEmailVerified };

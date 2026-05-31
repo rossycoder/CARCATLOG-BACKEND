@@ -3,6 +3,7 @@ const router = express.Router();
 const vehicleController = require('../controllers/vehicleController');
 const { validateAndNormalizeVehicle, checkDuplicateRegistration } = require('../middleware/vehicleValidation');
 const { protect } = require('../middleware/authMiddleware');
+const { requireEmailVerified } = require('../middleware/authMiddleware');
 const { enhanceElectricVehicleData, addElectricVehicleInfo } = require('../middleware/electricVehicleEnhancement');
 
 // GET /api/vehicles/count - Get total count of available cars (must be before /:id)
@@ -53,10 +54,12 @@ router.get(
 // POST /api/vehicles/lookup - Lookup vehicle from DVLA and create record
 router.post(
   '/lookup',
+  protect,
+  requireEmailVerified,
   vehicleController.constructor.lookupValidationRules(),
   checkDuplicateRegistration,
   validateAndNormalizeVehicle,
-  enhanceElectricVehicleData, // Automatically enhance electric vehicles
+  enhanceElectricVehicleData,
   vehicleController.lookupAndCreateVehicle.bind(vehicleController)
 );
 

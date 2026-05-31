@@ -278,7 +278,7 @@ const emailVerificationEmail = (name, email, verificationToken) => {
               
               <div class="warning-box">
                 <strong>⏰ Important</strong>
-                This verification link will expire in 10 minutes for security reasons.
+                This verification link will expire in 24 hours for security reasons.
               </div>
               
               <div class="info-box">

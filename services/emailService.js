@@ -28,6 +28,19 @@ class EmailService {
       });
       this.enabled = true;
     }
+    // Configure Brevo (SendinBlue) SMTP
+    else if (this.emailService === 'brevo' && process.env.BREVO_SMTP_KEY) {
+      this.transporter = nodemailer.createTransport({
+        host: process.env.BREVO_SMTP_HOST || 'smtp-relay.brevo.com',
+        port: parseInt(process.env.BREVO_SMTP_PORT || '587'),
+        secure: false,
+        auth: {
+          user: process.env.BREVO_SMTP_USER,
+          pass: process.env.BREVO_SMTP_KEY
+        }
+      });
+      this.enabled = true;
+    }
     // Configure SendGrid (works on Render — no SMTP port restrictions)
     else if (this.emailService === 'sendgrid' && process.env.SENDGRID_API_KEY) {
       sgMail.setApiKey(process.env.SENDGRID_API_KEY);
@@ -66,7 +79,7 @@ class EmailService {
       }
       
       // Use Gmail with Nodemailer
-      else if (this.emailService === 'gmail') {
+      else if (this.emailService === 'gmail' || this.emailService === 'brevo') {
         const mailOptions = {
           from: this.fromEmail,
           to,
