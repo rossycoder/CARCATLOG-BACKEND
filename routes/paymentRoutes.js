@@ -3,21 +3,22 @@ const router = express.Router();
 const paymentController = require('../controllers/paymentController');
 const bikePaymentController = require('../controllers/bikePaymentController');
 const vanPaymentController = require('../controllers/vanPaymentController');
+const { protect, requireEmailVerifiedForAccess } = require('../middleware/authMiddleware');
 
 // POST /api/payments/create-checkout-session - Create Stripe checkout session
-router.post('/create-checkout-session', paymentController.createCheckoutSession);
+router.post('/create-checkout-session', protect, requireEmailVerifiedForAccess, paymentController.createCheckoutSession);
 
 // POST /api/payments/create-advert-checkout-session - Create Stripe checkout session for advertising packages
-router.post('/create-advert-checkout-session', paymentController.createAdvertCheckoutSession);
+router.post('/create-advert-checkout-session', protect, requireEmailVerifiedForAccess, paymentController.createAdvertCheckoutSession);
 
 // POST /api/payments/create-car-checkout-session - Create Stripe checkout session for car advertising packages (alias)
-router.post('/create-car-checkout-session', paymentController.createAdvertCheckoutSession);
+router.post('/create-car-checkout-session', protect, requireEmailVerifiedForAccess, paymentController.createAdvertCheckoutSession);
 
 // POST /api/payments/create-bike-checkout-session - Create Stripe checkout session for bike advertising packages
-router.post('/create-bike-checkout-session', bikePaymentController.createBikeCheckoutSession);
+router.post('/create-bike-checkout-session', protect, requireEmailVerifiedForAccess, bikePaymentController.createBikeCheckoutSession);
 
 // POST /api/payments/create-van-checkout-session - Create Stripe checkout session for van advertising packages
-router.post('/create-van-checkout-session', vanPaymentController.createVanCheckoutSession);
+router.post('/create-van-checkout-session', protect, requireEmailVerifiedForAccess, vanPaymentController.createVanCheckoutSession);
 
 // POST /api/payments/webhook - Handle Stripe webhooks
 router.post('/webhook', express.raw({type: 'application/json'}), paymentController.handleWebhook);
@@ -38,13 +39,13 @@ router.get('/session/:sessionId', paymentController.getSessionDetails);
 router.get('/purchase/:sessionId', paymentController.getPurchaseDetails);
 
 // POST /api/payments/create-credit-session - Create credit package checkout session
-router.post('/create-credit-session', paymentController.createCreditCheckoutSession);
+router.post('/create-credit-session', protect, requireEmailVerifiedForAccess, paymentController.createCreditCheckoutSession);
 
 // GET /api/payments/credits - Get user credit balance (requires auth)
-router.get('/credits', paymentController.getCreditBalance);
+router.get('/credits', protect, requireEmailVerifiedForAccess, paymentController.getCreditBalance);
 
 // POST /api/payments/use-credit - Use credit for vehicle check (requires auth)
-router.post('/use-credit', paymentController.useCreditForCheck);
+router.post('/use-credit', protect, requireEmailVerifiedForAccess, paymentController.useCreditForCheck);
 
 // POST /api/payments/refund - Create refund (admin only)
 router.post('/refund', paymentController.createRefund);

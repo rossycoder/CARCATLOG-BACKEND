@@ -70,6 +70,28 @@ const requireEmailVerified = (req, res, next) => {
   next();
 };
 
+/**
+ * Require email verification for general website access
+ * Blocks unverified users from most website features except basic browsing
+ */
+const requireEmailVerifiedForAccess = (req, res, next) => {
+  // Admin users bypass email verification requirement
+  if (req.user?.isAdmin || req.user?.role === 'admin') {
+    return next();
+  }
+
+  if (!req.user?.isEmailVerified) {
+    return res.status(403).json({
+      success: false,
+      message: 'Please verify your email address to access this feature.',
+      requiresVerification: true,
+      redirectTo: '/verify-email-required'
+    });
+  }
+
+  next();
+};
+
 module.exports = { protect };
 
 /**
@@ -98,4 +120,4 @@ const optionalAuth = async (req, res, next) => {
   next();
 };
 
-module.exports = { protect, optionalAuth, requireEmailVerified };
+module.exports = { protect, optionalAuth, requireEmailVerified, requireEmailVerifiedForAccess };

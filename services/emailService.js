@@ -698,6 +698,26 @@ The CarCatalog Team
       return false;
     }
   }
+
+  /**
+   * Send car listing success email
+   * @param {Object} user - User object
+   * @param {Object} carDetails - Car listing details
+   * @returns {Promise<boolean>}
+   */
+  async sendCarListingSuccess(user, carDetails) {
+    try {
+      if (!this.enabled) return true;
+
+      const { carListingSuccessEmail } = require('../utils/emailTemplates');
+      const emailContent = carListingSuccessEmail(user.name, user.email, carDetails);
+
+      return await this.sendEmail(user.email, emailContent.subject, emailContent.text, emailContent.html);
+    } catch (error) {
+      console.error('Error sending car listing success email:', error);
+      return false;
+    }
+  }
 }
 
 // Create singleton instance

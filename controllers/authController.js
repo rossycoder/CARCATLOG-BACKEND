@@ -21,6 +21,26 @@ const register = async (req, res) => {
       });
     }
 
+    // Enhanced password validation
+    if (password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters long'
+      });
+    }
+
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumbers = /\d/.test(password);
+    const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
+
+    if (!hasUpperCase || !hasLowerCase || !hasNumbers || !hasSpecialChar) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'
+      });
+    }
+
     // Check if user exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
@@ -130,6 +150,23 @@ const login = async (req, res) => {
     }
 
 
+    // Check if email is verified
+    if (!user.isEmailVerified) {
+      return res.status(403).json({
+        success: false,
+        message: 'Please verify your email address before accessing your account. Check your email for the verification link.',
+        requiresVerification: true,
+        data: {
+          user: {
+            id: user._id,
+            email: user.email,
+            name: user.name,
+            isEmailVerified: false
+          }
+        }
+      });
+    }
+
     // Generate token
     const token = generateToken(user._id);
 
@@ -223,6 +260,7 @@ const getMe = async (req, res) => {
           name: user.name,
           isAdmin: user.isAdmin || false,
           role: user.role || 'user',
+          isEmailVerified: user.isEmailVerified,
           createdAt: user.createdAt
         }
       }
@@ -504,10 +542,22 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    if (password.length < 6) {
+    if (password.length < 8) {
       return res.status(400).json({
         success: false,
-        message: 'Password must be at least 6 characters'
+        message: 'Password must be at least 8 characters long'
+      });
+    }
+
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumbers = /\d/.test(password);
+    const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
+
+    if (!hasUpperCase || !hasLowerCase || !hasNumbers || !hasSpecialChar) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'
       });
     }
 

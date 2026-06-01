@@ -2,8 +2,7 @@ const express = require('express');
 const router = express.Router();
 const vehicleController = require('../controllers/vehicleController');
 const { validateAndNormalizeVehicle, checkDuplicateRegistration } = require('../middleware/vehicleValidation');
-const { protect } = require('../middleware/authMiddleware');
-const { requireEmailVerified } = require('../middleware/authMiddleware');
+const { protect, requireEmailVerified, requireEmailVerifiedForAccess } = require('../middleware/authMiddleware');
 const { enhanceElectricVehicleData, addElectricVehicleInfo } = require('../middleware/electricVehicleEnhancement');
 
 // GET /api/vehicles/count - Get total count of available cars (must be before /:id)
@@ -41,6 +40,7 @@ router.get(
 router.get(
   '/my-listings',
   protect,
+  requireEmailVerifiedForAccess,
   vehicleController.getMyListings.bind(vehicleController)
 );
 
@@ -81,6 +81,7 @@ router.post(
 router.patch(
   '/:id/status',
   protect,
+  requireEmailVerifiedForAccess,
   vehicleController.updateVehicleStatus.bind(vehicleController)
 );
 
@@ -94,6 +95,7 @@ router.post(
 router.post(
   '/:id/relist',
   protect,
+  requireEmailVerifiedForAccess,
   vehicleController.relistVehicle.bind(vehicleController)
 );
 
@@ -101,6 +103,7 @@ router.post(
 router.delete(
   '/:id',
   protect,
+  requireEmailVerifiedForAccess,
   vehicleController.deleteVehicle.bind(vehicleController)
 );
 

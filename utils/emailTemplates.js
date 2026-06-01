@@ -115,6 +115,7 @@ const loginNotificationEmail = (name, email, ipAddress, userAgent) => {
  */
 const passwordResetEmail = (name, email, resetToken) => {
   const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+  const logoUrl = process.env.LOGO_URL || 'https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg';
 
   return {
     subject: '🔐 Reset Your CarCatalog Password',
@@ -155,7 +156,7 @@ const passwordResetEmail = (name, email, resetToken) => {
         <div class="email-wrapper">
           <div class="container">
             <div class="logo-header">
-              <span style="font-family: Arial, sans-serif; font-size: 22px; font-weight: bold; color: #333; letter-spacing: -0.5px;"><span style="color: #dc3545;">Car</span><span style="color: #0066cc;">Cat</span><span style="color: #ff9800;">alog</span></span>
+              <img src="${logoUrl}" alt="CarCatalog Logo" class="logo" style="max-width: 180px; height: auto;" />
             </div>
             
             <div class="header">
@@ -214,6 +215,7 @@ const passwordResetEmail = (name, email, resetToken) => {
  */
 const emailVerificationEmail = (name, email, verificationToken) => {
   const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
+  const logoUrl = process.env.LOGO_URL || 'https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg';
 
   return {
     subject: '✉️ Verify Your Email Address - CarCatalog',
@@ -256,7 +258,7 @@ const emailVerificationEmail = (name, email, verificationToken) => {
         <div class="email-wrapper">
           <div class="container">
             <div class="logo-header">
-              <span style="font-family: Arial, sans-serif; font-size: 22px; font-weight: bold; color: #333; letter-spacing: -0.5px;"><span style="color: #dc3545;">Car</span><span style="color: #0066cc;">Cat</span><span style="color: #ff9800;">alog</span></span>
+              <img src="${logoUrl}" alt="CarCatalog Logo" class="logo" style="max-width: 180px; height: auto;" />
             </div>
             
             <div class="header">
@@ -313,17 +315,176 @@ const emailVerificationEmail = (name, email, verificationToken) => {
   };
 };
 
+/**
+ * Car listing success email - Professional template
+ */
+const carListingSuccessEmail = (name, email, carDetails) => {
+  const logoUrl = process.env.LOGO_URL || 'https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg';
+  const carUrl = `${process.env.FRONTEND_URL}/cars/${carDetails.id}`;
+
+  return {
+    subject: '🚗 Your Car is Now Live on CarCatalog!',
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; }
+          .email-wrapper { background: #f5f5f5; padding: 40px 20px; }
+          .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+          .logo-header { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); padding: 30px 40px; text-align: center; }
+          .logo { max-width: 180px; height: auto; }
+          .header { background: white; padding: 40px 40px 20px; text-align: center; }
+          .header h1 { color: #28a745; font-size: 28px; margin-bottom: 10px; }
+          .header p { color: #666; font-size: 16px; }
+          .content { padding: 20px 40px 40px; background: white; }
+          .content p { margin-bottom: 15px; color: #555; font-size: 15px; }
+          .car-details { background: #f8f9fa; border-left: 4px solid #28a745; padding: 20px; border-radius: 6px; margin: 25px 0; }
+          .car-details h3 { color: #28a745; margin-bottom: 15px; font-size: 18px; }
+          .detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e9ecef; }
+          .detail-row:last-child { border-bottom: none; }
+          .detail-label { font-weight: 600; color: #495057; }
+          .detail-value { color: #6c757d; }
+          .button-container { text-align: center; margin: 30px 0; }
+          .button { display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3); transition: all 0.3s; }
+          .button:hover { box-shadow: 0 6px 16px rgba(40, 167, 69, 0.4); transform: translateY(-2px); }
+          .tips-box { background: #e7f3ff; border-left: 4px solid #0066cc; padding: 20px; border-radius: 6px; margin: 25px 0; }
+          .tips-box h4 { color: #0066cc; margin-bottom: 15px; }
+          .tips-box ul { margin-left: 20px; }
+          .tips-box li { margin-bottom: 8px; color: #555; }
+          .divider { height: 1px; background: #e0e0e0; margin: 30px 0; }
+          .footer { background: #f8f9fa; padding: 30px 40px; text-align: center; border-top: 1px solid #e0e0e0; }
+          .footer p { color: #666; font-size: 13px; margin-bottom: 8px; }
+          .footer a { color: #0066cc; text-decoration: none; }
+        </style>
+      </head>
+      <body>
+        <div class="email-wrapper">
+          <div class="container">
+            <div class="logo-header">
+              <img src="${logoUrl}" alt="CarCatalog Logo" class="logo" style="max-width: 180px; height: auto;" />
+            </div>
+            
+            <div class="header">
+              <h1>🎉 Your Car is Live!</h1>
+              <p>Congratulations! Your listing is now active</p>
+            </div>
+            
+            <div class="content">
+              <p><strong>Hi ${name || 'there'},</strong></p>
+              <p>Great news! Your car listing has been successfully published on CarCatalog and is now visible to thousands of potential buyers.</p>
+              
+              <div class="car-details">
+                <h3>📋 Your Listing Details</h3>
+                <div class="detail-row">
+                  <span class="detail-label">Vehicle:</span>
+                  <span class="detail-value">${carDetails.make} ${carDetails.model}</span>
+                </div>
+                ${carDetails.year ? `
+                <div class="detail-row">
+                  <span class="detail-label">Year:</span>
+                  <span class="detail-value">${carDetails.year}</span>
+                </div>` : ''}
+                ${carDetails.registration ? `
+                <div class="detail-row">
+                  <span class="detail-label">Registration:</span>
+                  <span class="detail-value">${carDetails.registration}</span>
+                </div>` : ''}
+                ${carDetails.price ? `
+                <div class="detail-row">
+                  <span class="detail-label">Price:</span>
+                  <span class="detail-value">£${carDetails.price.toLocaleString()}</span>
+                </div>` : ''}
+                <div class="detail-row">
+                  <span class="detail-label">Listed:</span>
+                  <span class="detail-value">${new Date().toLocaleDateString('en-GB')}</span>
+                </div>
+              </div>
+              
+              <div class="button-container">
+                <a href="${carUrl}" class="button">View Your Listing</a>
+              </div>
+              
+              <div class="tips-box">
+                <h4>💡 Tips to Sell Faster</h4>
+                <ul>
+                  <li><strong>Add more photos:</strong> Listings with 5+ photos get 3x more views</li>
+                  <li><strong>Write a detailed description:</strong> Include service history and unique features</li>
+                  <li><strong>Respond quickly:</strong> Fast responses increase your chances of a sale</li>
+                  <li><strong>Keep your listing updated:</strong> Update if you make any changes to the car</li>
+                  <li><strong>Be competitive:</strong> Check similar cars to ensure your price is fair</li>
+                </ul>
+              </div>
+              
+              <div class="divider"></div>
+              
+              <p><strong>What happens next?</strong></p>
+              <ul style="margin-left: 20px; margin-bottom: 20px;">
+                <li>Your car is now searchable by thousands of buyers</li>
+                <li>You'll receive email notifications when buyers contact you</li>
+                <li>You can edit your listing anytime from your dashboard</li>
+                <li>We'll send you weekly performance updates</li>
+              </ul>
+              
+              <p>Need help? Our support team is here to assist you with any questions about selling your car.</p>
+              
+              <p>Best of luck with your sale!</p>
+              <p><strong>The CarCatalog Team</strong></p>
+            </div>
+            
+            <div class="footer">
+              <p><strong>Need help?</strong> Contact our support team</p>
+              <p>Email: <a href="mailto:support@carcatalog.co.uk">support@carcatalog.co.uk</a></p>
+              <div class="divider" style="margin: 20px 0;"></div>
+              <p>&copy; ${new Date().getFullYear()} CarCatalog. All rights reserved.</p>
+              <p style="font-size: 12px;">This email was sent to <strong>${email}</strong></p>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+    text: `🎉 Your Car is Live on CarCatalog!
+
+Hi ${name || 'there'},
+
+Great news! Your car listing has been successfully published on CarCatalog and is now visible to thousands of potential buyers.
+
+Your Listing Details:
+- Vehicle: ${carDetails.make} ${carDetails.model}
+${carDetails.year ? `- Year: ${carDetails.year}\n` : ''}${carDetails.registration ? `- Registration: ${carDetails.registration}\n` : ''}${carDetails.price ? `- Price: £${carDetails.price.toLocaleString()}\n` : ''}- Listed: ${new Date().toLocaleDateString('en-GB')}
+
+View Your Listing: ${carUrl}
+
+💡 Tips to Sell Faster:
+- Add more photos: Listings with 5+ photos get 3x more views
+- Write a detailed description: Include service history and unique features
+- Respond quickly: Fast responses increase your chances of a sale
+- Keep your listing updated: Update if you make any changes to the car
+- Be competitive: Check similar cars to ensure your price is fair
+
+What happens next?
+- Your car is now searchable by thousands of buyers
+- You'll receive email notifications when buyers contact you
+- You can edit your listing anytime from your dashboard
+- We'll send you weekly performance updates
+
+Need help? Contact support@carcatalog.co.uk
+
+Best of luck with your sale!
+The CarCatalog Team
+
+© ${new Date().getFullYear()} CarCatalog. All rights reserved.`
+  };
+};
+
 module.exports = {
   welcomeEmail,
   loginNotificationEmail,
   passwordResetEmail,
-  emailVerificationEmail
+  emailVerificationEmail,
+  carListingSuccessEmail
 };
-
-
-
-
-
-
-
-

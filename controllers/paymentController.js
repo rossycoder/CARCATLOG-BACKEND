@@ -16,9 +16,6 @@ const EmailService                 = require('../services/emailService');
 const AdvertisingPackagePurchase   = require('../models/AdvertisingPackagePurchase');
 const { formatErrorResponse }      = require('../utils/errorHandlers');
 
-// Helper to get frontend URL without trailing slash
-const getFrontendUrl = () => (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
-
 // ─── ONE-TIME vehicle API helper ────────────────────────────────────────────
 /**
  * Calls MOT history + vehicle history APIs exactly once for a registration.
@@ -202,7 +199,7 @@ async function createAdvertCheckoutSession(req, res) {
     }
 
     const stripeService = new StripeService();
-    const baseUrl       = getFrontendUrl();
+    const baseUrl       = process.env.FRONTEND_URL || 'http://localhost:3000';
 
     const session = await stripeService.createAdvertCheckoutSession(
       packageId, packageName, price, duration,
@@ -261,7 +258,7 @@ async function createCheckoutSession(req, res) {
     if (!vrm) return res.status(400).json({ success: false, error: 'VRM is required' });
 
     const stripeService = new StripeService();
-    const baseUrl       = getFrontendUrl();
+    const baseUrl       = process.env.FRONTEND_URL || 'http://localhost:3000';
 
     const session = await stripeService.createCheckoutSession(
       vrm, customerEmail,
@@ -297,7 +294,7 @@ async function createCreditCheckoutSession(req, res) {
       return res.status(400).json({ success: false, error: 'Valid credit amount required (5, 10, or 25)' });
     }
     const stripeService = new StripeService();
-    const baseUrl       = getFrontendUrl();
+    const baseUrl       = process.env.FRONTEND_URL || 'http://localhost:3000';
     const session       = await stripeService.createCreditCheckoutSession(
       creditAmount, customerEmail,
       `${baseUrl}/credits/success?session_id={CHECKOUT_SESSION_ID}&credits=${creditAmount}`,
