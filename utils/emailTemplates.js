@@ -1,12 +1,29 @@
 /**
  * Helper to render logo block in emails
  * Uses image if LOGO_URL is set, otherwise falls back to styled text logo
+ * Applies Cloudinary transformation to remove white background if it's a Cloudinary URL
  */
 const renderLogoHeader = (logoUrl) => {
   if (logoUrl) {
-    return `<img src="${logoUrl}" alt="CarCatalog" style="max-width: 180px; height: auto;" />`;
+    // For Cloudinary URLs: add e_make_transparent to remove white background,
+    // convert to PNG, and set width. This makes the logo look great on any background.
+    let displayUrl = logoUrl;
+    if (logoUrl.includes('res.cloudinary.com')) {
+      // Insert transformation: remove white bg, convert to png, width 220
+      displayUrl = logoUrl.replace('/upload/', '/upload/e_make_transparent,w_220,f_png/');
+    }
+    return `<img src="${displayUrl}" alt="CarCatalog" style="max-width:220px;height:auto;display:block;margin:0 auto;" />`;
   }
-  return `<div style="color:#ffffff;font-size:28px;font-weight:800;letter-spacing:-0.5px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">Car<span style="color:#ffd700;">Cat</span>ALog</div><div style="color:rgba(255,255,255,0.8);font-size:12px;margin-top:4px;letter-spacing:1px;text-transform:uppercase;">List it &middot; Sell it &middot; Buy it</div>`;
+  // Text fallback
+  return `
+    <div style="display:inline-block;text-align:center;">
+      <div style="color:#ffffff;font-size:30px;font-weight:800;letter-spacing:-0.5px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;line-height:1;">
+        Car<span style="color:#ffd700;">Cat</span>ALog
+      </div>
+      <div style="color:rgba(255,255,255,0.75);font-size:11px;margin-top:5px;letter-spacing:2px;text-transform:uppercase;font-family:Arial,sans-serif;">
+        List it &nbsp;&middot;&nbsp; Sell it &nbsp;&middot;&nbsp; Buy it
+      </div>
+    </div>`;
 };
 
 /**
