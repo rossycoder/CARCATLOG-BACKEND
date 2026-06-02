@@ -1,12 +1,13 @@
 /**
  * Helper to render logo block in emails - AutoTrader style
- * Logo center-aligned, small, clean
+ * Logo center-aligned, sharp on retina displays (2x resolution trick)
  */
 const renderLogoHeader = (logoUrl) => {
   if (logoUrl) {
     let displayUrl = logoUrl;
     if (logoUrl.includes('res.cloudinary.com')) {
-      displayUrl = logoUrl.replace('/upload/', '/upload/w_130,f_auto/');
+      // w_260 = 2x resolution for retina sharpness, displayed at 130px via width attr
+      displayUrl = logoUrl.replace('/upload/', '/upload/w_260,q_100,f_auto/');
     }
     return `
       <table width="100%" cellpadding="0" cellspacing="0" border="0">

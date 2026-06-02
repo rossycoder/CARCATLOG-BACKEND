@@ -249,42 +249,37 @@ const deleteListing = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Try to delete from all vehicle types
-    let result = await Car.deleteCarWithCleanup(id);
-
-    if (!result.success) {
-      // Try Bike
-      const bike = await Bike.findByIdAndDelete(id);
-      if (bike) {
-        result = { success: true };
-      }
+    // Try Car first
+    const car = await Car.findById(id);
+    if (car) {
+      await Car.deleteCarWithCleanup(id);
+      return res.json({ success: true, message: 'Listing deleted successfully' });
     }
 
-    if (!result.success) {
-      // Try Van
-      const van = await Van.findByIdAndDelete(id);
-      if (van) {
-        result = { success: true };
-      }
+    // Try Bike
+    const bike = await Bike.findByIdAndDelete(id);
+    if (bike) {
+      return res.json({ success: true, message: 'Listing deleted successfully' });
     }
 
-    if (result.success) {
-      res.json({
-        success: true,
-        message: 'Listing deleted successfully'
-      });
-    } else {
-      res.status(404).json({
-        success: false,
-        message: result.error || 'Listing not found'
-      });
+    // Try Van
+    const van = await Van.findByIdAndDelete(id);
+    if (van) {
+      return res.json({ success: true, message: 'Listing deleted successfully' });
     }
+
+    // Not found in any collection
+    return res.status(404).json({
+      success: false,
+      message: 'Listing not found'
+    });
 
   } catch (error) {
     console.error('Error deleting listing:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to delete listing'
+      message: 'Failed to delete listing',
+      error: error.message
     });
   }
 };

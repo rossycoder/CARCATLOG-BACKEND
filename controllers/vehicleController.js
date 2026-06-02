@@ -2586,8 +2586,9 @@ class VehicleController {
         });
       }
 
-      // Check if user owns this vehicle
-      if (vehicle.userId && vehicle.userId.toString() !== userId.toString()) {
+      // Check if user owns this vehicle — admin can update any vehicle
+      const isAdmin = req.user.isAdmin || req.user.role === 'admin';
+      if (!isAdmin && vehicle.userId && vehicle.userId.toString() !== userId.toString()) {
         return res.status(403).json({
           success: false,
           error: 'You do not have permission to update this vehicle'
@@ -2659,8 +2660,9 @@ class VehicleController {
         });
       }
 
-      // Check if user owns this vehicle
-      if (vehicle.userId && vehicle.userId.toString() !== userId.toString()) {
+      // Check if user owns this vehicle — admin can delete any vehicle
+      const isAdmin = req.user.isAdmin || req.user.role === 'admin';
+      if (!isAdmin && vehicle.userId && vehicle.userId.toString() !== userId.toString()) {
         return res.status(403).json({
           success: false,
           error: 'You do not have permission to delete this vehicle'
@@ -2788,8 +2790,9 @@ class VehicleController {
         });
       }
 
-      // Check if user owns this vehicle
-      if (vehicle.userId && vehicle.userId.toString() !== userId.toString()) {
+      // Check if user owns this vehicle — admin can relist any vehicle
+      const isAdminRelist = req.user.isAdmin || req.user.role === 'admin';
+      if (!isAdminRelist && vehicle.userId && vehicle.userId.toString() !== userId.toString()) {
         return res.status(403).json({
           success: false,
           error: 'You do not have permission to relist this vehicle'

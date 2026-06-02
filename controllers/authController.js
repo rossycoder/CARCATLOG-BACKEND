@@ -1,4 +1,3 @@
-const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const User = require('../models/User');
 const { generateToken } = require('../utils/jwtUtils');
@@ -574,12 +573,8 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    // Hash new password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Update user
-    user.password = hashedPassword;
+    // Update user — assign raw password, pre-save hook will hash it
+    user.password = password;
     user.passwordResetToken = undefined;
     user.passwordResetExpires = undefined;
     await user.save();
