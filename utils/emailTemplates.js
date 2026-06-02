@@ -1,8 +1,19 @@
 /**
+ * Helper to render logo block in emails
+ * Uses image if LOGO_URL is set, otherwise falls back to styled text logo
+ */
+const renderLogoHeader = (logoUrl) => {
+  if (logoUrl) {
+    return `<img src="${logoUrl}" alt="CarCatalog" style="max-width: 180px; height: auto;" />`;
+  }
+  return `<div style="color:#ffffff;font-size:28px;font-weight:800;letter-spacing:-0.5px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">Car<span style="color:#ffd700;">Cat</span>ALog</div><div style="color:rgba(255,255,255,0.8);font-size:12px;margin-top:4px;letter-spacing:1px;text-transform:uppercase;">List it &middot; Sell it &middot; Buy it</div>`;
+};
+
+/**
  * Welcome email template
  */
 const welcomeEmail = (name, email) => {
-  const logoUrl = process.env.LOGO_URL || 'https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg';
+  const logoUrl = process.env.LOGO_URL || '';
   return {
     subject: 'Welcome to CarCatalog!',
     html: `
@@ -17,7 +28,6 @@ const welcomeEmail = (name, email) => {
           .email-wrapper { background: #f5f5f5; padding: 40px 20px; }
           .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
           .logo-header { background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%); padding: 30px 40px; text-align: center; }
-          .logo { max-width: 180px; height: auto; }
           .header { background: white; padding: 30px 40px 20px; text-align: center; }
           .header h1 { color: #0066cc; font-size: 26px; margin-bottom: 8px; }
           .header p { color: #666; font-size: 15px; }
@@ -37,7 +47,7 @@ const welcomeEmail = (name, email) => {
         <div class="email-wrapper">
           <div class="container">
             <div class="logo-header">
-              <img src="${logoUrl}" alt="CarCatalog Logo" class="logo" style="max-width: 180px; height: auto;" />
+              ${renderLogoHeader(logoUrl)}
             </div>
             <div class="header">
               <h1>Welcome to CarCatalog!</h1>
@@ -75,7 +85,7 @@ const welcomeEmail = (name, email) => {
  * Login notification email
  */
 const loginNotificationEmail = (name, email, ipAddress, userAgent) => {
-  const logoUrl = process.env.LOGO_URL || 'https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg';
+  const logoUrl = process.env.LOGO_URL || '';
   const date = new Date().toLocaleString('en-GB', { 
     dateStyle: 'full', 
     timeStyle: 'short' 
@@ -95,7 +105,6 @@ const loginNotificationEmail = (name, email, ipAddress, userAgent) => {
           .email-wrapper { background: #f5f5f5; padding: 40px 20px; }
           .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
           .logo-header { background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%); padding: 30px 40px; text-align: center; }
-          .logo { max-width: 180px; height: auto; }
           .header { background: white; padding: 30px 40px 20px; text-align: center; }
           .header h1 { color: #0066cc; font-size: 26px; margin-bottom: 8px; }
           .content { padding: 20px 40px 40px; background: white; }
@@ -112,7 +121,7 @@ const loginNotificationEmail = (name, email, ipAddress, userAgent) => {
         <div class="email-wrapper">
           <div class="container">
             <div class="logo-header">
-              <img src="${logoUrl}" alt="CarCatalog Logo" class="logo" style="max-width: 180px; height: auto;" />
+              ${renderLogoHeader(logoUrl)}
             </div>
             <div class="header">
               <h1>New Sign-in Detected</h1>
@@ -146,7 +155,7 @@ const loginNotificationEmail = (name, email, ipAddress, userAgent) => {
  */
 const passwordResetEmail = (name, email, resetToken) => {
   const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-  const logoUrl = process.env.LOGO_URL || 'https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg';
+  const logoUrl = process.env.LOGO_URL || '';
 
   return {
     subject: '🔐 Reset Your CarCatalog Password',
@@ -187,7 +196,7 @@ const passwordResetEmail = (name, email, resetToken) => {
         <div class="email-wrapper">
           <div class="container">
             <div class="logo-header">
-              <img src="${logoUrl}" alt="CarCatalog Logo" class="logo" style="max-width: 180px; height: auto;" />
+              ${renderLogoHeader(logoUrl)}
             </div>
             
             <div class="header">
@@ -246,7 +255,7 @@ const passwordResetEmail = (name, email, resetToken) => {
  */
 const emailVerificationEmail = (name, email, verificationToken) => {
   const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
-  const logoUrl = process.env.LOGO_URL || 'https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg';
+  const logoUrl = process.env.LOGO_URL || '';
 
   return {
     subject: '✉️ Verify Your Email Address - CarCatalog',
@@ -262,15 +271,16 @@ const emailVerificationEmail = (name, email, verificationToken) => {
           .email-wrapper { background: #f5f5f5; padding: 40px 20px; }
           .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
           .logo-header { background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%); padding: 30px 40px; text-align: center; }
-          .logo { max-width: 180px; height: auto; }
+          .logo-text { color: #ffffff; font-size: 28px; font-weight: 800; letter-spacing: -0.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; }
+          .logo-text span { color: #ffd700; }
+          .logo-tagline { color: rgba(255,255,255,0.8); font-size: 12px; margin-top: 4px; letter-spacing: 1px; text-transform: uppercase; }
           .header { background: white; padding: 40px 40px 20px; text-align: center; }
           .header h1 { color: #0066cc; font-size: 28px; margin-bottom: 10px; }
           .header p { color: #666; font-size: 16px; }
           .content { padding: 20px 40px 40px; background: white; }
           .content p { margin-bottom: 15px; color: #555; font-size: 15px; }
           .button-container { text-align: center; margin: 30px 0; }
-          .button { display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%); color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(0,102,204,0.3); transition: all 0.3s; }
-          .button:hover { box-shadow: 0 6px 16px rgba(0,102,204,0.4); transform: translateY(-2px); }
+          .button { display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%); color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(0,102,204,0.3); }
           .link-box { background: #f8f9fa; padding: 15px; border-radius: 6px; border-left: 4px solid #0066cc; margin: 20px 0; word-break: break-all; font-size: 13px; color: #666; }
           .warning-box { background: #fff3cd; border: 2px solid #ffc107; color: #856404; padding: 20px; border-radius: 6px; margin: 25px 0; text-align: center; }
           .warning-box strong { display: block; font-size: 16px; margin-bottom: 5px; }
@@ -281,15 +291,16 @@ const emailVerificationEmail = (name, email, verificationToken) => {
           .footer { background: #f8f9fa; padding: 30px 40px; text-align: center; border-top: 1px solid #e0e0e0; }
           .footer p { color: #666; font-size: 13px; margin-bottom: 8px; }
           .footer a { color: #0066cc; text-decoration: none; }
-          .social-links { margin-top: 20px; }
-          .social-links a { display: inline-block; margin: 0 10px; color: #0066cc; text-decoration: none; }
         </style>
       </head>
       <body>
         <div class="email-wrapper">
           <div class="container">
             <div class="logo-header">
-              <img src="${logoUrl}" alt="CarCatalog Logo" class="logo" style="max-width: 180px; height: auto;" />
+              ${logoUrl
+                ? `<img src="${logoUrl}" alt="CarCatalog" style="max-width: 180px; height: auto;" />`
+                : `<div class="logo-text">Car<span>Cat</span>ALog</div><div class="logo-tagline">List it · Sell it · Buy it</div>`
+              }
             </div>
             
             <div class="header">
@@ -350,7 +361,7 @@ const emailVerificationEmail = (name, email, verificationToken) => {
  * Car listing success email - Professional template
  */
 const carListingSuccessEmail = (name, email, carDetails) => {
-  const logoUrl = process.env.LOGO_URL || 'https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg';
+  const logoUrl = process.env.LOGO_URL || '';
   const carUrl = `${process.env.FRONTEND_URL}/cars/${carDetails.id}`;
 
   return {
@@ -396,7 +407,7 @@ const carListingSuccessEmail = (name, email, carDetails) => {
         <div class="email-wrapper">
           <div class="container">
             <div class="logo-header">
-              <img src="${logoUrl}" alt="CarCatalog Logo" class="logo" style="max-width: 180px; height: auto;" />
+              ${renderLogoHeader(logoUrl)}
             </div>
             
             <div class="header">

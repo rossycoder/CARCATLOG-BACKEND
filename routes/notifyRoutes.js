@@ -49,7 +49,7 @@ router.post('/signup', async (req, res) => {
 <body>
   <div class="wrap">
     <div class="header">
-      <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatALog" />
+      ${process.env.LOGO_URL ? `<img src="${process.env.LOGO_URL}" alt="CarCatALog" style="max-width:120px;border-radius:12px;" />` : `<div style="color:#fff;font-size:26px;font-weight:800;font-family:Arial,sans-serif;">Car<span style="color:#ffd700;">Cat</span>ALog</div>`}
       <h1>You're on the list! 🎉</h1>
     </div>
     <div class="body">

@@ -136,7 +136,7 @@ exports.register = async (req, res) => {
 <body>
   <div class="container">
     <div class="logo-header">
-      <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+      ${process.env.LOGO_URL ? `<img src="${process.env.LOGO_URL}" alt="CarCatalog" class="logo" />` : `<div style="color:#fff;font-size:26px;font-weight:800;font-family:Arial,sans-serif;">Car<span style="color:#ffd700;">Cat</span>ALog</div>`}
     </div>
     <div class="header">
       <h1>✅ Welcome to CarCatalog Trade!</h1>
@@ -529,7 +529,7 @@ exports.forgotPassword = async (req, res) => {
 <body>
   <div class="container">
     <div class="logo-header">
-      <img src="https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg" alt="CarCatalog Logo" class="logo" />
+      ${process.env.LOGO_URL ? `<img src="${process.env.LOGO_URL}" alt="CarCatalog" class="logo" />` : `<div style="color:#fff;font-size:26px;font-weight:800;font-family:Arial,sans-serif;">Car<span style="color:#ffd700;">Cat</span>ALog</div>`}
     </div>
     <div class="header">
       <h1>🔐 Password Reset Request</h1>
