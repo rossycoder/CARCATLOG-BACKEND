@@ -68,6 +68,35 @@ const welcomeEmail = (name, email) => {
           .footer { background: #f8f9fa; padding: 25px 40px; text-align: center; border-top: 1px solid #e0e0e0; }
           .footer p { color: #666; font-size: 13px; margin-bottom: 6px; }
           .footer a { color: #0066cc; text-decoration: none; }
+          @media only screen and (max-width: 600px) {
+            .email-wrapper { padding: 0 !important; }
+            .container { border-radius: 0 !important; width: 100% !important; }
+            .logo-header { padding: 20px 16px !important; }
+            .header { padding: 24px 16px 16px !important; }
+            .header h1 { font-size: 20px !important; }
+            .header p { font-size: 14px !important; }
+            .content { padding: 16px !important; }
+            .content p { font-size: 14px !important; }
+            .button { display: block !important; width: 100% !important; box-sizing: border-box !important; padding: 16px 20px !important; font-size: 15px !important; text-align: center !important; }
+            .button-container { margin: 20px 0 !important; }
+            .link-box { font-size: 11px !important; padding: 10px !important; word-break: break-all !important; }
+            .warning-box { padding: 14px !important; font-size: 14px !important; }
+            .security-box { padding: 14px !important; }
+            .security-box p { font-size: 13px !important; }
+            .info-box { padding: 14px !important; }
+            .info-box li { font-size: 13px !important; }
+            .car-details { padding: 14px !important; }
+            .detail-row { flex-direction: column !important; gap: 2px !important; padding: 10px 0 !important; }
+            .detail-label { font-size: 12px !important; color: #888 !important; }
+            .detail-value { font-size: 14px !important; font-weight: 600 !important; color: #333 !important; }
+            .tips-box { padding: 14px !important; }
+            .tips-box li { font-size: 13px !important; }
+            .footer { padding: 20px 16px !important; }
+            .footer p { font-size: 12px !important; }
+            .divider { margin: 15px 0 !important; }
+            h3 { font-size: 16px !important; }
+            h4 { font-size: 15px !important; }
+          }
         </style>
       </head>
       <body>
@@ -142,6 +171,35 @@ const loginNotificationEmail = (name, email, ipAddress, userAgent) => {
           .divider { height: 1px; background: #e0e0e0; margin: 25px 0; }
           .footer { background: #f8f9fa; padding: 25px 40px; text-align: center; border-top: 1px solid #e0e0e0; }
           .footer p { color: #666; font-size: 13px; margin-bottom: 6px; }
+          @media only screen and (max-width: 600px) {
+            .email-wrapper { padding: 0 !important; }
+            .container { border-radius: 0 !important; width: 100% !important; }
+            .logo-header { padding: 20px 16px !important; }
+            .header { padding: 24px 16px 16px !important; }
+            .header h1 { font-size: 20px !important; }
+            .header p { font-size: 14px !important; }
+            .content { padding: 16px !important; }
+            .content p { font-size: 14px !important; }
+            .button { display: block !important; width: 100% !important; box-sizing: border-box !important; padding: 16px 20px !important; font-size: 15px !important; text-align: center !important; }
+            .button-container { margin: 20px 0 !important; }
+            .link-box { font-size: 11px !important; padding: 10px !important; word-break: break-all !important; }
+            .warning-box { padding: 14px !important; font-size: 14px !important; }
+            .security-box { padding: 14px !important; }
+            .security-box p { font-size: 13px !important; }
+            .info-box { padding: 14px !important; }
+            .info-box li { font-size: 13px !important; }
+            .car-details { padding: 14px !important; }
+            .detail-row { flex-direction: column !important; gap: 2px !important; padding: 10px 0 !important; }
+            .detail-label { font-size: 12px !important; color: #888 !important; }
+            .detail-value { font-size: 14px !important; font-weight: 600 !important; color: #333 !important; }
+            .tips-box { padding: 14px !important; }
+            .tips-box li { font-size: 13px !important; }
+            .footer { padding: 20px 16px !important; }
+            .footer p { font-size: 12px !important; }
+            .divider { margin: 15px 0 !important; }
+            h3 { font-size: 16px !important; }
+            h4 { font-size: 15px !important; }
+          }
         </style>
       </head>
       <body>
@@ -217,6 +275,35 @@ const passwordResetEmail = (name, email, resetToken) => {
           .footer { background: #f8f9fa; padding: 30px 40px; text-align: center; border-top: 1px solid #e0e0e0; }
           .footer p { color: #666; font-size: 13px; margin-bottom: 8px; }
           .footer a { color: #0066cc; text-decoration: none; }
+          @media only screen and (max-width: 600px) {
+            .email-wrapper { padding: 0 !important; }
+            .container { border-radius: 0 !important; width: 100% !important; }
+            .logo-header { padding: 20px 16px !important; }
+            .header { padding: 24px 16px 16px !important; }
+            .header h1 { font-size: 20px !important; }
+            .header p { font-size: 14px !important; }
+            .content { padding: 16px !important; }
+            .content p { font-size: 14px !important; }
+            .button { display: block !important; width: 100% !important; box-sizing: border-box !important; padding: 16px 20px !important; font-size: 15px !important; text-align: center !important; }
+            .button-container { margin: 20px 0 !important; }
+            .link-box { font-size: 11px !important; padding: 10px !important; word-break: break-all !important; }
+            .warning-box { padding: 14px !important; font-size: 14px !important; }
+            .security-box { padding: 14px !important; }
+            .security-box p { font-size: 13px !important; }
+            .info-box { padding: 14px !important; }
+            .info-box li { font-size: 13px !important; }
+            .car-details { padding: 14px !important; }
+            .detail-row { flex-direction: column !important; gap: 2px !important; padding: 10px 0 !important; }
+            .detail-label { font-size: 12px !important; color: #888 !important; }
+            .detail-value { font-size: 14px !important; font-weight: 600 !important; color: #333 !important; }
+            .tips-box { padding: 14px !important; }
+            .tips-box li { font-size: 13px !important; }
+            .footer { padding: 20px 16px !important; }
+            .footer p { font-size: 12px !important; }
+            .divider { margin: 15px 0 !important; }
+            h3 { font-size: 16px !important; }
+            h4 { font-size: 15px !important; }
+          }
         </style>
       </head>
       <body>
@@ -318,6 +405,35 @@ const emailVerificationEmail = (name, email, verificationToken) => {
           .footer { background: #f8f9fa; padding: 30px 40px; text-align: center; border-top: 1px solid #e0e0e0; }
           .footer p { color: #666; font-size: 13px; margin-bottom: 8px; }
           .footer a { color: #0066cc; text-decoration: none; }
+          @media only screen and (max-width: 600px) {
+            .email-wrapper { padding: 0 !important; }
+            .container { border-radius: 0 !important; width: 100% !important; }
+            .logo-header { padding: 20px 16px !important; }
+            .header { padding: 24px 16px 16px !important; }
+            .header h1 { font-size: 20px !important; }
+            .header p { font-size: 14px !important; }
+            .content { padding: 16px !important; }
+            .content p { font-size: 14px !important; }
+            .button { display: block !important; width: 100% !important; box-sizing: border-box !important; padding: 16px 20px !important; font-size: 15px !important; text-align: center !important; }
+            .button-container { margin: 20px 0 !important; }
+            .link-box { font-size: 11px !important; padding: 10px !important; word-break: break-all !important; }
+            .warning-box { padding: 14px !important; font-size: 14px !important; }
+            .security-box { padding: 14px !important; }
+            .security-box p { font-size: 13px !important; }
+            .info-box { padding: 14px !important; }
+            .info-box li { font-size: 13px !important; }
+            .car-details { padding: 14px !important; }
+            .detail-row { flex-direction: column !important; gap: 2px !important; padding: 10px 0 !important; }
+            .detail-label { font-size: 12px !important; color: #888 !important; }
+            .detail-value { font-size: 14px !important; font-weight: 600 !important; color: #333 !important; }
+            .tips-box { padding: 14px !important; }
+            .tips-box li { font-size: 13px !important; }
+            .footer { padding: 20px 16px !important; }
+            .footer p { font-size: 12px !important; }
+            .divider { margin: 15px 0 !important; }
+            h3 { font-size: 16px !important; }
+            h4 { font-size: 15px !important; }
+          }
         </style>
       </head>
       <body>
@@ -425,6 +541,35 @@ const carListingSuccessEmail = (name, email, carDetails) => {
           .footer { background: #f8f9fa; padding: 30px 40px; text-align: center; border-top: 1px solid #e0e0e0; }
           .footer p { color: #666; font-size: 13px; margin-bottom: 8px; }
           .footer a { color: #0066cc; text-decoration: none; }
+          @media only screen and (max-width: 600px) {
+            .email-wrapper { padding: 0 !important; }
+            .container { border-radius: 0 !important; width: 100% !important; }
+            .logo-header { padding: 20px 16px !important; }
+            .header { padding: 24px 16px 16px !important; }
+            .header h1 { font-size: 20px !important; }
+            .header p { font-size: 14px !important; }
+            .content { padding: 16px !important; }
+            .content p { font-size: 14px !important; }
+            .button { display: block !important; width: 100% !important; box-sizing: border-box !important; padding: 16px 20px !important; font-size: 15px !important; text-align: center !important; }
+            .button-container { margin: 20px 0 !important; }
+            .link-box { font-size: 11px !important; padding: 10px !important; word-break: break-all !important; }
+            .warning-box { padding: 14px !important; font-size: 14px !important; }
+            .security-box { padding: 14px !important; }
+            .security-box p { font-size: 13px !important; }
+            .info-box { padding: 14px !important; }
+            .info-box li { font-size: 13px !important; }
+            .car-details { padding: 14px !important; }
+            .detail-row { flex-direction: column !important; gap: 2px !important; padding: 10px 0 !important; }
+            .detail-label { font-size: 12px !important; color: #888 !important; }
+            .detail-value { font-size: 14px !important; font-weight: 600 !important; color: #333 !important; }
+            .tips-box { padding: 14px !important; }
+            .tips-box li { font-size: 13px !important; }
+            .footer { padding: 20px 16px !important; }
+            .footer p { font-size: 12px !important; }
+            .divider { margin: 15px 0 !important; }
+            h3 { font-size: 16px !important; }
+            h4 { font-size: 15px !important; }
+          }
         </style>
       </head>
       <body>
