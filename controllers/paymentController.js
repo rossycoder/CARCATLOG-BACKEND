@@ -783,6 +783,28 @@ async function handlePaymentSuccess(paymentIntent) {
 
     await sendConfirmationEmail(purchase);
 
+    // Send "Your car is now live" email after successful payment
+    try {
+      const User = require('../models/User');
+      const resolvedUser = car && car.userId ? await User.findById(car.userId) : null;
+      if (resolvedUser && resolvedUser.isEmailVerified) {
+        const carListingEmailService = new EmailService();
+        const carEmailDetails = {
+          id: car._id,
+          make: car.make,
+          model: car.model,
+          year: car.year,
+          registration: car.registrationNumber,
+          price: car.price
+        };
+        carListingEmailService.sendCarListingSuccess(resolvedUser, carEmailDetails).catch(err => {
+          console.warn(`⚠️  Car listing success email failed: ${err.message}`);
+        });
+      }
+    } catch (emailErr) {
+      console.warn(`⚠️  Car listing email error: ${emailErr.message}`);
+    }
+
   } catch (error) {
     console.error('❌ handlePaymentSuccess:', error);
   }

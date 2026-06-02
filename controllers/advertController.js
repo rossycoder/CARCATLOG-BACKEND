@@ -246,41 +246,10 @@ const createAdvert = async (req, res) => {
     car.$locals.skipPreSave = true;
     await car.save();
 
-    // Send car listing success email to user
-    try {
-      const User = require('../models/User');
-      const EmailService = require('../services/emailService');
-      
-      // Get user details (check both regular user and trade dealer)
-      let user = null;
-      if (req.user && req.user.id) {
-        user = await User.findById(req.user.id);
-      }
-      
-      if (user && user.isEmailVerified) {
-        const emailService = new EmailService();
-        
-        // Prepare car details for email
-        const carDetails = {
-          id: car._id,
-          make: car.make,
-          model: car.model,
-          year: car.year,
-          registration: car.registrationNumber,
-          price: car.price
-        };
-        
-        // Send email notification (don't block response if email fails)
-        emailService.sendCarListingSuccess(user, carDetails).catch(emailError => {
-          console.error('Failed to send car listing success email:', emailError);
-        });
-      }
-    } catch (emailError) {
-      console.error('Error in car listing email notification:', emailError);
-      // Don't fail the car creation if email fails
-    }
-    
-    
+    // NOTE: Car listing success email is sent in paymentController.js
+    // AFTER payment succeeds and car status is set to 'active'.
+    // Do NOT send it here — the car is still in 'pending_payment' status.
+
     res.status(201).json({
       success: true,
       data: {

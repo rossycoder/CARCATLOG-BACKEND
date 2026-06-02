@@ -2,54 +2,72 @@
  * Welcome email template
  */
 const welcomeEmail = (name, email) => {
+  const logoUrl = process.env.LOGO_URL || 'https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg';
   return {
     subject: 'Welcome to CarCatalog!',
     html: `
       <!DOCTYPE html>
       <html>
       <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; background: white; }
-          .logo-header { background: white; padding: 15px 20px; text-align: left; border-bottom: 2px solid #e0e0e0; }
-          .logo { max-width: 120px; height: auto; display: block; }
-          .header { background: #0066cc; color: white; padding: 20px; text-align: center; }
-          .content { padding: 20px; background: #f9f9f9; }
-          .button { display: inline-block; padding: 12px 24px; background: #0066cc !important; color: #000000ff !important; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: bold; }
-          .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; }
+          .email-wrapper { background: #f5f5f5; padding: 40px 20px; }
+          .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+          .logo-header { background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%); padding: 30px 40px; text-align: center; }
+          .logo { max-width: 180px; height: auto; }
+          .header { background: white; padding: 30px 40px 20px; text-align: center; }
+          .header h1 { color: #0066cc; font-size: 26px; margin-bottom: 8px; }
+          .header p { color: #666; font-size: 15px; }
+          .content { padding: 20px 40px 40px; background: white; }
+          .content p { margin-bottom: 15px; color: #555; font-size: 15px; }
+          .content ul { margin: 10px 0 20px 20px; }
+          .content li { margin-bottom: 8px; color: #555; font-size: 15px; }
+          .button-container { text-align: center; margin: 30px 0; }
+          .button { display: inline-block; padding: 14px 36px; background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%); color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 15px; }
+          .divider { height: 1px; background: #e0e0e0; margin: 25px 0; }
+          .footer { background: #f8f9fa; padding: 25px 40px; text-align: center; border-top: 1px solid #e0e0e0; }
+          .footer p { color: #666; font-size: 13px; margin-bottom: 6px; }
+          .footer a { color: #0066cc; text-decoration: none; }
         </style>
       </head>
       <body>
-        <div class="container">
-          <div class="logo-header">
-            <span style="font-family: Arial, sans-serif; font-size: 22px; font-weight: bold; color: #333; letter-spacing: -0.5px;"><span style="color: #dc3545;">Car</span><span style="color: #0066cc;">Cat</span><span style="color: #ff9800;">alog</span></span>
-          </div>
-          <div class="header">
-            <h1>Welcome to <span style=\"color: #dc3545;\">Car</span><span style=\"color: #0066cc;\">Cat</span><span style=\"color: #ff9800;\">alog</span>!</h1>
-          </div>
-          <div class="content">
-            <h2>Hi ${name || 'there'}!</h2>
-            <p>Thank you for creating an account with CarCatalog. We're excited to have you on board!</p>
-            <p>Your account has been successfully created with the email: <strong>${email}</strong></p>
-            <p>You can now:</p>
-            <ul>
-              <li>Browse thousands of cars</li>
-              <li>Save your favorite listings</li>
-              <li>Get instant alerts for new cars</li>
-              <li>Sell your car easily</li>
-            </ul>
-            <a href="${process.env.FRONTEND_URL}" class="button">Start Browsing Cars</a>
-            <p>If you have any questions, feel free to contact our support team.</p>
-          </div>
-          <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} CarCatalog. All rights reserved.</p>
-            <p>This email was sent to ${email}</p>
+        <div class="email-wrapper">
+          <div class="container">
+            <div class="logo-header">
+              <img src="${logoUrl}" alt="CarCatalog Logo" class="logo" style="max-width: 180px; height: auto;" />
+            </div>
+            <div class="header">
+              <h1>Welcome to CarCatalog!</h1>
+              <p>We're glad to have you on board</p>
+            </div>
+            <div class="content">
+              <p><strong>Hi ${name || 'there'},</strong></p>
+              <p>Thank you for creating an account with CarCatalog. Your account has been successfully created with the email: <strong>${email}</strong></p>
+              <p>You can now:</p>
+              <ul>
+                <li>Browse thousands of cars</li>
+                <li>Save your favourite listings</li>
+                <li>Get instant alerts for new cars</li>
+                <li>Sell your car easily</li>
+              </ul>
+              <div class="button-container">
+                <a href="${process.env.FRONTEND_URL}" class="button">Start Browsing Cars</a>
+              </div>
+              <p>If you have any questions, feel free to contact our support team.</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} CarCatalog. All rights reserved.</p>
+              <p>This email was sent to <strong>${email}</strong></p>
+            </div>
           </div>
         </div>
       </body>
       </html>
     `,
-    text: `Welcome to CarCatalog!\n\nHi ${name || 'there'}!\n\nThank you for creating an account. Your account has been successfully created with the email: ${email}\n\nVisit ${process.env.FRONTEND_URL} to start browsing cars.`
+    text: `Welcome to CarCatalog!\n\nHi ${name || 'there'},\n\nThank you for creating an account. Your account has been successfully created with the email: ${email}\n\nVisit ${process.env.FRONTEND_URL} to start browsing cars.\n\n© ${new Date().getFullYear()} CarCatalog. All rights reserved.`
   };
 };
 
@@ -57,6 +75,7 @@ const welcomeEmail = (name, email) => {
  * Login notification email
  */
 const loginNotificationEmail = (name, email, ipAddress, userAgent) => {
+  const logoUrl = process.env.LOGO_URL || 'https://res.cloudinary.com/dexgkptpg/image/upload/v1765219299/carcatalog/logo.jpg';
   const date = new Date().toLocaleString('en-GB', { 
     dateStyle: 'full', 
     timeStyle: 'short' 
@@ -68,45 +87,57 @@ const loginNotificationEmail = (name, email, ipAddress, userAgent) => {
       <!DOCTYPE html>
       <html>
       <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; background: white; }
-          .logo-header { background: white; padding: 15px 20px; text-align: left; border-bottom: 2px solid #e0e0e0; }
-          .logo { max-width: 120px; height: auto; display: block; }
-          .header { background: #0066cc; color: white; padding: 20px; text-align: center; }
-          .content { padding: 20px; background: #f9f9f9; }
-          .info-box { background: white; padding: 15px; border-left: 4px solid #0066cc; margin: 15px 0; }
-          .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; }
+          .email-wrapper { background: #f5f5f5; padding: 40px 20px; }
+          .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+          .logo-header { background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%); padding: 30px 40px; text-align: center; }
+          .logo { max-width: 180px; height: auto; }
+          .header { background: white; padding: 30px 40px 20px; text-align: center; }
+          .header h1 { color: #0066cc; font-size: 26px; margin-bottom: 8px; }
+          .content { padding: 20px 40px 40px; background: white; }
+          .content p { margin-bottom: 15px; color: #555; font-size: 15px; }
+          .info-box { background: #f8f9fa; border-left: 4px solid #0066cc; padding: 20px; border-radius: 6px; margin: 20px 0; }
+          .info-box p { margin-bottom: 8px; color: #555; font-size: 14px; }
+          .info-box p:last-child { margin-bottom: 0; }
+          .divider { height: 1px; background: #e0e0e0; margin: 25px 0; }
+          .footer { background: #f8f9fa; padding: 25px 40px; text-align: center; border-top: 1px solid #e0e0e0; }
+          .footer p { color: #666; font-size: 13px; margin-bottom: 6px; }
         </style>
       </head>
       <body>
-        <div class="container">
-          <div class="logo-header">
-            <span style="font-family: Arial, sans-serif; font-size: 22px; font-weight: bold; color: #333; letter-spacing: -0.5px;"><span style="color: #dc3545;">Car</span><span style="color: #0066cc;">Cat</span><span style="color: #ff9800;">alog</span></span>
-          </div>
-          <div class="header">
-            <h1>New Sign-in Detected</h1>
-          </div>
-          <div class="content">
-            <h2>Hi ${name || 'there'}!</h2>
-            <p>We detected a new sign-in to your CarCatalog account.</p>
-            <div class="info-box">
-              <p><strong>Date & Time:</strong> ${date}</p>
-              <p><strong>Email:</strong> ${email}</p>
-              ${ipAddress ? `<p><strong>IP Address:</strong> ${ipAddress}</p>` : ''}
-              ${userAgent ? `<p><strong>Device:</strong> ${userAgent}</p>` : ''}
+        <div class="email-wrapper">
+          <div class="container">
+            <div class="logo-header">
+              <img src="${logoUrl}" alt="CarCatalog Logo" class="logo" style="max-width: 180px; height: auto;" />
             </div>
-            <p>If this was you, you can safely ignore this email.</p>
-            <p>If you didn't sign in, please secure your account immediately by changing your password.</p>
-          </div>
-          <div class="footer">
-            <p>&copy; ${new Date().getFullYear()} CarCatalog. All rights reserved.</p>
+            <div class="header">
+              <h1>New Sign-in Detected</h1>
+            </div>
+            <div class="content">
+              <p><strong>Hi ${name || 'there'},</strong></p>
+              <p>We detected a new sign-in to your CarCatalog account.</p>
+              <div class="info-box">
+                <p><strong>Date &amp; Time:</strong> ${date}</p>
+                <p><strong>Email:</strong> ${email}</p>
+                ${ipAddress ? `<p><strong>IP Address:</strong> ${ipAddress}</p>` : ''}
+                ${userAgent ? `<p><strong>Device:</strong> ${userAgent}</p>` : ''}
+              </div>
+              <p>If this was you, you can safely ignore this email.</p>
+              <p>If you didn't sign in, please secure your account immediately by changing your password.</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} CarCatalog. All rights reserved.</p>
+            </div>
           </div>
         </div>
       </body>
       </html>
     `,
-    text: `New Sign-in Detected\n\nHi ${name || 'there'}!\n\nWe detected a new sign-in to your account on ${date}.\n\nIf this wasn't you, please secure your account immediately.`
+    text: `New Sign-in Detected\n\nHi ${name || 'there'},\n\nWe detected a new sign-in to your CarCatalog account on ${date}.\n\nIf this wasn't you, please secure your account immediately.\n\n© ${new Date().getFullYear()} CarCatalog. All rights reserved.`
   };
 };
 

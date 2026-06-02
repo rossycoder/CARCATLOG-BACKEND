@@ -409,35 +409,9 @@ class VehicleController {
 
       await car.save();
 
-      // Send car listing success email to user
-      try {
-        const User = require('../models/User');
-        const EmailService = require('../services/emailService');
-        
-        // Get user details
-        const user = await User.findById(req.user.id);
-        if (user && user.isEmailVerified) {
-          const emailService = new EmailService();
-          
-          // Prepare car details for email
-          const carDetails = {
-            id: car._id,
-            make: car.make,
-            model: car.model,
-            year: car.year,
-            registration: car.registrationNumber,
-            price: car.price
-          };
-          
-          // Send email notification (don't block response if email fails)
-          emailService.sendCarListingSuccess(user, carDetails).catch(emailError => {
-            console.error('Failed to send car listing success email:', emailError);
-          });
-        }
-      } catch (emailError) {
-        console.error('Error in car listing email notification:', emailError);
-        // Don't fail the car creation if email fails
-      }
+      // NOTE: Car listing success email is sent in paymentController.js
+      // AFTER payment succeeds and car status is set to 'active'.
+      // Do NOT send it here — the car is not yet paid for.
 
       // REMOVED: Second Universal Service call - data already fetched above (line 203)
       // The Universal Service was already called before car creation to populate carData
