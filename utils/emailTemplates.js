@@ -1,29 +1,38 @@
 /**
- * Helper to render logo block in emails
- * Uses image if LOGO_URL is set, otherwise falls back to styled text logo
- * Applies Cloudinary transformation to remove white background if it's a Cloudinary URL
+ * Helper to render logo block in emails - AutoTrader style
+ * Logo center-aligned, small, clean
  */
 const renderLogoHeader = (logoUrl) => {
   if (logoUrl) {
-    // For Cloudinary URLs: add e_make_transparent to remove white background,
-    // convert to PNG, and set width. This makes the logo look great on any background.
     let displayUrl = logoUrl;
     if (logoUrl.includes('res.cloudinary.com')) {
-      // Insert transformation: remove white bg, convert to png, width 220
-      displayUrl = logoUrl.replace('/upload/', '/upload/e_make_transparent,w_220,f_png/');
+      displayUrl = logoUrl.replace('/upload/', '/upload/w_130,f_auto/');
     }
-    return `<img src="${displayUrl}" alt="CarCatalog" style="max-width:220px;height:auto;display:block;margin:0 auto;" />`;
+    return `
+      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td align="center" style="padding: 0;">
+            <img src="${displayUrl}" alt="CarCatalog" width="130" style="display:block;width:130px;max-width:130px;height:auto;margin:0 auto;" />
+          </td>
+        </tr>
+      </table>`;
   }
-  // Text fallback
+  // Text fallback - center aligned, compact
   return `
-    <div style="display:inline-block;text-align:center;">
-      <div style="color:#ffffff;font-size:30px;font-weight:800;letter-spacing:-0.5px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;line-height:1;">
-        Car<span style="color:#ffd700;">Cat</span>ALog
-      </div>
-      <div style="color:rgba(255,255,255,0.75);font-size:11px;margin-top:5px;letter-spacing:2px;text-transform:uppercase;font-family:Arial,sans-serif;">
-        List it &nbsp;&middot;&nbsp; Sell it &nbsp;&middot;&nbsp; Buy it
-      </div>
-    </div>`;
+    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td align="center" style="padding: 0;">
+          <div style="display:inline-block;text-align:center;line-height:1.2;">
+            <div style="color:#ffffff;font-size:22px;font-weight:900;letter-spacing:-0.5px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;line-height:1;">
+              <span style="color:#e63946;">Car</span><span style="color:#90e0ef;">Cat</span><span style="color:#ffd700;">A</span><span style="color:#ffffff;">Log</span>
+            </div>
+            <div style="color:rgba(255,255,255,0.75);font-size:10px;margin-top:3px;letter-spacing:1.5px;text-transform:uppercase;font-family:Arial,sans-serif;">
+              List it &bull; Sell it &bull; Buy it
+            </div>
+          </div>
+        </td>
+      </tr>
+    </table>`;
 };
 
 /**
@@ -44,7 +53,7 @@ const welcomeEmail = (name, email) => {
           body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; }
           .email-wrapper { background: #f5f5f5; padding: 40px 20px; }
           .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-          .logo-header { background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%); padding: 30px 40px; text-align: center; }
+          .logo-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px 30px; text-align: center; }
           .header { background: white; padding: 30px 40px 20px; text-align: center; }
           .header h1 { color: #0066cc; font-size: 26px; margin-bottom: 8px; }
           .header p { color: #666; font-size: 15px; }
@@ -121,7 +130,7 @@ const loginNotificationEmail = (name, email, ipAddress, userAgent) => {
           body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; }
           .email-wrapper { background: #f5f5f5; padding: 40px 20px; }
           .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-          .logo-header { background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%); padding: 30px 40px; text-align: center; }
+          .logo-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px 30px; text-align: center; }
           .header { background: white; padding: 30px 40px 20px; text-align: center; }
           .header h1 { color: #0066cc; font-size: 26px; margin-bottom: 8px; }
           .content { padding: 20px 40px 40px; background: white; }
@@ -187,7 +196,7 @@ const passwordResetEmail = (name, email, resetToken) => {
           body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; }
           .email-wrapper { background: #f5f5f5; padding: 40px 20px; }
           .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-          .logo-header { background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%); padding: 30px 40px; text-align: center; }
+          .logo-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px 30px; text-align: center; }
           .logo { max-width: 180px; height: auto; }
           .header { background: white; padding: 40px 40px 20px; text-align: center; }
           .header h1 { color: #0066cc; font-size: 28px; margin-bottom: 10px; }
@@ -287,7 +296,7 @@ const emailVerificationEmail = (name, email, verificationToken) => {
           body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; }
           .email-wrapper { background: #f5f5f5; padding: 40px 20px; }
           .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-          .logo-header { background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%); padding: 30px 40px; text-align: center; }
+          .logo-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px 30px; text-align: center; }
           .logo-text { color: #ffffff; font-size: 28px; font-weight: 800; letter-spacing: -0.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; }
           .logo-text span { color: #ffd700; }
           .logo-tagline { color: rgba(255,255,255,0.8); font-size: 12px; margin-top: 4px; letter-spacing: 1px; text-transform: uppercase; }
@@ -314,10 +323,7 @@ const emailVerificationEmail = (name, email, verificationToken) => {
         <div class="email-wrapper">
           <div class="container">
             <div class="logo-header">
-              ${logoUrl
-                ? `<img src="${logoUrl}" alt="CarCatalog" style="max-width: 180px; height: auto;" />`
-                : `<div class="logo-text">Car<span>Cat</span>ALog</div><div class="logo-tagline">List it · Sell it · Buy it</div>`
-              }
+              ${renderLogoHeader(logoUrl)}
             </div>
             
             <div class="header">
@@ -394,7 +400,7 @@ const carListingSuccessEmail = (name, email, carDetails) => {
           body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; }
           .email-wrapper { background: #f5f5f5; padding: 40px 20px; }
           .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-          .logo-header { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); padding: 30px 40px; text-align: center; }
+          .logo-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px 30px; text-align: center; }
           .logo { max-width: 180px; height: auto; }
           .header { background: white; padding: 40px 40px 20px; text-align: center; }
           .header h1 { color: #28a745; font-size: 28px; margin-bottom: 10px; }
@@ -541,6 +547,7 @@ The CarCatalog Team
 };
 
 module.exports = {
+  renderLogoHeader,
   welcomeEmail,
   loginNotificationEmail,
   passwordResetEmail,

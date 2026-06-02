@@ -5,6 +5,7 @@
 
 const nodemailer = require('nodemailer');
 const sgMail = require('@sendgrid/mail');
+const { renderLogoHeader } = require('../utils/emailTemplates');
 
 class EmailService {
   constructor() {
@@ -174,7 +175,7 @@ class EmailService {
         <div class="email-wrapper">
           <div class="container">
             <div class="logo-header">
-              ${logoUrl ? `<img src="${logoUrl.includes('res.cloudinary.com') ? logoUrl.replace('/upload/','/upload/e_make_transparent,w_220,f_png/') : logoUrl}" alt="CarCatalog" style="max-width:220px;height:auto;display:block;margin:0 auto;" />` : `<div style="color:#ffffff;font-size:28px;font-weight:800;letter-spacing:-0.5px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">Car<span style=""color:#ffd700;"">Cat</span>ALog</div><div style=""color:rgba(255,255,255,0.8);font-size:12px;margin-top:4px;letter-spacing:1px;text-transform:uppercase;"">List it &middot; Sell it &middot; Buy it</div>`}
+              ${renderLogoHeader(logoUrl)}
             </div>
             <div class="header">
               <h1>Payment Confirmed!</h1>
@@ -350,7 +351,7 @@ This is an automated email. Please do not reply to this message.
           <div class="email-wrapper">
             <div class="container">
               <div class="logo-header">
-                ${logoUrl ? `<img src="${logoUrl.includes('res.cloudinary.com') ? logoUrl.replace('/upload/','/upload/e_make_transparent,w_220,f_png/') : logoUrl}" alt="CarCatalog" style="max-width:220px;height:auto;display:block;margin:0 auto;" />` : `<div style="color:#ffffff;font-size:28px;font-weight:800;letter-spacing:-0.5px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">Car<span style=""color:#ffd700;"">Cat</span>ALog</div><div style=""color:rgba(255,255,255,0.8);font-size:12px;margin-top:4px;letter-spacing:1px;text-transform:uppercase;"">List it &middot; Sell it &middot; Buy it</div>`}
+                ${renderLogoHeader(logoUrl)}
               </div>
               <div class="header">
                 <h1>Subscription Renewal Reminder</h1>
@@ -473,7 +474,7 @@ The CarCatalog Team
           <div class="email-wrapper">
             <div class="container">
               <div class="logo-header">
-                ${logoUrl ? `<img src="${logoUrl.includes('res.cloudinary.com') ? logoUrl.replace('/upload/','/upload/e_make_transparent,w_220,f_png/') : logoUrl}" alt="CarCatalog" style="max-width:220px;height:auto;display:block;margin:0 auto;" />` : `<div style="color:#ffffff;font-size:28px;font-weight:800;letter-spacing:-0.5px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">Car<span style=""color:#ffd700;"">Cat</span>ALog</div><div style=""color:rgba(255,255,255,0.8);font-size:12px;margin-top:4px;letter-spacing:1px;text-transform:uppercase;"">List it &middot; Sell it &middot; Buy it</div>`}
+                ${renderLogoHeader(logoUrl)}
               </div>
               <div class="header">
                 <h1>Subscription Renewed!</h1>
@@ -590,7 +591,7 @@ The CarCatalog Team
           <div class="email-wrapper">
             <div class="container">
               <div class="logo-header">
-                ${logoUrl ? `<img src="${logoUrl.includes('res.cloudinary.com') ? logoUrl.replace('/upload/','/upload/e_make_transparent,w_220,f_png/') : logoUrl}" alt="CarCatalog" style="max-width:220px;height:auto;display:block;margin:0 auto;" />` : `<div style="color:#ffffff;font-size:28px;font-weight:800;letter-spacing:-0.5px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">Car<span style=""color:#ffd700;"">Cat</span>ALog</div><div style=""color:rgba(255,255,255,0.8);font-size:12px;margin-top:4px;letter-spacing:1px;text-transform:uppercase;"">List it &middot; Sell it &middot; Buy it</div>`}
+                ${renderLogoHeader(logoUrl)}
               </div>
               <div class="header">
                 <h1>Payment Failed</h1>
@@ -710,7 +711,7 @@ The CarCatalog Team
           <div class="email-wrapper">
             <div class="container">
               <div class="logo-header">
-                ${logoUrl ? `<img src="${logoUrl.includes('res.cloudinary.com') ? logoUrl.replace('/upload/','/upload/e_make_transparent,w_220,f_png/') : logoUrl}" alt="CarCatalog" style="max-width:220px;height:auto;display:block;margin:0 auto;" />` : `<div style="color:#ffffff;font-size:28px;font-weight:800;letter-spacing:-0.5px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">Car<span style=""color:#ffd700;"">Cat</span>ALog</div><div style=""color:rgba(255,255,255,0.8);font-size:12px;margin-top:4px;letter-spacing:1px;text-transform:uppercase;"">List it &middot; Sell it &middot; Buy it</div>`}
+                ${renderLogoHeader(logoUrl)}
               </div>
               <div class="header">
                 <h1>Subscription Expired</h1>
