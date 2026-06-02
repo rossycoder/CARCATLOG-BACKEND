@@ -1,8 +1,10 @@
 const { verifyToken } = require('../utils/jwtUtils');
 const User = require('../models/User');
+const TradeDealer = require('../models/TradeDealer');
 
 /**
  * Protect routes - require authentication
+ * Accepts both regular user JWT and trade dealer JWT
  */
 const protect = async (req, res, next) => {
   let token;
@@ -30,17 +32,38 @@ const protect = async (req, res, next) => {
       });
     }
 
-    // Get user from token
-    req.user = await User.findById(decoded.id).select('-password');
+    // First try to find as regular user
+    const user = await User.findById(decoded.id).select('-password');
     
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not found'
-      });
+    if (user) {
+      req.user = user;
+      return next();
     }
 
-    next();
+    // If not found as user, try trade dealer
+    const dealer = await TradeDealer.findById(decoded.id);
+    if (dealer) {
+      // Create a user-like object from dealer so downstream controllers work
+      req.user = {
+        _id: dealer._id,
+        id: dealer._id,
+        email: dealer.email,
+        name: dealer.businessName,
+        isAdmin: false,
+        role: 'trade',
+        isEmailVerified: true, // dealers are pre-verified
+        isTradeDealer: true,
+        dealer: dealer
+      };
+      req.dealer = dealer;
+      return next();
+    }
+
+    return res.status(401).json({
+      success: false,
+      message: 'User not found'
+    });
+
   } catch (error) {
     return res.status(401).json({
       success: false,
@@ -54,8 +77,8 @@ const protect = async (req, res, next) => {
  * Blocks unverified users from selling/listing vehicles
  */
 const requireEmailVerified = (req, res, next) => {
-  // Admin users bypass email verification requirement
-  if (req.user?.isAdmin || req.user?.role === 'admin') {
+  // Admin and trade dealers bypass email verification requirement
+  if (req.user?.isAdmin || req.user?.role === 'admin' || req.user?.isTradeDealer || req.user?.role === 'trade') {
     return next();
   }
 
@@ -75,8 +98,8 @@ const requireEmailVerified = (req, res, next) => {
  * Blocks unverified users from most website features except basic browsing
  */
 const requireEmailVerifiedForAccess = (req, res, next) => {
-  // Admin users bypass email verification requirement
-  if (req.user?.isAdmin || req.user?.role === 'admin') {
+  // Admin and trade dealers bypass email verification requirement
+  if (req.user?.isAdmin || req.user?.role === 'admin' || req.user?.isTradeDealer || req.user?.role === 'trade') {
     return next();
   }
 
