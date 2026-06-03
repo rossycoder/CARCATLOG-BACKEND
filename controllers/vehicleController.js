@@ -858,12 +858,18 @@ class VehicleController {
       
       // Ensure allValuations is properly structured for frontend
       // Frontend expects: allValuations.private, allValuations.retail, allValuations.trade
+      // CRITICAL: Only set allValuations if we have REAL valuation data (not just price fallback)
+      // If we fall back to car.price, frontend will see marketValue === car.price and show "No valuation data"
       if (carData.valuation && !carData.allValuations) {
-        carData.allValuations = {
-          private: carData.valuation.privatePrice || carData.price,
-          retail: carData.valuation.dealerPrice || carData.price,
-          trade: carData.valuation.partExchangePrice || carData.price
-        };
+        const hasRealValuation = carData.valuation.privatePrice || carData.valuation.dealerPrice || carData.valuation.partExchangePrice;
+        if (hasRealValuation) {
+          carData.allValuations = {
+            private: carData.valuation.privatePrice || null,
+            retail: carData.valuation.dealerPrice || null,
+            trade: carData.valuation.partExchangePrice || null
+          };
+        }
+        // If no real valuation data, leave allValuations undefined so frontend shows "No valuation data"
       }
       
       // If allValuations exists but estimatedValue doesn't match private price, update it
