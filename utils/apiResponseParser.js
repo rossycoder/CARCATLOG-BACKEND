@@ -148,8 +148,8 @@ function parseCheckCarDetailsResponse(data) {
     // ModelVariant contains base model (e.g., "500")
     // For bikes: Try Model first, then ModelVariant, then DvlaModel, then VehicleReg.Model
     model: extractedModel || 'Unknown', // Default to 'Unknown' if no model found
-    // variant: use ModelVariant (trim/spec level) first, DvlaModel is the full model string not the variant
-    variant: modelData.ModelVariant || smmtDetails.ModelVariant || smmtDetails.Range || modelData.Range || vehicleId.DvlaModel || null,
+    // variant: prioritize SmmtDetails.Variant (most accurate trim level), then ModelVariant, avoid Range (that's the model)
+    variant: smmtDetails.Variant || modelData.ModelVariant || smmtDetails.ModelVariant || vehicleId.DvlaModel || null,
     year: extractNumber(vehicleId.YearOfManufacture),
     fuelType: normalizeFuelType(modelData.FuelType || vehicleId.DvlaFuelType),
     transmission: normalizeTransmission(transmission.TransmissionType || smmtDetails.Transmission),
