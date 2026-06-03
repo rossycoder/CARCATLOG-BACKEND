@@ -4,6 +4,9 @@ const UniversalAutoCompleteService = require('../services/universalAutoCompleteS
 const ElectricVehicleEnhancementService = require('../services/electricVehicleEnhancementService');
 const { normalizeMake } = require('../utils/makeNormalizer');
 const { normalizeModelVariant } = require('../utils/modelVariantNormalizer');
+const EmailService = require('../services/emailService');
+const { carListingSuccessEmail } = require('../utils/emailTemplates');
+const emailService = new EmailService();
 
 // Initialize services
 const universalService = new UniversalAutoCompleteService();
@@ -471,6 +474,32 @@ exports.createVehicle = async (req, res) => {
 
     // Update dealer stats
     await req.dealer.updateStats();
+
+    // Send car listing confirmation email to trade dealer
+    try {
+      const carDetails = {
+        id: vehicle._id,
+        make: vehicle.make,
+        model: vehicle.model,
+        year: vehicle.year,
+        registration: vehicle.registrationNumber,
+        price: vehicle.price
+      };
+      const emailTemplate = carListingSuccessEmail(
+        req.dealer.businessName,
+        req.dealer.email,
+        carDetails
+      );
+      await emailService.sendEmail(
+        req.dealer.email,
+        emailTemplate.subject,
+        emailTemplate.text,
+        emailTemplate.html
+      );
+    } catch (emailError) {
+      console.error('[Trade Inventory] Failed to send listing email:', emailError.message);
+      // Don't block the response if email fails
+    }
 
     res.status(201).json({
       success: true,
