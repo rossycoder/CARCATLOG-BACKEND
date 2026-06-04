@@ -135,21 +135,28 @@ function parseCheckCarDetailsResponse(data) {
   // CRITICAL: For bikes, make/model often in VehicleRegistration instead of ModelData
   // Also handle empty strings as null
   const extractedMake = vehicleId.DvlaMake || modelData.Make || vehicleReg.Make || smmtDetails.Marque || null;
-  // model: use base model name only - ModelVariant is the trim level, not the model name
-  const extractedModel = modelData.Model || vehicleReg.Model || 
+  
+  // CRITICAL FIX: Use ModelData.Range as the base model name - it's always the short clean name
+  // e.g. Range="5 Series", Model="530d xDrive M Sport MHEV Auto" → use Range as model
+  // e.g. Range="C30", Model="C30 R-Design D Auto" → use Range as model
+  const rangeValue = modelData.Range || smmtDetails.Range || null;
+  const extractedModel = rangeValue ||
+                        modelData.Model || vehicleReg.Model || 
                         (vehicleId.DvlaModel && vehicleId.DvlaModel.trim() !== '' ? vehicleId.DvlaModel : null) || 
                         smmtDetails.Model || null;
+
+  // CRITICAL FIX: variant = full model name (detailed trim), not the short Range
+  // e.g. "530d xDrive M Sport MHEV Auto" or SmmtDetails.Variant = "530D XDRIVE M SPORT"
+  const extractedVariant = rangeValue 
+    ? (modelData.Model || smmtDetails.Variant || modelData.ModelVariant || vehicleId.DvlaModel || null)
+    : (smmtDetails.Variant || modelData.ModelVariant || vehicleId.DvlaModel || null);
   
 
   return {
     make: extractedMake,
-    // CRITICAL FIX: Swap model and variant - DVLA has them backwards
-    // DvlaModel contains full variant (e.g., "500 POP RHD")
-    // ModelVariant contains base model (e.g., "500")
-    // For bikes: Try Model first, then ModelVariant, then DvlaModel, then VehicleReg.Model
-    model: extractedModel || 'Unknown', // Default to 'Unknown' if no model found
-    // variant: prioritize SmmtDetails.Variant (most accurate trim level), then ModelVariant, avoid Range (that's the model)
-    variant: smmtDetails.Variant || modelData.ModelVariant || smmtDetails.ModelVariant || vehicleId.DvlaModel || null,
+    model: extractedModel || 'Unknown',
+    // CRITICAL FIX: variant = detailed trim (ModelData.Model or SmmtDetails.Variant)
+    variant: extractedVariant,
     year: extractNumber(vehicleId.YearOfManufacture),
     fuelType: normalizeFuelType(modelData.FuelType || vehicleId.DvlaFuelType),
     transmission: normalizeTransmission(transmission.TransmissionType || smmtDetails.Transmission),

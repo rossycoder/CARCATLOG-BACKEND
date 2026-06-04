@@ -122,6 +122,8 @@ class DVLAService {
       taxStatus: dvlaData.taxStatus || null,
       motStatus: dvlaData.motStatus || null,
       motExpiry: dvlaData.motExpiryDate ? new Date(dvlaData.motExpiryDate) : null,
+      // CRITICAL: Also set motDue from DVLA motExpiryDate
+      motDue: dvlaData.motExpiryDate ? new Date(dvlaData.motExpiryDate) : null,
       dvlaLastUpdated: new Date(),
       // Optional fields from additionalData
       price: additionalData.price || null,

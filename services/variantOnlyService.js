@@ -6,6 +6,7 @@
 
 const CheckCarDetailsClient = require('../clients/CheckCarDetailsClient');
 const VehicleHistory = require('../models/VehicleHistory');
+const { normalizeModelVariant } = require('../utils/modelVariantNormalizer');
 
 class VariantOnlyService {
   constructor() {
@@ -51,36 +52,25 @@ class VariantOnlyService {
         };
       }
       
-      // Extract variant from API response - prioritize the real API variant
-      const variant = vehicleData.modelVariant || 
-                      vehicleData.variant || 
-                      vehicleData.trim || 
-                      vehicleData.grade || 
-                      vehicleData.specification ||
-                      vehicleData.subModel ||
-                      null;
-      
-      const make = vehicleData.make || null;
-      const model = vehicleData.model || null;
+      // Extract variant from API response
+      // vehicleData comes from parseCheckCarDetailsResponse which already uses Range as model
+      // and ModelData.Model as variant — so vehicleData.variant is the trim detail
+      let variant = vehicleData.variant || null;
+      let make    = vehicleData.make    || null;
+      let model   = vehicleData.model   || null;
       const engineSize = vehicleData.engineSize ? parseFloat(vehicleData.engineSize) : null;
-      
-      
-      // Cache the REAL API variant (not fallback)
-      await this.cacheVariantOnly(registration, {
-        variant,
-        make,
-        model,
-        engineSize
-      });
-      
-      return {
-        variant,
-        make,
-        model,
-        engineSize,
-        cached: false,
-        cost: 0.05
-      };
+
+      // CRITICAL: normalise model/variant in case API returns them swapped
+      if (model && make) {
+        const norm = normalizeModelVariant(model, variant, make);
+        model   = norm.model;
+        variant = norm.variant;
+      }
+
+      // Cache the normalised values
+      await this.cacheVariantOnly(registration, { variant, make, model, engineSize });
+
+      return { variant, make, model, engineSize, cached: false, cost: 0.05 };
       
     } catch (error) {
       console.error(`❌ Variant API call failed for ${registration}:`, error.message);
@@ -120,10 +110,18 @@ class VariantOnlyService {
       }
 
       // Return only variant-related data from cache
+      // CRITICAL: normalise model/variant — cache may have old swapped values
+      let cachedModel   = cached.model || null;
+      let cachedVariant = cached.variant || null;
+      if (cachedModel && cached.make) {
+        const norm = normalizeModelVariant(cachedModel, cachedVariant, cached.make);
+        cachedModel   = norm.model;
+        cachedVariant = norm.variant;
+      }
       return {
-        variant: cached.variant || null,
+        variant: cachedVariant,
         make: cached.make || null,
-        model: cached.model || null,
+        model: cachedModel,
         engineSize: cached.engineCapacity ? parseFloat((cached.engineCapacity / 1000).toFixed(1)) : null
       };
       

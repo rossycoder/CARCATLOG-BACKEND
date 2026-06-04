@@ -227,18 +227,22 @@ class VehicleController {
           if (cached.color) carData.color = cached.color;
           if (cached.estimatedValue) carData.estimatedValue = cached.estimatedValue;
           if (cached.motStatus) carData.motStatus = cached.motStatus;
-          if (cached.motDue) carData.motDue = cached.motDue;
-          if (cached.motExpiry) carData.motExpiry = cached.motExpiry;
+          // CRITICAL FIX: VehicleHistory uses 'motExpiryDate', not 'motDue'/'motExpiry'
+          if (cached.motExpiryDate) {
+            carData.motDue = cached.motExpiryDate;
+            carData.motExpiry = cached.motExpiryDate;
+          }
           if (cached.motHistory) carData.motHistory = cached.motHistory;
           if (cached.runningCosts) carData.runningCosts = cached.runningCosts;
           
           // SWAP DETECTION: Fix model/variant if they're swapped (cached data may have old wrong values)
-          // If model starts with variant + space, they're swapped (e.g. model="FIESTA ZETEC CLIMATE", variant="Fiesta")
-          if (carData.model && carData.variant) {
+          // Always apply normalised values — normalizeModelVariant returns original if already correct
+          if (carData.model) {
             const { model: nm, variant: nv, wasSwapped } = normalizeModelVariant(carData.model, carData.variant, carData.make);
+            carData.model = nm;
+            carData.variant = nv;
             if (wasSwapped) {
-              carData.model = nm;
-              carData.variant = nv;
+              console.log(`🔄 [VehicleController/cache] model/variant corrected: model="${nm}", variant="${nv}"`);
             }
           }
 
@@ -342,12 +346,11 @@ class VehicleController {
       carData.make = normalizeMake(carData.make);
 
       // CRITICAL: Normalize model/variant swap (e.g. model="FIESTA ZETEC CLIMATE", variant="Fiesta")
+      // Always apply normalised values — normalizeModelVariant returns original if already correct
       if (carData.model) {
-        const { model: nm, variant: nv, wasSwapped } = normalizeModelVariant(carData.model, carData.variant, carData.make);
-        if (wasSwapped) {
-          carData.model = nm;
-          carData.variant = nv;
-        }
+        const { model: nm, variant: nv } = normalizeModelVariant(carData.model, carData.variant, carData.make);
+        carData.model = nm;
+        carData.variant = nv;
       }
 
       const car = new Car(carData);

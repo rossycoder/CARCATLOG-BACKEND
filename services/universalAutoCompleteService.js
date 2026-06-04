@@ -30,6 +30,7 @@ const mongoose = require('mongoose');
 const VehicleHistory = require('../models/VehicleHistory');
 const ElectricVehicleEnhancementService = require('./electricVehicleEnhancementService');
 const { normalizeMake } = require('../utils/makeNormalizer');
+const { normalizeModelVariant } = require('../utils/modelVariantNormalizer');
 
 class UniversalAutoCompleteService {
   constructor() {
@@ -96,7 +97,9 @@ class UniversalAutoCompleteService {
         }
 
         // Step 2: Fetch ALL data from API in parallel
-        const apiData = await this.fetchAllAPIData(vrm);
+        // CRITICAL: Pass advertStatus to skip expensive history check for pending_payment cars
+        const isPendingPayment = vehicle.advertStatus === 'pending_payment';
+        const apiData = await this.fetchAllAPIData(vrm, isPendingPayment);
         
         // Step 3: Parse and normalize all data
         const parsedData = this.parseAllAPIData(apiData);
@@ -260,8 +263,10 @@ class UniversalAutoCompleteService {
 
   /**
    * Fetch ALL data from CheckCarDetails API with deduplication
+   * @param {string} vrm - Vehicle registration mark
+   * @param {boolean} skipHistoryCheck - Skip expensive history check for pending_payment cars
    */
-  async fetchAllAPIData(vrm) {
+  async fetchAllAPIData(vrm, skipHistoryCheck = false) {
     
     // Check for recent API calls in session (deduplication)
     const sessionKey = vrm.toUpperCase();
@@ -288,7 +293,7 @@ class UniversalAutoCompleteService {
     }
     
     // Create new API call promise for coalescing
-    const apiCallPromise = this.executeAPICall(vrm);
+    const apiCallPromise = this.executeAPICall(vrm, skipHistoryCheck);
     this.pendingApiCalls.set(sessionKey, apiCallPromise);
     
     try {
@@ -311,15 +316,22 @@ class UniversalAutoCompleteService {
   /**
    * Execute the actual API call (separated for deduplication logic)
    * @param {string} vrm - Vehicle registration mark
+   * @param {boolean} skipHistoryCheck - Skip expensive history check for pending_payment cars
    * @returns {Promise<Object>} API response data
    */
-  async executeAPICall(vrm) {
+  async executeAPICall(vrm, skipHistoryCheck = false) {
+    // CRITICAL: Define endpoints - skip expensive history check for pending_payment
     const endpoints = [
       { name: 'vehicleSpecs', endpoint: 'Vehiclespecs', cost: 0.05 },
-      { name: 'vehicleHistory', endpoint: 'carhistorycheck', cost: 1.82 },
+      // ONLY include history check if not pending_payment
+      ...(skipHistoryCheck ? [] : [{ name: 'vehicleHistory', endpoint: 'carhistorycheck', cost: 1.82 }]),
       { name: 'motHistory', endpoint: 'mot', cost: 0.02 },
       { name: 'valuation', endpoint: 'vehiclevaluation', cost: 0.12, params: { mileage: 50000 } }
     ];
+    
+    if (skipHistoryCheck) {
+      console.log(`ℹ️  Skipping expensive history check for pending_payment car: ${vrm}`);
+    }
 
     const results = {};
     let totalCost = 0;
@@ -395,6 +407,7 @@ class UniversalAutoCompleteService {
     results._callTimestamp = Date.now();
     results._errors = errors;
     results._successRate = ((endpoints.length - errors.length) / endpoints.length * 100).toFixed(1);
+    results._skippedHistoryCheck = skipHistoryCheck;
     
     return results;
   }
@@ -881,62 +894,65 @@ class UniversalAutoCompleteService {
       // "C30 R-DESIGN D AUTO" → "C30"
       // "DB9 V12 Auto" → "DB9" (Aston Martin fix)
       if (rawModel) {
-        // SPECIAL CASE: Aston Martin - extract base model name only
         const makeLower = parsed.make ? parsed.make.toLowerCase() : '';
-        if (makeLower === 'aston martin' || makeLower === 'aston-martin') {
+        
+        // CRITICAL FIX: Use ModelData.Range as the base model name (most accurate short name)
+        // Range = "5 Series", "C30", "A4", "Golf" etc. - this is what users expect to see
+        const rangeValue = specs.ModelData?.Range || specs.SmmtDetails?.Range || null;
+        
+        if (rangeValue) {
+          // Use Range as the base model name - it's always the short, clean model name
+          parsed.model = rangeValue;
+          console.log(`✅ Using Range as model: "${rangeValue}" (was: "${rawModel}")`);
+        } else if (makeLower === 'aston martin' || makeLower === 'aston-martin') {
           // Aston Martin models: DB9, DB11, DBS, Vantage, Rapide, Vanquish, etc.
           const astonModelMatch = rawModel.match(/^(DB\d+|DBS|Vantage|Rapide|Vanquish|Virage|V\d+)/i);
           if (astonModelMatch) {
             parsed.model = astonModelMatch[1];
           } else {
-            // Fallback: take first word
             parsed.model = rawModel.split(/\s+/)[0];
           }
         } else {
-          // Common patterns to remove from model name
+          // Fallback: strip known trim/spec patterns from model string
           const trimPatterns = [
-            /\s+(TYPE\s+[A-Z]|Type\s+[A-Z])/gi, // "TYPE S", "Type R"
-            /\s+I-VTEC/gi, // "I-VTEC"
-            /\s+R-DESIGN/gi, // "R-DESIGN"
-            /\s+D\s+AUTO/gi, // "D AUTO"
-            /\s+XDRIVE/gi, // "xDrive"
-            /\s+SDRIVE/gi, // "sDrive"
-            /\s+M\s+SPORT/gi, // "M Sport"
-            /\s+EDITION/gi, // "Edition"
-            /\s+MHEV/gi, // "MHEV"
-            /\s+(AUTO|MANUAL|AUTOMATIC|SEMI-AUTO)/gi, // Transmission
-            /\s+TOURING/gi, // Body style
+            /\s+(TYPE\s+[A-Z]|Type\s+[A-Z])/gi,
+            /\s+I-VTEC/gi,
+            /\s+R-DESIGN/gi,
+            /\s+D\s+AUTO/gi,
+            /\s+XDRIVE/gi,
+            /\s+SDRIVE/gi,
+            /\s+M\s+SPORT/gi,
+            /\s+EDITION/gi,
+            /\s+MHEV/gi,
+            /\s+(AUTO|MANUAL|AUTOMATIC|SEMI-AUTO)/gi,
+            /\s+TOURING/gi,
             /\s+SALOON/gi,
             /\s+HATCHBACK/gi,
             /\s+ESTATE/gi,
-            /\s+V\d+/gi // Remove V6, V8, V12 engine designations (but not for Aston Martin)
+            /\s+V\d+/gi
           ];
-          
           let cleanModel = rawModel;
           trimPatterns.forEach(pattern => {
             cleanModel = cleanModel.replace(pattern, '');
           });
-          
           parsed.model = cleanModel.trim();
-          
-          if (cleanModel !== rawModel) {
-          }
         }
       } else {
         parsed.model = rawModel;
       }
       
-      // CRITICAL FIX: Prioritize SmmtDetails for variant (more detailed)
-      parsed.variant = specs.SmmtDetails?.Variant || 
+      // CRITICAL FIX: variant = full model name from ModelData.Model (detailed trim)
+      // e.g. "530D XDRIVE M SPORT MHEV AUTO", "C30 R-Design D Auto"
+      parsed.variant = specs.ModelData?.Model || 
+                      specs.SmmtDetails?.Variant || 
                       specs.ModelData?.ModelVariant || 
                       null;
 
-      // SWAP DETECTION: Some APIs return model=full trim, variant=base name (e.g. Ford Fiesta)
-      // If variant is a single word and model starts with that word (case-insensitive), they're swapped
-      if (parsed.model && parsed.variant) {
+      // SWAP DETECTION: If variant is shorter than model, they may still be swapped
+      // (only if Range was not available)
+      if (parsed.model && parsed.variant && !specs.ModelData?.Range) {
         const modelUpper = parsed.model.toUpperCase().trim();
         const variantUpper = parsed.variant.toUpperCase().trim();
-        // Swap if: model starts with variant + space (variant is the base, model is base+trim)
         if (modelUpper.startsWith(variantUpper + ' ')) {
           const trueVariant = parsed.model.substring(parsed.variant.length).trim();
           parsed.model = parsed.variant;
@@ -1108,11 +1124,35 @@ class UniversalAutoCompleteService {
     if (apiData.motHistory) {
       const mot = apiData.motHistory;
       
-      parsed.motStatus = mot.mot?.motStatus || mot.motStatus;
-      parsed.motDueDate = mot.mot?.motDueDate || mot.motDueDate;
+      // CRITICAL FIX: Handle multiple MOT API response formats
+      // Format 1: { motTests: [...] } - DVLA MOT API
+      // Format 2: { mot: { motStatus, motDueDate }, motHistory: [...] } - CheckCarDetails
+      // Format 3: Array directly
+      
+      const motTestsArray = Array.isArray(mot) ? mot :
+                           (mot.motTests || mot.motHistory || mot.tests || mot.mot?.motTests || []);
+      
+      // Get MOT status and due date
+      parsed.motStatus = mot.mot?.motStatus || mot.motStatus || 
+                        (motTestsArray.length > 0 ? 
+                          (motTestsArray[0].testResult === 'PASSED' ? 'Valid' : 'Expired') : null);
+      
+      // CRITICAL FIX: Extract motDueDate from multiple possible locations
+      // Most common: latest test's expiryDate
+      parsed.motDueDate = mot.mot?.motDueDate || 
+                         mot.motDueDate || 
+                         mot.expiryDate ||
+                         (motTestsArray.length > 0 ? motTestsArray[0].expiryDate : null) ||
+                         null;
+      
+      if (parsed.motDueDate) {
+        console.log(`✅ MOT Due Date found: ${parsed.motDueDate}`);
+      } else {
+        console.log(`⚠️  No MOT due date found in response`);
+      }
       
       // Handle both direct motHistory array and nested structure
-      const motTests = mot.motHistory || mot.motTests || mot.tests || [];
+      const motTests = motTestsArray;
       
       if (motTests && motTests.length > 0) {
         parsed.motHistory = motTests.map(test => ({
@@ -1169,6 +1209,18 @@ class UniversalAutoCompleteService {
     vehicle.make = parsedData.make || vehicle.make;
     vehicle.model = parsedData.model || vehicle.model;
     vehicle.variant = parsedData.variant || vehicle.variant;
+
+    // CRITICAL: Ensure model=short name (e.g. "5 Series"), variant=trim detail
+    // parsedData already uses Range as model, but normalizeModelVariant is a safety net
+    if (vehicle.model && vehicle.make) {
+      const { model: nm, variant: nv, wasSwapped } = normalizeModelVariant(vehicle.model, vehicle.variant, vehicle.make);
+      vehicle.model = nm;
+      vehicle.variant = nv;
+      if (wasSwapped) {
+        console.log(`🔄 [UniversalService] model/variant corrected for ${vehicle.registrationNumber}: model="${nm}", variant="${nv}"`);
+      }
+    }
+
     vehicle.year = parsedData.year || vehicle.year;
     vehicle.color = parsedData.color || vehicle.color;
     vehicle.fuelType = parsedData.fuelType || vehicle.fuelType;
@@ -1342,13 +1394,26 @@ class UniversalAutoCompleteService {
     try {
       // Delete existing records - within transaction if provided
       await VehicleHistory.deleteMany({ vrm: vrm }, session ? { session } : {});
-      
+
+      // CRITICAL: Normalise model/variant before caching so the cache never stores swapped values
+      // model = short base name (e.g. "5 Series"), variant = trim detail (e.g. "530D XDRIVE M SPORT AUTO")
+      let saveModel = parsedData.model;
+      let saveVariant = parsedData.variant;
+      if (saveModel && parsedData.make) {
+        const normalised = normalizeModelVariant(saveModel, saveVariant, parsedData.make);
+        saveModel   = normalised.model;
+        saveVariant = normalised.variant;
+        if (normalised.wasSwapped) {
+          console.log(`🔄 [saveToVehicleHistory] corrected model/variant for ${vrm}: model="${saveModel}", variant="${saveVariant}"`);
+        }
+      }
+
       // Create new record with ALL fields
       const vehicleHistory = new VehicleHistory({
         vrm: vrm,
         make: parsedData.make,
-        model: parsedData.model,
-        variant: parsedData.variant, // CRITICAL FIX: Save variant
+        model: saveModel,
+        variant: saveVariant, // CRITICAL FIX: Save variant
         colour: parsedData.color,
         fuelType: parsedData.fuelType,
         yearOfManufacture: parsedData.year,
@@ -1540,9 +1605,20 @@ class UniversalAutoCompleteService {
     // Update all fields from cache
     vehicle.make = cachedData.make || vehicle.make;
     vehicle.model = cachedData.model || vehicle.model;
+    vehicle.variant = cachedData.variant || vehicle.variant; // CRITICAL FIX: also restore variant from cache
     vehicle.color = cachedData.colour || vehicle.color;
     vehicle.fuelType = cachedData.fuelType || vehicle.fuelType;
     vehicle.year = cachedData.yearOfManufacture || vehicle.year;
+
+    // CRITICAL: Normalise model/variant after loading from cache (cache may have old swapped values)
+    if (vehicle.model && vehicle.make) {
+      const { model: nm, variant: nv, wasSwapped } = normalizeModelVariant(vehicle.model, vehicle.variant, vehicle.make);
+      vehicle.model = nm;
+      vehicle.variant = nv;
+      if (wasSwapped) {
+        console.log(`🔄 [UniversalService/cache] model/variant corrected for ${vehicle.registrationNumber}: model="${nm}", variant="${nv}"`);
+      }
+    }
     
     // Running costs
     vehicle.urbanMpg = cachedData.urbanMpg || vehicle.urbanMpg;

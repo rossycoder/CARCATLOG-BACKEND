@@ -293,7 +293,17 @@ function normalizeMakeModel(doc) {
     if (iSeriesPattern.test(doc.model) && doc.variant && iSeriesPattern.test(doc.variant)) {
       [doc.model, doc.variant] = [doc.variant, doc.model];
     }
+
+    const bmwSeriesPattern = /^\d\s*Series$/i;
+
+    // CRITICAL: If variant is "X Series" and model is NOT, they are swapped — fix it.
+    // e.g. model="530D XDRIVE M SPORT MHEV AUTO", variant="5 Series" → swap to correct order
+    if (doc.variant && bmwSeriesPattern.test(doc.variant.trim()) && !bmwSeriesPattern.test((doc.model || '').trim())) {
+      [doc.model, doc.variant] = [doc.variant, doc.model];
+    }
+
     // BMW numeric series (320d → "3 Series", variant="320d")
+    // BUT: Don't overwrite detailed API model names with generic series names
     const modelStr = doc.model || '';
     const variantStr = doc.variant || '';
     const isElectric = /^i[X0-9]/i.test(modelStr) || /^i[X0-9]/i.test(variantStr);
@@ -302,13 +312,33 @@ function normalizeMakeModel(doc) {
       const variantMatch = variantStr.match(/^([1-8])(\d{2})(.*)$/i);
       const hit = modelMatch || variantMatch;
       if (hit) {
-        const seriesModel = `${hit[1]} Series`;
-        const fullVariant = (modelMatch ? modelStr : variantStr).trim();
-        doc.model = seriesModel;
-        if (!doc.variant || doc.variant === modelStr || doc.variant === 'null') {
-          doc.variant = fullVariant;
+        // Only normalize to "X Series" if model is BASIC (just "320d" or similar)
+        // Don't overwrite detailed API models like "530d xDrive M Sport MHEV Auto"
+        const isBasicModel = modelMatch && modelStr.length <= 8 && !modelStr.toLowerCase().includes('series');
+        const isDetailedModel = modelStr.length > 15 || modelStr.toLowerCase().includes('sport') || 
+                               modelStr.toLowerCase().includes('auto') || modelStr.toLowerCase().includes('xdrive');
+        
+        if (isBasicModel && !isDetailedModel) {
+          const seriesModel = `${hit[1]} Series`;
+          const fullVariant = (modelMatch ? modelStr : variantStr).trim();
+          doc.model = seriesModel;
+          if (!doc.variant || doc.variant === modelStr || doc.variant === 'null') {
+            doc.variant = fullVariant;
+          }
         }
       }
+    }
+    
+    // CRITICAL: If model is already a clean "X Series" and variant is a detailed trim string,
+    // they are CORRECTLY assigned — do NOT let the universal swap block below re-swap them.
+    // Return early for BMW if model looks like "X Series" pattern.
+    if (bmwSeriesPattern.test(doc.model) && doc.variant && doc.variant.length > 10) {
+      // Already correct: model="5 Series", variant="530d xDrive M Sport MHEV Auto"
+      // Skip remaining normalization to prevent re-swap
+      if (doc.bodyType) {
+        doc.bodyType = doc.bodyType.charAt(0).toUpperCase() + doc.bodyType.slice(1).toLowerCase();
+      }
+      return; // ← EXIT early, don't run universal swap below
     }
   }
 
@@ -365,7 +395,19 @@ function normalizeMakeModel(doc) {
   if (doc.model && doc.variant) {
     const mUp = doc.model.toUpperCase().trim();
     const vUp = doc.variant.toUpperCase().trim();
-    if (mUp.startsWith(vUp + ' ')) {
+    
+    // Guard: if model is already a known short base model name, it's already correct — don't swap
+    // e.g. model="5 Series", variant="530D XDRIVE M SPORT MHEV AUTO" → already correct, skip
+    const knownRangePattern = /^(\d\s*SERIES|[A-Z]-CLASS|XC\d{2}|V\d{2}|S\d{2}|C\d{2}|DB\d+|DBS|VANTAGE|RAPIDE|VANQUISH|GOLF|POLO|PASSAT|TIGUAN|A[1-8]|Q[2-8]|TT|R8)$/i;
+    const modelIsRange = knownRangePattern.test(mUp);
+
+    // If variant is a known base model name but model is NOT, they are clearly swapped
+    // e.g. model="530D XDRIVE M SPORT MHEV AUTO", variant="5 Series" → needs swap
+    const variantIsRange = knownRangePattern.test(vUp);
+    if (!modelIsRange && variantIsRange) {
+      [doc.model, doc.variant] = [doc.variant, doc.model];
+    } else if (!modelIsRange && !variantIsRange && mUp.startsWith(vUp + ' ')) {
+      // e.g. model="FIESTA ZETEC CLIMATE", variant="Fiesta"
       const trueVariant = doc.model.substring(doc.variant.length).trim();
       doc.model = doc.variant;
       doc.variant = trueVariant || null;
@@ -404,6 +446,13 @@ function clearEVFieldsIfNeeded(doc) {
 // SINGLE PRE-SAVE HOOK — all logic in one place, with loop guard at the top
 // ════════════════════════════════════════════════════════════════════════════
 carSchema.pre('save', async function(next) {
+
+  // ── SKIP NORMALIZATION GUARD ─────────────────────────────────────────────
+  // If skipNormalization flag is set, skip all normalization logic
+  if (this.skipNormalization) {
+    console.log(`Skipping normalization for ${this.registrationNumber} (flag set)`);
+    return next();
+  }
 
   // ── LOOP GUARD ────────────────────────────────────────────────────────────
   // If this save was triggered by code INSIDE this hook (e.g. a service that
@@ -549,6 +598,12 @@ carSchema.pre('save', async function(next) {
           this.variant = this.engineSize && this.fuelType
             ? `${this.engineSize}L ${this.fuelType}`
             : (this.fuelType || 'Standard');
+        }
+
+        // CRITICAL FIX: If model is still Unknown/empty, set it from variantOnlyService
+        // This happens because DVLA doesn't always return model name
+        if ((!this.model || this.model === 'Unknown' || this.model === 'unknown') && vehicleData.model) {
+          this.model = vehicleData.model;
         }
 
         // Link history if available (just set the reference — no extra save)
