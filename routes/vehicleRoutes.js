@@ -70,6 +70,12 @@ router.post(
   vehicleController.dvlaLookup.bind(vehicleController)
 );
 
+// POST /api/vehicles/mot-lookup - Fetch MOT data from CheckCarDetails API (accurate, £0.02)
+router.post(
+  '/mot-lookup',
+  vehicleController.motLookup.bind(vehicleController)
+);
+
 // POST /api/vehicles/validate-registration - Validate registration format
 router.post(
   '/validate-registration',

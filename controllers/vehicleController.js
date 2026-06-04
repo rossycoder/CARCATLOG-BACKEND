@@ -701,6 +701,75 @@ class VehicleController {
   }
 
   /**
+   * POST /api/vehicles/mot-lookup
+   * Fetch MOT data from CheckCarDetails API (more accurate than DVLA)
+   * Also saves the result to DB if vehicleId is provided
+   * Cost: £0.02 per call
+   */
+  async motLookup(req, res, next) {
+    try {
+      const { registrationNumber, vehicleId } = req.body;
+
+      if (!registrationNumber) {
+        return res.status(400).json({ success: false, message: 'registrationNumber is required' });
+      }
+
+      const reg = registrationNumber.toUpperCase().trim();
+
+      // Build CheckCarDetails client (live key)
+      const HistoryAPIClient = require('../clients/HistoryAPIClient');
+      const apiKey = process.env.CHECKCARD_API_KEY || process.env.HISTORY_API_LIVE_KEY;
+      const baseUrl = process.env.CHECKCARD_API_BASE_URL || process.env.HISTORY_API_BASE_URL;
+      const client = new HistoryAPIClient(apiKey, baseUrl, false);
+
+      // Fetch MOT from CheckCarDetails /vehicledata/mot
+      const motData = await client.getMOTHistory(reg);
+
+      // getMOTHistory returns { vrm, tests, motStatus, motDueDate }
+      // tests[] = [{ completedDate, testResult, odometerValue, expiryDate }, ...]
+      const motDueDate = motData.motDueDate || (motData.tests && motData.tests[0]?.expiryDate) || null;
+      const motStatus  = motData.motStatus || (motData.tests && motData.tests[0]?.testResult === 'PASSED' ? 'Valid' : null);
+
+      // Build motHistory array for DB
+      const motHistory = (motData.tests || []).map(t => ({
+        testDate:    t.completedDate ? new Date(t.completedDate) : new Date(),
+        expiryDate:  t.expiryDate   ? new Date(t.expiryDate)    : null,
+        testResult:  t.testResult   || 'PASSED',
+        odometerValue: t.odometerValue || null,
+        odometerUnit:  'mi',
+      }));
+
+      // If vehicleId provided, save to DB directly
+      if (vehicleId) {
+        const Car = require('../models/Car');
+        const updateData = {};
+        if (motDueDate) {
+          updateData.motDue    = new Date(motDueDate);
+          updateData.motExpiry = new Date(motDueDate);
+        }
+        if (motStatus)  updateData.motStatus  = motStatus;
+        if (motHistory.length > 0) updateData.motHistory = motHistory;
+
+        if (Object.keys(updateData).length > 0) {
+          await Car.updateOne({ _id: vehicleId }, { $set: updateData });
+        }
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          motDueDate,
+          motStatus,
+          motHistory,
+        }
+      });
+    } catch (err) {
+      console.error('❌ motLookup error:', err.message);
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
+  /**
    * POST /api/vehicles/validate-registration
    * Validate registration number format
    */
