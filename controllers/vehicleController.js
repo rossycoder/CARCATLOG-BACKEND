@@ -603,10 +603,17 @@ class VehicleController {
       // No cache found - make API calls
       
       try {
-        // Call both APIs in parallel for faster response
-        const [dvlaResult, historyResult] = await Promise.allSettled([
+        // Build MOT client for parallel fetch
+        const HistoryAPIClient = require('../clients/HistoryAPIClient');
+        const motApiKey  = process.env.CHECKCARD_API_KEY || process.env.HISTORY_API_LIVE_KEY;
+        const motBaseUrl = process.env.CHECKCARD_API_BASE_URL || process.env.HISTORY_API_BASE_URL;
+        const motClient  = new HistoryAPIClient(motApiKey, motBaseUrl, false);
+
+        // Call DVLA, CheckCarDetails history, AND MOT all in parallel
+        const [dvlaResult, historyResult, motResult] = await Promise.allSettled([
           dvlaService.lookupVehicle(registrationNumber),
-          historyService.checkVehicleHistory(registrationNumber, false)
+          historyService.checkVehicleHistory(registrationNumber, false),
+          motClient.getMOTHistory(registrationNumber)
         ]);
         
         // Process DVLA result
@@ -621,6 +628,42 @@ class VehicleController {
         if (historyResult.status === 'fulfilled') {
           historyData = historyResult.value;
         } else {
+        }
+
+        // Process MOT result
+        let motDueDate  = null;
+        let motStatus   = null;
+        let motHistory  = [];
+        if (motResult.status === 'fulfilled' && motResult.value) {
+          const md = motResult.value;
+          // parseMOTResponse returns { vrm, tests, motStatus, motDueDate }
+          motDueDate = md.motDueDate || (md.tests && md.tests[0]?.expiryDate) || null;
+          motStatus  = md.motStatus  || (md.tests && md.tests[0]?.testResult === 'PASSED' ? 'Valid' : null);
+          motHistory = (md.tests || []).map(t => ({
+            testDate:      t.completedDate ? new Date(t.completedDate) : new Date(),
+            expiryDate:    t.expiryDate    ? new Date(t.expiryDate)    : null,
+            testResult:    t.testResult    || 'PASSED',
+            odometerValue: t.odometerValue || null,
+            odometerUnit:  'mi'
+          }));
+
+          // ── Save MOT to DB immediately if we have an existing car without MOT ──
+          if (existingCar && motDueDate) {
+            try {
+              const motUpdate = { motDue: new Date(motDueDate), motExpiry: new Date(motDueDate) };
+              if (motStatus)          motUpdate.motStatus  = motStatus;
+              if (motHistory.length)  motUpdate.motHistory = motHistory;
+              await Car.updateOne({ _id: existingCar._id }, { $set: motUpdate });
+              console.log(`✅ [dvlaLookup] MOT saved to DB for ${registrationNumber}: ${motDueDate}`);
+            } catch (saveErr) {
+              console.warn(`⚠️  [dvlaLookup] Failed to save MOT to DB: ${saveErr.message}`);
+            }
+          }
+        } else {
+          console.warn(`⚠️  [dvlaLookup] MOT fetch failed for ${registrationNumber}: ${motResult.reason?.message}`);
+          // Fall back to DVLA motExpiryDate if MOT API fails
+          motDueDate = dvlaData?.motExpiryDate || null;
+          motStatus  = dvlaData?.motStatus     || null;
         }
         
         // Merge data - prioritize CheckCarDetails for model info as it's more comprehensive
@@ -641,15 +684,19 @@ class VehicleController {
           co2Emissions: historyData?.co2Emissions || dvlaData?.co2Emissions,
           
           // DVLA specific
-          taxStatus: dvlaData?.taxStatus,
-          taxDueDate: dvlaData?.taxDueDate,
-          motStatus: dvlaData?.motStatus,
-          motExpiryDate: dvlaData?.motExpiryDate,
+          taxStatus:    dvlaData?.taxStatus,
+          taxDueDate:   dvlaData?.taxDueDate,
+
+          // MOT - use CheckCarDetails MOT API first (more accurate), fall back to DVLA
+          motStatus:    motStatus  || dvlaData?.motStatus,
+          motExpiryDate: motDueDate || dvlaData?.motExpiryDate,
+          motHistory,
           
           // Metadata
           _sources: {
             dvla: dvlaResult.status === 'fulfilled',
-            checkCarDetails: historyResult.status === 'fulfilled'
+            checkCarDetails: historyResult.status === 'fulfilled',
+            mot: motResult.status === 'fulfilled'
           },
           // If we fell through from an existing car (motDue was missing), include its ID
           // so the frontend can PATCH the MOT data back to the correct record
@@ -2284,16 +2331,50 @@ class VehicleController {
       // Instead, directly get vehicle data from API without saving
       
       let result; // Declare result outside try block
+
+      // Fetch MOT in parallel with vehicle data (£0.02 - accurate source)
+      const HistoryAPIClient = require('../clients/HistoryAPIClient');
+      const motApiKey  = process.env.CHECKCARD_API_KEY || process.env.HISTORY_API_LIVE_KEY;
+      const motBaseUrl = process.env.CHECKCARD_API_BASE_URL || process.env.HISTORY_API_BASE_URL;
+      const motClient  = new HistoryAPIClient(motApiKey, motBaseUrl, false);
+
+      const [vehicleDataResponse, motLookupResult] = await Promise.allSettled([
+        universalService.getVehicleData(cleanedReg, parsedMileage || 50000),
+        motClient.getMOTHistory(cleanedReg)
+      ]);
+
+      // Extract MOT data from parallel call
+      let fetchedMotDue     = null;
+      let fetchedMotStatus  = null;
+      let fetchedMotHistory = [];
+      if (motLookupResult.status === 'fulfilled' && motLookupResult.value) {
+        const md = motLookupResult.value;
+        fetchedMotDue     = md.motDueDate || (md.tests && md.tests[0]?.expiryDate) || null;
+        fetchedMotStatus  = md.motStatus  || (md.tests && md.tests[0]?.testResult === 'PASSED' ? 'Valid' : null);
+        fetchedMotHistory = (md.tests || []).map(t => ({
+          testDate:      t.completedDate ? new Date(t.completedDate) : new Date(),
+          expiryDate:    t.expiryDate    ? new Date(t.expiryDate)    : null,
+          testResult:    t.testResult    || 'PASSED',
+          odometerValue: t.odometerValue || null,
+          odometerUnit:  'mi'
+        }));
+        console.log(`✅ [enhancedVehicleLookup] MOT fetched for ${cleanedReg}: ${fetchedMotDue}`);
+      } else {
+        console.warn(`⚠️  [enhancedVehicleLookup] MOT fetch failed for ${cleanedReg}: ${motLookupResult.reason?.message}`);
+      }
       
       try {
-        // Get vehicle data directly from Universal Service without saving to database
-        const vehicleDataResponse = await universalService.getVehicleData(cleanedReg, parsedMileage || 50000);
+        // Unwrap settled result
+        if (vehicleDataResponse.status === 'rejected') {
+          throw new Error(vehicleDataResponse.reason?.message || 'Failed to fetch vehicle data');
+        }
+        const unwrappedVehicleResponse = vehicleDataResponse.value;
         
-        if (!vehicleDataResponse.success) {
-          throw new Error(vehicleDataResponse.error || 'Failed to fetch vehicle data');
+        if (!unwrappedVehicleResponse.success) {
+          throw new Error(unwrappedVehicleResponse.error || 'Failed to fetch vehicle data');
         }
         
-        const completeVehicle = vehicleDataResponse.data;
+        const completeVehicle = unwrappedVehicleResponse.data;
         
         // Structure the response data for enhanced lookup
         result = {
@@ -2327,11 +2408,11 @@ class VehicleController {
             dealerPrice: completeVehicle.valuation?.dealerPrice || completeVehicle.dealerPrice,
             partExchangePrice: completeVehicle.valuation?.partExchangePrice || completeVehicle.partExchangePrice,
             
-            // MOT and history data
-            motStatus: completeVehicle.motStatus,
-            motDue: completeVehicle.motDue || completeVehicle.motDueDate,
-            motExpiry: completeVehicle.motExpiry || completeVehicle.motDueDate,
-            motHistory: completeVehicle.motHistory,
+            // MOT and history data - prefer CheckCarDetails MOT API over universalService
+            motStatus:  fetchedMotStatus  || completeVehicle.motStatus,
+            motDue:     fetchedMotDue     || completeVehicle.motDue     || completeVehicle.motDueDate,
+            motExpiry:  fetchedMotDue     || completeVehicle.motExpiry  || completeVehicle.motDueDate,
+            motHistory: fetchedMotHistory.length ? fetchedMotHistory : completeVehicle.motHistory,
             
             // Running costs - CRITICAL FIX: Ensure running costs object is properly structured
             runningCosts: completeVehicle.runningCosts ? {
