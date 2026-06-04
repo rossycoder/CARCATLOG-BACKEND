@@ -907,6 +907,30 @@ class VehicleController {
 
       // Clean up "null" string values
       this.cleanNullStrings(carData);
+
+      // ── AUTO-FIX model/variant swap on read ──────────────────────────────
+      // Catches cars that were saved with swapped fields (e.g. Mercedes GLE)
+      if (carData.model) {
+        const { model: fixedModel, variant: fixedVariant, wasSwapped } =
+          normalizeModelVariant(carData.model, carData.variant, carData.make);
+
+        if (wasSwapped) {
+          console.log(`🔄 [getCarById] model/variant swap fixed for ${carData.registrationNumber}: model="${fixedModel}", variant="${fixedVariant}"`);
+          carData.model   = fixedModel;
+          carData.variant = fixedVariant;
+
+          // Persist the fix to DB so it doesn't repeat every request
+          setImmediate(async () => {
+            try {
+              await Car.findByIdAndUpdate(car._id, {
+                $set: { model: fixedModel, variant: fixedVariant }
+              });
+            } catch (e) {
+              console.warn(`⚠️  [getCarById] Failed to persist model/variant fix: ${e.message}`);
+            }
+          });
+        }
+      }
       
       // CRITICAL FIX: Ensure runningCosts is properly structured for frontend
       // Frontend expects: runningCosts.fuelEconomy.urban/extraUrban/combined

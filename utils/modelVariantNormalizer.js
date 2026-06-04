@@ -11,13 +11,13 @@
 
 // Known short base model names that should ALWAYS be in the model field, not variant.
 // If variant matches one of these, the fields are already correct — do NOT swap.
-const KNOWN_BASE_MODELS = /^(\d\s*Series|[A-Z]-Class|XC\d{2}|V\d{2}|S\d{2}|C\d{2}|DB\d+|DBS|Vantage|Rapide|Vanquish|Virage|TT|R8|Golf|Polo|Passat|Tiguan|Touareg|Arteon|T-Roc|A[1-8]|Q[2-8]|Mustang|Focus|Fiesta|Mondeo|Kuga|Puma|Corsa|Astra|Insignia|Mokka|Yaris|Corolla|RAV4|Qashqai|Juke|Leaf|X-Trail|Clio|Megane|Captur|Kadjar|Ceed|Sportage|Stonic|Niro|Tucson|Santa Fe|i10|i20|i30|Ioniq|Kona|208|308|508|2008|3008|5008|Swift|Vitara|Jimny|Ignis|Zoe|Land Cruiser|Hilux)$/i;
+const KNOWN_BASE_MODELS = /^(\d\s*Series|[A-Z]-Class|GLE|GLA|GLC|GLB|GLS|GLE\s*Coupe|GLC\s*Coupe|XC\d{2}|V\d{2}|S\d{2}|C\d{2}|DB\d+|DBS|Vantage|Rapide|Vanquish|Virage|TT|R8|Golf|Polo|Passat|Tiguan|Touareg|Arteon|T-Roc|A[1-8]|Q[2-8]|Mustang|Focus|Fiesta|Mondeo|Kuga|Puma|Corsa|Astra|Insignia|Mokka|Yaris|Corolla|RAV4|Qashqai|Juke|Leaf|X-Trail|Clio|Megane|Captur|Kadjar|Ceed|Sportage|Stonic|Niro|Tucson|Santa Fe|i10|i20|i30|Ioniq|Kona|208|308|508|2008|3008|5008|Swift|Vitara|Jimny|Ignis|Zoe|Land Cruiser|Hilux)$/i;
 
 // Common car model patterns (short names) — used when we need to EXTRACT the base model
 const MODEL_PATTERNS = {
   volvo:          /\b(XC\d{2}|V\d{2}|S\d{2}|C\d{2})\b/i,
   bmw:            /\b([1-8]\s*Series|X[1-7]|Z[34]|i[348X])\b/i,
-  mercedes:       /\b([ABCEGMS]-Class|GL[ABCES]|CL[AKS]|SL[CKR])\b/i,
+  mercedes:       /\b([ABCEGMS]-Class|GLE|GLA|GLC|GLB|GLS|CLA|CLK|CLS|SLC|SLK|SLR|AMG\s*GT)\b/i,
   audi:           /\b([AQ][1-8]|TT|R8)\b/i,
   volkswagen:     /\b(Golf|Polo|Passat|Tiguan|Touareg|Arteon|T-Roc|Up)\b/i,
   'aston martin': /\b(DB\d+|DBS|Vantage|Rapide|Vanquish|Virage)\b/i,
@@ -64,6 +64,7 @@ function isLikelySwapped(model, variant, make) {
 
   // ── GUARD 2: If model itself is a known short base model name, already CORRECT ──
   // e.g. model="5 Series", variant="530D XDRIVE M SPORT MHEV AUTO" → correct, do NOT swap
+  // e.g. model="GLE", variant="AMG GLE 63 S MHEV 4MATIC+ AUTO" → correct, do NOT swap
   if (KNOWN_BASE_MODELS.test(model.trim())) {
     return false;
   }

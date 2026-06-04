@@ -469,6 +469,61 @@ exports.createVehicle = async (req, res) => {
     
     await vehicle.save();
 
+    // ── Fetch MOT + History for trade dealer cars (no individual payment) ──
+    // Runs synchronously before response — guarantees DB save
+    if (vehicle.registrationNumber) {
+      try {
+        const HistoryService    = require('../services/historyService');
+        const MOTHistoryService = require('../services/motHistoryService');
+        const historyService    = new HistoryService();
+        const motHistoryService = new MOTHistoryService();
+
+        console.log(`🔍 [Trade createVehicle] Fetching MOT+History for ${vehicle.registrationNumber}...`);
+
+        const [histResult, motResult] = await Promise.allSettled([
+          historyService.checkVehicleHistory(vehicle.registrationNumber, false),
+          motHistoryService.fetchAndSaveMOTHistory(vehicle.registrationNumber, true)
+        ]);
+
+        const updateData = {};
+
+        if (histResult.status === 'fulfilled' && histResult.value?._id) {
+          updateData.historyCheckId     = histResult.value._id;
+          updateData.historyCheckStatus = 'completed';
+          console.log(`✅ [Trade createVehicle] History saved for ${vehicle.registrationNumber}`);
+        } else {
+          console.warn(`⚠️  [Trade createVehicle] History failed: ${histResult.reason?.message}`);
+        }
+
+        if (motResult.status === 'fulfilled') {
+          const motData = motResult.value?.data || [];
+          if (motData.length > 0) {
+            updateData.motHistory = motData;
+            const latest = motData[0];
+            if (latest.expiryDate) {
+              updateData.motDue    = new Date(latest.expiryDate);
+              updateData.motExpiry = new Date(latest.expiryDate);
+              updateData.motStatus = new Date(latest.expiryDate) > new Date() ? 'Valid' : 'Expired';
+            }
+            console.log(`✅ [Trade createVehicle] MOT fetched for ${vehicle.registrationNumber}: ${updateData.motDue}`);
+          } else {
+            console.warn(`⚠️  [Trade createVehicle] No MOT data for ${vehicle.registrationNumber}`);
+          }
+        } else {
+          console.warn(`⚠️  [Trade createVehicle] MOT fetch failed: ${motResult.reason?.message}`);
+        }
+
+        if (Object.keys(updateData).length > 0) {
+          await Car.findByIdAndUpdate(vehicle._id, { $set: updateData });
+          console.log(`✅ [Trade createVehicle] DB updated for ${vehicle.registrationNumber}`);
+        }
+
+      } catch (apiErr) {
+        // Don't fail car creation if API calls fail
+        console.error(`❌ [Trade createVehicle] API error for ${vehicle.registrationNumber}: ${apiErr.message}`);
+      }
+    }
+
     // Increment subscription usage
     await req.subscription.incrementListingCount();
 
@@ -839,48 +894,47 @@ exports.publishVehicle = async (req, res) => {
       }
     }
     
-    // CRITICAL: Fetch vehicle history and MOT history for trade dealers
+    // Fetch vehicle history and MOT — only if NOT already done in createVehicle
     if (car.registrationNumber) {
-      try {
-        const HistoryService = require('../services/historyService');
-        const historyService = new HistoryService();
-        
-        // Fetch vehicle history (this will save to VehicleHistory model)
-        const historyResult = await historyService.checkVehicleHistory(car.registrationNumber, false);
-        
-        if (historyResult && historyResult._id) {
-          updateData.historyCheckId = historyResult._id; // CRITICAL: Use _id, not historyCheckId
-          updateData.historyCheckStatus = 'completed';
-        } else {
-        }
-      } catch (error) {
-        console.error(`[Trade Publish] ❌ Vehicle history fetch failed: ${error.message}`);
-        // Continue with publish even if history fetch fails
-      }
-      
-      try {
-        const MOTHistoryService = require('../services/motHistoryService');
-        const motHistoryService = new MOTHistoryService();
-        
-        // Fetch MOT history from CheckCarDetails API
-        const result = await motHistoryService.fetchAndSaveMOTHistory(car.registrationNumber);
-        const motHistory = result?.data || [];
-        
-        if (motHistory && motHistory.length > 0) {
-          updateData.motHistory = motHistory;
-          
-          // Set MOT due date from latest test
-          const latestTest = motHistory[0];
-          if (latestTest.expiryDate) {
-            updateData.motDue = new Date(latestTest.expiryDate);
-            updateData.motExpiry = new Date(latestTest.expiryDate);
-            updateData.motStatus = latestTest.testResult || 'Valid';
+      // History: skip if already fetched
+      if (!car.historyCheckId) {
+        try {
+          const HistoryService = require('../services/historyService');
+          const historyService = new HistoryService();
+          const historyResult = await historyService.checkVehicleHistory(car.registrationNumber, false);
+          if (historyResult && historyResult._id) {
+            updateData.historyCheckId     = historyResult._id;
+            updateData.historyCheckStatus = 'completed';
           }
-        } else {
+        } catch (error) {
+          console.error(`[Trade Publish] ❌ Vehicle history fetch failed: ${error.message}`);
         }
-      } catch (error) {
-        console.error(`[Trade Publish] ❌ MOT history fetch failed: ${error.message}`);
-        // Continue with publish even if MOT fetch fails
+      } else {
+        console.log(`ℹ️  [Trade Publish] History already in DB for ${car.registrationNumber}, skipping`);
+      }
+
+      // MOT: skip if already fetched
+      const hasMOTData = car.motHistory && car.motHistory.length > 0;
+      if (!hasMOTData) {
+        try {
+          const MOTHistoryService = require('../services/motHistoryService');
+          const motHistoryService = new MOTHistoryService();
+          const result     = await motHistoryService.fetchAndSaveMOTHistory(car.registrationNumber);
+          const motHistory = result?.data || [];
+          if (motHistory.length > 0) {
+            updateData.motHistory = motHistory;
+            const latestTest = motHistory[0];
+            if (latestTest.expiryDate) {
+              updateData.motDue    = new Date(latestTest.expiryDate);
+              updateData.motExpiry = new Date(latestTest.expiryDate);
+              updateData.motStatus = latestTest.testResult || 'Valid';
+            }
+          }
+        } catch (error) {
+          console.error(`[Trade Publish] ❌ MOT history fetch failed: ${error.message}`);
+        }
+      } else {
+        console.log(`ℹ️  [Trade Publish] MOT already in DB for ${car.registrationNumber}, skipping`);
       }
     }
     
