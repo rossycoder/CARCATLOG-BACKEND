@@ -77,6 +77,13 @@ router.post(
   vehicleController.validateRegistration.bind(vehicleController)
 );
 
+// PATCH /api/vehicles/:id - Partial update of vehicle fields (requires auth)
+router.patch(
+  '/:id',
+  protect,
+  vehicleController.updateVehicle.bind(vehicleController)
+);
+
 // PATCH /api/vehicles/:id/status - Update vehicle status (requires auth)
 router.patch(
   '/:id/status',

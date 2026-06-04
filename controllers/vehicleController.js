@@ -495,52 +495,55 @@ class VehicleController {
       });
       
       if (existingCar) {
-        
-        // Return existing car data in the same format as API response
-        return res.json({
-          success: true,
-          data: {
-            make: existingCar.make,
-            model: existingCar.model,
-            colour: existingCar.color,
-            fuelType: existingCar.fuelType,
-            yearOfManufacture: existingCar.year,
-            engineCapacity: existingCar.engineSize,
-            bodyType: existingCar.bodyType,
-            transmission: existingCar.transmission,
-            previousOwners: existingCar.previousOwners || 0,
-            vin: existingCar.vin,
-            co2Emissions: existingCar.co2Emissions,
-            taxStatus: existingCar.taxStatus,
-            taxDueDate: existingCar.taxDueDate,
-            motStatus: existingCar.motStatus,
-            motExpiryDate: existingCar.motDue || existingCar.motExpiry,
-            _sources: {
-              database: true,
-              dvla: false,
-              checkCarDetails: false
+        // If MOT data is missing from DB, fall through to live DVLA call below
+        // so we can fetch and the frontend can save it back
+        const hasMOT = existingCar.motDue || existingCar.motExpiry;
+
+        if (hasMOT) {
+          // Return existing car data in the same format as API response
+          return res.json({
+            success: true,
+            data: {
+              make: existingCar.make,
+              model: existingCar.model,
+              colour: existingCar.color,
+              fuelType: existingCar.fuelType,
+              yearOfManufacture: existingCar.year,
+              engineCapacity: existingCar.engineSize,
+              bodyType: existingCar.bodyType,
+              transmission: existingCar.transmission,
+              previousOwners: existingCar.previousOwners || 0,
+              vin: existingCar.vin,
+              co2Emissions: existingCar.co2Emissions,
+              taxStatus: existingCar.taxStatus,
+              taxDueDate: existingCar.taxDueDate,
+              motStatus: existingCar.motStatus,
+              motExpiryDate: existingCar.motDue || existingCar.motExpiry,
+              _sources: { database: true, dvla: false, checkCarDetails: false },
+              _existingCarId: existingCar._id,
+              _message: 'Vehicle already exists in database - using cached data to save API costs'
             },
-            _existingCarId: existingCar._id,
-            _message: 'Vehicle already exists in database - using cached data to save API costs'
-          },
-          vehicle: {
-            make: existingCar.make,
-            model: existingCar.model,
-            colour: existingCar.color,
-            fuelType: existingCar.fuelType,
-            yearOfManufacture: existingCar.year,
-            engineCapacity: existingCar.engineSize,
-            bodyType: existingCar.bodyType,
-            transmission: existingCar.transmission,
-            previousOwners: existingCar.previousOwners || 0,
-            vin: existingCar.vin,
-            co2Emissions: existingCar.co2Emissions,
-            taxStatus: existingCar.taxStatus,
-            taxDueDate: existingCar.taxDueDate,
-            motStatus: existingCar.motStatus,
-            motExpiryDate: existingCar.motDue || existingCar.motExpiry
-          }
-        });
+            vehicle: {
+              make: existingCar.make,
+              model: existingCar.model,
+              colour: existingCar.color,
+              fuelType: existingCar.fuelType,
+              yearOfManufacture: existingCar.year,
+              engineCapacity: existingCar.engineSize,
+              bodyType: existingCar.bodyType,
+              transmission: existingCar.transmission,
+              previousOwners: existingCar.previousOwners || 0,
+              vin: existingCar.vin,
+              co2Emissions: existingCar.co2Emissions,
+              taxStatus: existingCar.taxStatus,
+              taxDueDate: existingCar.taxDueDate,
+              motStatus: existingCar.motStatus,
+              motExpiryDate: existingCar.motDue || existingCar.motExpiry
+            }
+          });
+        }
+        // MOT missing — fall through to live DVLA call to fetch it
+        console.log(`🔍 [dvlaLookup] ${registrationNumber} found in DB but motDue missing — fetching from DVLA`);
       }
       
       // Check VehicleHistory cache (30-day cache)
@@ -647,7 +650,10 @@ class VehicleController {
           _sources: {
             dvla: dvlaResult.status === 'fulfilled',
             checkCarDetails: historyResult.status === 'fulfilled'
-          }
+          },
+          // If we fell through from an existing car (motDue was missing), include its ID
+          // so the frontend can PATCH the MOT data back to the correct record
+          _existingCarId: existingCar ? existingCar._id : undefined
         };
         
         // Return merged data
@@ -2629,6 +2635,88 @@ class VehicleController {
         success: false,
         error: error.message || 'Failed to update vehicle status'
       });
+    }
+  }
+
+  /**
+   * PATCH /api/vehicles/:id
+   * Partial update of a vehicle record — used by CarAdvertEditPage to save
+   * MOT data, valuation, running costs, and other fields fetched on the frontend.
+   *
+   * ALLOWED fields: motDue, motExpiry, motStatus, motHistory,
+   *                 valuation, estimatedValue, allValuations,
+   *                 runningCosts, description, features, serviceHistory,
+   *                 videoUrl, model, variant, engineSize, doors, seats,
+   *                 transmission, fuelType, color, postcode, price,
+   *                 businessName, businessLogo, businessWebsite,
+   *                 sellerContact, images, location
+   */
+  async updateVehicle(req, res, next) {
+    try {
+      const { id } = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, error: 'Invalid vehicle ID' });
+      }
+
+      const car = await Car.findById(id);
+      if (!car) {
+        return res.status(404).json({ success: false, error: 'Vehicle not found' });
+      }
+
+      // Authorization: owner, admin, or trade dealer that owns the car
+      const isAdmin = req.user?.isAdmin || req.user?.role === 'admin';
+      const ownerId = car.userId?.toString();
+      const requesterId = req.user?._id?.toString() || req.user?.id?.toString();
+      const dealerId = car.dealerId?.toString();
+      const reqDealerId = req.dealer?._id?.toString() || req.dealer?.id?.toString();
+
+      const isOwner   = ownerId && requesterId && ownerId === requesterId;
+      const isDealer  = dealerId && reqDealerId && dealerId === reqDealerId;
+
+      if (!isAdmin && !isOwner && !isDealer) {
+        return res.status(403).json({ success: false, error: 'Not authorised to update this vehicle' });
+      }
+
+      // Whitelist of fields that can be patched from the frontend
+      const ALLOWED = [
+        'motDue', 'motExpiry', 'motStatus', 'motHistory',
+        'valuation', 'estimatedValue', 'allValuations',
+        'runningCosts', 'description', 'features', 'serviceHistory',
+        'videoUrl', 'model', 'variant', 'engineSize', 'doors', 'seats',
+        'transmission', 'fuelType', 'color', 'postcode', 'price',
+        'businessName', 'businessLogo', 'businessWebsite',
+        'sellerContact', 'images', 'location',
+        'taxStatus', 'taxDueDate', 'co2Emissions'
+      ];
+
+      ALLOWED.forEach(field => {
+        if (req.body[field] !== undefined) {
+          car[field] = req.body[field];
+        }
+      });
+
+      // Skip expensive pre-save logic (DVLA/variant fetch) for simple field updates
+      car.$locals.skipPreSave = true;
+
+      await car.save();
+
+      return res.json({
+        success: true,
+        message: 'Vehicle updated',
+        data: {
+          _id: car._id,
+          motDue: car.motDue,
+          motExpiry: car.motExpiry,
+          motStatus: car.motStatus,
+          model: car.model,
+          variant: car.variant
+        }
+      });
+
+    } catch (error) {
+      console.error('[Vehicle Controller] Error in updateVehicle:', error);
+      return res.status(500).json({ success: false, error: error.message || 'Failed to update vehicle' });
     }
   }
 
