@@ -284,6 +284,76 @@ exports.getSession = async (req, res) => {
 };
 
 /**
+ * POST /api/calls/pool/sync-twilio (admin only)
+ * Auto-sync all Twilio numbers into pool DB + set webhooks
+ */
+exports.syncTwilioNumbers = async (req, res) => {
+  try {
+    const client = twilio(
+      process.env.TWILIO_ACCOUNT_SID,
+      process.env.TWILIO_AUTH_TOKEN
+    );
+
+    const VOICE_WEBHOOK_URL = `${process.env.BACKEND_URL || 'https://carcatlog-backendnpm-install.onrender.com'}/api/calls/webhook/voice`;
+
+    // Fetch all numbers from Twilio account
+    const twilioNumbers = await client.incomingPhoneNumbers.list();
+
+    if (!twilioNumbers.length) {
+      return res.status(404).json({ success: false, message: 'No numbers found in Twilio account' });
+    }
+
+    const results = [];
+
+    for (const tn of twilioNumbers) {
+      // 1. Add to DB pool (upsert — won't duplicate)
+      await PhoneNumberPool.updateOne(
+        { proxyNumber: tn.phoneNumber },
+        {
+          $setOnInsert: {
+            proxyNumber: tn.phoneNumber,
+            twilioSid:   tn.sid,
+            status:      'available'
+          }
+        },
+        { upsert: true }
+      );
+
+      // 2. Reset stuck in_use numbers back to available
+      await PhoneNumberPool.updateOne(
+        { proxyNumber: tn.phoneNumber, status: 'in_use' },
+        { $set: { status: 'available' } }
+      );
+
+      // 3. Set Twilio voice webhook
+      try {
+        await client.incomingPhoneNumbers(tn.sid).update({
+          voiceUrl:    VOICE_WEBHOOK_URL,
+          voiceMethod: 'POST'
+        });
+        results.push({ number: tn.phoneNumber, status: 'synced', webhook: VOICE_WEBHOOK_URL });
+      } catch (webhookErr) {
+        results.push({ number: tn.phoneNumber, status: 'pool_added_webhook_failed', error: webhookErr.message });
+      }
+    }
+
+    const total     = await PhoneNumberPool.countDocuments();
+    const available = await PhoneNumberPool.countDocuments({ status: 'available' });
+
+    res.json({
+      success: true,
+      message: `Synced ${twilioNumbers.length} numbers`,
+      pool: { total, available },
+      results
+    });
+
+  } catch (error) {
+    console.error('❌ syncTwilioNumbers error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
  * GET /api/calls/pool/status (admin only)
  */
 exports.poolStatus = async (req, res) => {

@@ -26,5 +26,6 @@ router.get('/session/:listingId', optionalAuth, callController.getSession);
 // Admin routes
 router.get('/pool/status', protect, adminAuth, callController.poolStatus);
 router.post('/pool/add', protect, adminAuth, callController.addToPool);
+router.post('/pool/sync-twilio', protect, adminAuth, callController.syncTwilioNumbers);
 
 module.exports = router;
