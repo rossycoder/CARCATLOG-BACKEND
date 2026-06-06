@@ -38,6 +38,13 @@ router.get('/users', adminController.getAllUsers);
 router.get('/users/:userId/vehicles', adminController.getUserVehicles);
 
 /**
+ * @route   DELETE /api/admin/users/:userId
+ * @desc    Delete user/trade dealer account + all their vehicles
+ * @access  Admin only
+ */
+router.delete('/users/:userId', adminController.deleteUser);
+
+/**
  * @route   GET /api/admin/listings/:id
  * @desc    Get single listing details
  * @access  Admin only
