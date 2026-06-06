@@ -793,6 +793,136 @@ The CarCatalog Team
       return false;
     }
   }
+
+  /**
+   * Send account deletion confirmation email
+   * @param {string} email      - User's email address
+   * @param {string} name       - User's name / business name
+   * @param {string} userType   - 'normal' | 'trade'
+   * @returns {Promise<boolean>}
+   */
+  async sendAccountDeletionConfirmation(email, name, userType = 'normal') {
+    try {
+      if (!this.enabled) return true;
+
+      const subject = 'Your CarCatalog Account Has Been Successfully Deleted';
+      const logoUrl = process.env.LOGO_URL || '';
+      const isTradeUser = userType === 'trade';
+
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; }
+            .email-wrapper { background: #f5f5f5; padding: 40px 20px; }
+            .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+            .logo-header { background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%); padding: 30px 40px; text-align: center; }
+            .header { background: linear-gradient(135deg, #374151 0%, #1f2937 100%); color: white; padding: 30px; text-align: center; }
+            .header h1 { font-size: 24px; margin-bottom: 8px; }
+            .header p { font-size: 15px; opacity: 0.9; }
+            .content { background: white; padding: 30px 40px; }
+            .content p { margin-bottom: 15px; color: #555; font-size: 15px; }
+            .content ul { margin: 10px 0 15px 20px; }
+            .content li { margin-bottom: 8px; color: #555; font-size: 14px; }
+            .info-box { background: #f8f9fa; padding: 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #374151; }
+            .info-box h3 { margin-bottom: 12px; color: #333; font-size: 16px; }
+            .info-box p { margin-bottom: 8px; color: #555; font-size: 14px; }
+            .warning-box { background: #fff3cd; padding: 16px 20px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #f59e0b; }
+            .warning-box p { color: #92400e; font-size: 14px; margin: 0; }
+            .footer { background: #f8f9fa; text-align: center; padding: 25px 40px; border-top: 1px solid #e0e0e0; }
+            .footer p { color: #888; font-size: 12px; margin-bottom: 5px; }
+            .contact-link { color: #2563eb; text-decoration: none; }
+          </style>
+        </head>
+        <body>
+          <div class="email-wrapper">
+            <div class="container">
+              <div class="logo-header">
+                ${renderLogoHeader(logoUrl)}
+              </div>
+              <div class="header">
+                <h1>Account Successfully Deleted</h1>
+                <p>Your CarCatalog account has been permanently removed</p>
+              </div>
+              <div class="content">
+                <p>Hi ${name},</p>
+                <p>
+                  We are writing to confirm that your CarCatalog account associated with
+                  <strong>${email}</strong> has been <strong>permanently deleted</strong>.
+                </p>
+                <div class="info-box">
+                  <h3>What has been removed:</h3>
+                  <ul>
+                    <li>Your account and all personal information</li>
+                    <li>All vehicle listings associated with your account</li>
+                    <li>Saved searches and favourites</li>
+                    ${isTradeUser ? '<li>Your trade dealer profile and subscription</li>' : ''}
+                  </ul>
+                </div>
+                <div class="warning-box">
+                  <p>
+                    ⚠️ If you did not request this deletion or believe this was done in error,
+                    please contact us immediately at
+                    <a href="mailto:admin@carcatalog.co.uk" class="contact-link">admin@carcatalog.co.uk</a>.
+                  </p>
+                </div>
+                <p>
+                  Please note that certain transaction records may be retained for legal and
+                  financial compliance purposes in accordance with our
+                  <a href="${process.env.FRONTEND_URL || 'https://carcatalog.co.uk'}/privacy-notice" class="contact-link">Privacy Policy</a>.
+                </p>
+                <p>
+                  We're sorry to see you go. If you change your mind in the future, you're always
+                  welcome to create a new account at
+                  <a href="${process.env.FRONTEND_URL || 'https://carcatalog.co.uk'}" class="contact-link">carcatalog.co.uk</a>.
+                </p>
+                <p>Thank you for using CarCatalog.</p>
+                <p>Best regards,<br><strong>The CarCatalog Team</strong></p>
+              </div>
+              <div class="footer">
+                <p>This is an automated confirmation. Please do not reply to this message.</p>
+                <p>&copy; ${new Date().getFullYear()} CCAL Group Ltd. All rights reserved.</p>
+              </div>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const text = `
+Hi ${name},
+
+We are writing to confirm that your CarCatalog account (${email}) has been permanently deleted.
+
+What has been removed:
+- Your account and all personal information
+- All vehicle listings associated with your account
+- Saved searches and favourites
+${isTradeUser ? '- Your trade dealer profile and subscription\n' : ''}
+If you did not request this deletion, please contact us immediately at admin@carcatalog.co.uk.
+
+Please note that certain transaction records may be retained for legal compliance purposes.
+
+Thank you for using CarCatalog.
+
+Best regards,
+The CarCatalog Team
+
+---
+This is an automated confirmation. Please do not reply to this message.
+© ${new Date().getFullYear()} CCAL Group Ltd. All rights reserved.
+      `.trim();
+
+      return await this.sendEmail(email, subject, text, html);
+    } catch (error) {
+      console.error('Error sending account deletion email:', error);
+      return false;
+    }
+  }
 }
 
 // Create singleton instance

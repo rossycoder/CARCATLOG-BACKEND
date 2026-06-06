@@ -839,64 +839,64 @@ const deleteUser = async (req, res) => {
     const { userId } = req.params;
     const { userType = 'normal' } = req.query; // 'normal' or 'trade'
 
-    const Car  = require('../models/Car');
-    const Bike = require('../models/Bike');
-    const Van  = require('../models/Van');
+    const Car          = require('../models/Car');
+    const Bike         = require('../models/Bike');
+    const Van          = require('../models/Van');
+    const EmailService = require('../services/emailService');
+    const emailService = new EmailService();
 
     let deletedVehicles = { cars: 0, bikes: 0, vans: 0 };
+    let userEmail = '';
+    let userName  = '';
 
     if (userType === 'trade') {
-      // ── Trade Dealer ────────────────────────────────────────────────────
       const TradeDealer = require('../models/TradeDealer');
       const dealer = await TradeDealer.findById(userId);
-      if (!dealer) {
-        return res.status(404).json({ success: false, message: 'Trade dealer not found' });
-      }
+      if (!dealer) return res.status(404).json({ success: false, message: 'Trade dealer not found' });
 
-      // Delete all their vehicles
-      const [carsDeleted, bikesDeleted, vansDeleted] = await Promise.all([
+      userEmail = dealer.email;
+      userName  = dealer.businessName || dealer.contactPerson;
+
+      const [c, b, v] = await Promise.all([
         Car.deleteMany({ dealerId: userId }),
         Bike.deleteMany({ dealerId: userId }),
         Van.deleteMany({ dealerId: userId })
       ]);
-      deletedVehicles = {
-        cars:  carsDeleted.deletedCount,
-        bikes: bikesDeleted.deletedCount,
-        vans:  vansDeleted.deletedCount
-      };
+      deletedVehicles = { cars: c.deletedCount, bikes: b.deletedCount, vans: v.deletedCount };
 
-      // Cancel subscription if exists
       try {
         const TradeSubscription = require('../models/TradeSubscription');
         await TradeSubscription.deleteMany({ dealerId: userId });
       } catch (e) { /* ignore */ }
 
       await TradeDealer.findByIdAndDelete(userId);
+      console.log(`✅ [Admin] Trade dealer ${userEmail} deleted`);
 
-      console.log(`✅ [Admin] Trade dealer ${dealer.email} deleted with ${deletedVehicles.cars} cars`);
     } else {
-      // ── Normal User ─────────────────────────────────────────────────────
       const UserModel = require('../models/User');
       const user = await UserModel.findById(userId);
-      if (!user) {
-        return res.status(404).json({ success: false, message: 'User not found' });
-      }
+      if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-      // Delete all their vehicles
-      const [carsDeleted, bikesDeleted, vansDeleted] = await Promise.all([
+      userEmail = user.email;
+      userName  = user.name;
+
+      const [c, b, v] = await Promise.all([
         Car.deleteMany({ userId }),
         Bike.deleteMany({ userId }),
         Van.deleteMany({ userId })
       ]);
-      deletedVehicles = {
-        cars:  carsDeleted.deletedCount,
-        bikes: bikesDeleted.deletedCount,
-        vans:  vansDeleted.deletedCount
-      };
+      deletedVehicles = { cars: c.deletedCount, bikes: b.deletedCount, vans: v.deletedCount };
 
       await UserModel.findByIdAndDelete(userId);
+      console.log(`✅ [Admin] User ${userEmail} deleted`);
+    }
 
-      console.log(`✅ [Admin] User ${user.email} deleted with ${deletedVehicles.cars} cars`);
+    // ── Send account deletion confirmation email ──────────────────────────
+    try {
+      await emailService.sendAccountDeletionConfirmation(userEmail, userName, userType);
+      console.log(`✅ [Admin] Deletion email sent to ${userEmail}`);
+    } catch (emailErr) {
+      console.warn(`⚠️  [Admin] Failed to send deletion email: ${emailErr.message}`);
     }
 
     res.json({
