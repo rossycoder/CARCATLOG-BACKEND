@@ -10,7 +10,7 @@ const { renderLogoHeader } = require('../utils/emailTemplates');
 class EmailService {
   constructor() {
     this.emailService = process.env.EMAIL_SERVICE || 'gmail';
-    this.fromEmail = process.env.EMAIL_FROM || 'noreply@carcatalog.com';
+    this.fromEmail = process.env.EMAIL_FROM || 'CarCatalog <no-reply@carcatalog.co.uk>';
 
     // Configure Gmail/Google Workspace with Nodemailer
     if (this.emailService === 'gmail' && process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
