@@ -19,6 +19,8 @@ exports.getPlans = async (req, res) => {
         description: plan.description,
         price: plan.price,
         priceFormatted: plan.priceFormatted,
+        trialPrice: plan.trialPrice,
+        trialPriceFormatted: plan.trialPriceFormatted,
         listingLimit: plan.listingLimit,
         listingLimitDisplay: plan.listingLimitDisplay,
         features: plan.features,
@@ -204,7 +206,7 @@ exports.createCheckoutSession = async (req, res) => {
       });
     }
 
-    // PRODUCTION: Create Stripe checkout session with 30-day free trial
+    // PRODUCTION: Create Stripe checkout session
     const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
     const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
@@ -229,35 +231,93 @@ exports.createCheckoutSession = async (req, res) => {
       });
     }
 
-    // subscription mode with optional upfront trial fee via invoice item
-    const sessionConfig = {
-      mode: 'subscription',
-      customer: customerId,
-      payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
-      subscription_data: {
+    // Trial fees in pence (GBP) — one-off fee charged today for new users (ex-VAT, Stripe adds VAT)
+    const TRIAL_FEES = {
+      bronze: 6000,   // £60.00 + VAT
+      silver: 10500,  // £105.00 + VAT
+      gold:   15000,  // £150.00 + VAT
+    };
+
+    // Monthly prices in pence (GBP) — for description display in checkout only
+    const MONTHLY_PRICES = {
+      bronze: 120000,  // £1,200/month + VAT
+      silver: 180000,  // £1,800/month + VAT
+      gold:   240000,  // £2,400/month + VAT
+    };
+
+    const isNewUser = !hasUsedTrial;
+    const trialFeeAmount = TRIAL_FEES[plan.slug];
+
+    let sessionConfig;
+
+    if (isNewUser && trialFeeAmount) {
+      // NEW USER: mode=payment — only show the trial fee today, no subscription confusion.
+      // After payment, verifyPayment creates the Stripe subscription with trial_end=30 days.
+      sessionConfig = {
+        mode: 'payment',
+        customer: customerId,
+        customer_update: { address: 'auto' },
+        payment_method_types: ['card'],
+        automatic_tax: { enabled: true },
+        payment_intent_data: {
+          setup_future_usage: 'off_session', // save card for future subscription charges
+          metadata: {
+            dealerId: dealer._id.toString(),
+            planId: plan._id.toString(),
+            planSlug: plan.slug,
+            isTrial: 'true',
+            trialPrice: trialFeeAmount.toString()
+          }
+        },
+        line_items: [
+          {
+            price_data: {
+              currency: 'gbp',
+              product_data: {
+                name: `${plan.name} — 30-Day Trial`,
+                description: `Unlock your 30-day trial. After 30 days, £${(MONTHLY_PRICES[plan.slug] / 100).toLocaleString('en-GB')}/month applies automatically.`
+              },
+              unit_amount: trialFeeAmount,
+            },
+            quantity: 1,
+          }
+        ],
+        success_url: `${baseUrl}/trade/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/trade/subscription?cancelled=true`,
         metadata: {
           dealerId: dealer._id.toString(),
           planId: plan._id.toString(),
-          planSlug: plan.slug
+          planSlug: plan.slug,
+          isTrial: 'true',
+          trialPrice: trialFeeAmount.toString()
         }
-      },
-      success_url: `${baseUrl}/trade/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/trade/subscription?cancelled=true`,
-      metadata: {
-        dealerId: dealer._id.toString(),
-        planId: plan._id.toString(),
-        planSlug: plan.slug,
-        isTrial: (!hasUsedTrial).toString()
-      }
-    };
-
-    // Add trial price as separate line item for first-time users
-    if (!hasUsedTrial && plan.trialPriceId) {
-      sessionConfig.line_items.push({
-        price: plan.trialPriceId,
-        quantity: 1
-      });
+      };
+    } else {
+      // RETURNING USER: mode=subscription — no trial, charged full price immediately
+      sessionConfig = {
+        mode: 'subscription',
+        customer: customerId,
+        customer_update: { address: 'auto' },
+        payment_method_types: ['card'],
+        automatic_tax: { enabled: true },
+        line_items: [{ price: priceId, quantity: 1 }],
+        subscription_data: {
+          metadata: {
+            dealerId: dealer._id.toString(),
+            planId: plan._id.toString(),
+            planSlug: plan.slug,
+            isTrial: 'false'
+          }
+        },
+        success_url: `${baseUrl}/trade/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/trade/subscription?cancelled=true`,
+        metadata: {
+          dealerId: dealer._id.toString(),
+          planId: plan._id.toString(),
+          planSlug: plan.slug,
+          isTrial: 'false'
+        }
+      };
     }
 
     const session = await stripe.checkout.sessions.create(sessionConfig);
@@ -268,8 +328,8 @@ exports.createCheckoutSession = async (req, res) => {
       url: session.url,
       message: 'Redirecting to Stripe checkout...',
       trial: {
-        enabled: !hasUsedTrial,
-        days: hasUsedTrial ? 0 : 30
+        enabled: isNewUser,
+        days: isNewUser ? 30 : 0
       }
     });
   } catch (error) {
