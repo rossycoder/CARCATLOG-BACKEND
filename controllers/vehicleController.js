@@ -1203,11 +1203,12 @@ class VehicleController {
         condition,
         isDealerListing,
         vehicleType,
+        advertStatus,
         limit = 50,
         skip = 0 
       } = req.query;
 
-      // Build query - don't filter by advertStatus to show all cars
+      // Build query
       const query = {};
 
       if (make) query.make = new RegExp(make, 'i');
@@ -1219,10 +1220,17 @@ class VehicleController {
       if (condition) query.condition = condition;
       if (isDealerListing === 'true') query.isDealerListing = true;
       if (vehicleType) query.vehicleType = vehicleType;
+      if (advertStatus) query.advertStatus = advertStatus;
       
-      // For new cars, only show trade dealer listings
+      // For new cars, only show active trade dealer listings matching new car criteria
       if (condition === 'new') {
+        const currentYear = new Date().getFullYear();
         query.isDealerListing = true;
+        query.year = currentYear;
+        query.mileage = { $lte: 300 };
+        if (!advertStatus) query.advertStatus = 'active';
+        // Remove condition field filter — we classify by year+mileage instead
+        delete query.condition;
       }
 
       // Execute query

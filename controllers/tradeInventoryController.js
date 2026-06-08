@@ -394,6 +394,13 @@ exports.createVehicle = async (req, res) => {
       isDealerListing: true,
       advertStatus: 'active',
       publishedAt: new Date(),
+      // Auto-classify: current year + mileage <= 300 = new car
+      condition: (() => {
+        const currentYear = new Date().getFullYear();
+        const carYear = parseInt(req.body.year);
+        const carMileage = parseInt(req.body.mileage) || 0;
+        return (carYear === currentYear && carMileage <= 300) ? 'new' : 'used';
+      })(),
       sellerContact: {
         type: 'trade',
         ...req.dealer.businessAddress,
@@ -823,6 +830,17 @@ exports.publishVehicle = async (req, res) => {
           updateData[field] = advertData[field];
         }
       });
+    }
+
+    // Auto-classify condition based on year + mileage rules
+    // New car = current year registration + mileage <= 300
+    const currentYear = new Date().getFullYear();
+    const carYear = car.year || updateData.year;
+    const carMileage = car.mileage ?? updateData.mileage;
+    if (carYear === currentYear && carMileage <= 300) {
+      updateData.condition = 'new';
+    } else if (!updateData.condition) {
+      updateData.condition = 'used';
     }
 
     // CRITICAL: Normalize make to proper capitalization (VOLVO → Volvo, bmw → BMW, etc.)
