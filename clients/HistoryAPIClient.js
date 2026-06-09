@@ -170,35 +170,37 @@ class HistoryAPIClient {
    * @throws {Error} If VRM is invalid or API call fails
    */
   async checkHistory(vrm) {
-    // Validate VRM
     if (!vrm || typeof vrm !== 'string') {
       throw new Error('Invalid VRM: must be a non-empty string');
     }
 
-    // Validate test mode VRM
     if (this.isTestMode && !this.validateTestVRM(vrm)) {
-      throw new Error(
-        'Invalid VRM for test mode: VRM must contain the letter "A"'
-      );
+      throw new Error('Invalid VRM for test mode: VRM must contain the letter "A"');
     }
 
     try {
-      // Use carhistorycheck endpoint which includes write-off data
-      // This endpoint provides comprehensive vehicle history including write-offs
+      // Try the full carhistorycheck first (includes write-off data)
       const apiResponse = await this.makeRequestWithRetry('carhistorycheck', vrm);
       
-      // Parse the carhistorycheck response using historyResponseParser
       const { parseHistoryResponse } = require('../utils/historyResponseParser');
-      
       try {
-        const parsedResult = parseHistoryResponse(apiResponse, this.isTestMode);
-        return parsedResult;
+        return parseHistoryResponse(apiResponse, this.isTestMode);
       } catch (parseError) {
         console.warn('Failed to parse complete response, attempting partial parse');
-        const partialResult = handlePartialResponse(apiResponse, this.isTestMode);
-        return partialResult;
+        return handlePartialResponse(apiResponse, this.isTestMode);
       }
     } catch (error) {
+      // If carhistorycheck hits daily limit (403), fall back to ukvehicledata (£0.10)
+      if (error.response?.status === 403) {
+        console.warn(`carhistorycheck daily limit reached for ${vrm}, falling back to ukvehicledata`);
+        try {
+          const fallbackResponse = await this.makeRequestWithRetry('ukvehicledata', vrm);
+          return this.parseUKVehicleDataResponse(fallbackResponse);
+        } catch (fallbackError) {
+          console.error(`ukvehicledata fallback also failed for ${vrm}:`, fallbackError.message);
+          throw this.formatError(fallbackError, vrm, 'ukvehicledata-fallback');
+        }
+      }
       throw this.formatError(error, vrm, 'carhistorycheck');
     }
   }

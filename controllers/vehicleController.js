@@ -1284,10 +1284,12 @@ class VehicleController {
         seats,
         fuelType,
         engineSize,
+        engineSizeFrom,
+        engineSizeTo,
         sellerType,
         writeOffStatus,
         sort,
-        limit = 100, // Increased from 50 to 100 to show all cars
+        limit = 100,
         skip = 0 
       } = req.query;
 
@@ -1360,38 +1362,32 @@ class VehicleController {
       if (seats) query.seats = parseInt(seats);
       
       // Engine size filter
-      if (engineSize) {
-        // Frontend sends values like: "1.0", "1.5", "2.0", "2.5", "3.0", "3.0+"
-        // Database stores engineSize in liters (e.g., 2.0, 1.6, 3.0)
-        // FIXED: Use inclusive ranges with $gte and $lte to avoid missing boundary values
-        // IMPORTANT: Exclude electric vehicles from engine size filter
-        
+      // Handles both old bracket-style (engineSize) and new range-style (engineSizeFrom/engineSizeTo)
+      if (engineSizeFrom || engineSizeTo) {
+        // New range-based filter from FilterSidebar
+        query.engineSize = {};
+        if (engineSizeFrom) query.engineSize.$gte = parseFloat(engineSizeFrom);
+        if (engineSizeTo)   query.engineSize.$lte = parseFloat(engineSizeTo);
+      } else if (engineSize) {
+        // Legacy bracket filter
         if (engineSize === '1.0') {
-          // Up to 1.0L (inclusive)
           query.engineSize = { $lte: 1.0 };
         } else if (engineSize === '1.5') {
-          // 1.0L - 1.5L (inclusive on both ends)
           query.engineSize = { $gte: 1.0, $lte: 1.5 };
         } else if (engineSize === '2.0') {
-          // 1.5L - 2.0L (inclusive on both ends)
           query.engineSize = { $gte: 1.5, $lte: 2.0 };
         } else if (engineSize === '2.5') {
-          // 2.0L - 2.5L (inclusive on both ends)
           query.engineSize = { $gte: 2.0, $lte: 2.5 };
         } else if (engineSize === '3.0') {
-          // 2.5L - 3.0L (inclusive on both ends)
           query.engineSize = { $gte: 2.5, $lte: 3.0 };
         } else if (engineSize === '3.0+') {
-          // 3.0L+ = 3.0L and above (inclusive)
           query.engineSize = { $gte: 3.0 };
         }
-        
-        // CRITICAL: Exclude pure electric vehicles from engine size filter
-        // Electric vehicles don't have engines, only electric motors
-        query.fuelType = { 
-          $nin: ['Electric'] // Exclude pure electric vehicles
-        };
-        
+      }
+
+      // Exclude pure electric vehicles when filtering by engine size
+      if (query.engineSize) {
+        query.fuelType = { $nin: ['Electric'] };
       }
       
       // Seller type filter - MUTUALLY EXCLUSIVE
@@ -1922,13 +1918,24 @@ class VehicleController {
         }
       }
       
-      // Get year range (filtered based on selection)
+      // Get year range and per-year counts
       const years = await Car.aggregate([
         { $match: filteredQuery },
         { $group: { _id: null, minYear: { $min: '$year' }, maxYear: { $max: '$year' } } }
       ]);
       
       const yearRange = years.length > 0 ? years[0] : { minYear: 2000, maxYear: new Date().getFullYear() };
+
+      // Count cars per year for the year dropdowns
+      const yearCountsRaw = await Car.aggregate([
+        { $match: filteredQuery },
+        { $group: { _id: '$year', count: { $sum: 1 } } },
+        { $sort: { _id: -1 } }
+      ]);
+      const yearCounts = {};
+      for (const { _id, count } of yearCountsRaw) {
+        if (_id) yearCounts[_id] = count;
+      }
 
       // Get seller type counts - MUTUALLY EXCLUSIVE
       // Trade sellers: identified by dealerId, isDealerListing, or sellerContact.type='trade'
@@ -1976,7 +1983,21 @@ class VehicleController {
       
       // Total cars based on current filters
       const totalCars = await Car.countDocuments(filteredQuery);
-      
+
+      // Engine size counts
+      const engineSizeCountsRaw = await Car.aggregate([
+        { $match: { ...filteredQuery, engineSize: { $exists: true, $ne: null } } },
+        { $group: { _id: '$engineSize', count: { $sum: 1 } } },
+        { $sort: { _id: 1 } }
+      ]);
+      const engineSizeCounts = {};
+      for (const { _id, count } of engineSizeCountsRaw) {
+        if (_id !== null && _id !== undefined) {
+          // Round to 1 decimal place for display (e.g. 1.998 → 2.0)
+          const key = parseFloat(_id).toFixed(1);
+          engineSizeCounts[key] = (engineSizeCounts[key] || 0) + count;
+        }
+      }
 
       const result = {
         success: true,
@@ -2010,7 +2031,9 @@ class VehicleController {
             bodyTypes: bodyTypeCounts,
             colours: colourCounts,
             doors: doorCounts,
-            seats: seatCounts
+            seats: seatCounts,
+            years: yearCounts,
+            engineSizes: engineSizeCounts
           }
         }
       };
