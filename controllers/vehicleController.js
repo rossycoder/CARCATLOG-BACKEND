@@ -14,6 +14,26 @@ const { normalizeModelVariant } = require('../utils/modelVariantNormalizer');
 const historyService = new HistoryService();
 const universalService = new UniversalAutoCompleteService();
 
+// ─── In-memory cache for filter-options (no-filter requests only) ───────────
+// Avoids hitting MongoDB on every page load — refreshes every 5 minutes
+const filterOptionsCache = {
+  data: null,
+  timestamp: 0,
+  TTL: 5 * 60 * 1000  // 5 minutes
+};
+
+function getCachedFilterOptions() {
+  if (filterOptionsCache.data && (Date.now() - filterOptionsCache.timestamp) < filterOptionsCache.TTL) {
+    return filterOptionsCache.data;
+  }
+  return null;
+}
+
+function setCachedFilterOptions(data) {
+  filterOptionsCache.data = data;
+  filterOptionsCache.timestamp = Date.now();
+}
+
 class VehicleController {
   /**
    * Clean up "null" string values in vehicle data
@@ -1622,6 +1642,28 @@ class VehicleController {
   }
 
   /**
+   * GET /api/vehicles/makes
+   * Fast lightweight endpoint — returns just the sorted makes list.
+   * Used by hero search dropdowns to avoid loading the full filter-options payload.
+   */
+  async getMakes(req, res) {
+    try {
+      const statusQuery =
+        process.env.SHOW_DRAFT_CARS === 'true'
+          ? { advertStatus: { $in: ['active', 'draft'] } }
+          : { advertStatus: 'active' };
+
+      const makes = await Car.distinct('make', statusQuery);
+      const sorted = makes.filter(Boolean).sort();
+
+      return res.json({ success: true, data: sorted });
+    } catch (error) {
+      console.error('getMakes error:', error);
+      return res.status(500).json({ success: false, error: 'Failed to fetch makes' });
+    }
+  }
+
+  /**
    * GET /api/vehicles/filter-options
    * Get unique filter options from database
    */
@@ -1636,6 +1678,18 @@ class VehicleController {
         yearFrom, yearTo, priceFrom, priceTo, mileageFrom, mileageTo,
         sellerType
       } = req.query;
+
+      // ── CACHE: Return cached result for unfiltered requests (home/used/new page loads) ──
+      const hasFilters = make || model || submodel || fuelType || transmission ||
+        bodyType || colour || doorsFilter || seatsFilter ||
+        yearFrom || yearTo || priceFrom || priceTo || mileageFrom || mileageTo || sellerType;
+
+      if (!hasFilters) {
+        const cached = getCachedFilterOptions();
+        if (cached) {
+          return res.json(cached);
+        }
+      }
       
       
       // Build base query for active cars (and draft in test mode)
@@ -2068,6 +2122,11 @@ class VehicleController {
       // DEBUG: Log variants data being sent
       
       
+      // Cache the result for unfiltered requests
+      if (!hasFilters) {
+        setCachedFilterOptions(result);
+      }
+
       return res.json(result);
 
     } catch (error) {

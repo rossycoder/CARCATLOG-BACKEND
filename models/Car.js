@@ -240,6 +240,13 @@ const carSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // ─── Indexes ────────────────────────────────────────────────────────────────
+carSchema.index({ advertStatus: 1 });                          // ← most-used filter on every query
+carSchema.index({ advertStatus: 1, make: 1 });                 // ← used cars / search by make
+carSchema.index({ advertStatus: 1, make: 1, model: 1 });       // ← search by make+model
+carSchema.index({ advertStatus: 1, price: 1 });                // ← price sort/filter
+carSchema.index({ advertStatus: 1, year: 1 });                 // ← year filter
+carSchema.index({ advertStatus: 1, mileage: 1 });              // ← mileage filter
+carSchema.index({ advertStatus: 1, fuelType: 1 });             // ← fuel type filter
 carSchema.index({ make: 1, model: 1 });
 carSchema.index({ make: 1, model: 1, submodel: 1 });
 carSchema.index({ year: 1 });

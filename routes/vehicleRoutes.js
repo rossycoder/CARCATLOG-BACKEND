@@ -30,6 +30,12 @@ router.get(
   vehicleController.getModelsForMake.bind(vehicleController)
 );
 
+// GET /api/vehicles/makes - Fast lightweight makes list (must be before /:id)
+router.get(
+  '/makes',
+  vehicleController.getMakes.bind(vehicleController)
+);
+
 // GET /api/vehicles/basic-lookup/:registration - Basic vehicle lookup for CarFinder (cheap API)
 router.get(
   '/basic-lookup/:registration',
