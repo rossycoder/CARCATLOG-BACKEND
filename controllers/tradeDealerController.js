@@ -33,7 +33,8 @@ exports.register = async (req, res) => {
       password,
       businessAddress,
       businessRegistrationNumber,
-      vatNumber
+      vatNumber,
+      website
     } = req.body;
 
     // Validate required fields
@@ -107,6 +108,7 @@ exports.register = async (req, res) => {
       businessRegistrationNumber,
       vatNumber,
       logo: logoUrl,
+      website: website || null,
       status: 'pending' // Will be activated after email verification
     });
 
