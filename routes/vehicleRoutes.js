@@ -24,6 +24,12 @@ router.get(
   vehicleController.getFilterOptions.bind(vehicleController)
 );
 
+// GET /api/vehicles/models-for-make?make=Toyota - Fast lightweight models lookup (must be before /:id)
+router.get(
+  '/models-for-make',
+  vehicleController.getModelsForMake.bind(vehicleController)
+);
+
 // GET /api/vehicles/basic-lookup/:registration - Basic vehicle lookup for CarFinder (cheap API)
 router.get(
   '/basic-lookup/:registration',

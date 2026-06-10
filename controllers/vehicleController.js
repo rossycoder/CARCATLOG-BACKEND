@@ -1595,6 +1595,33 @@ class VehicleController {
   }
 
   /**
+   * GET /api/vehicles/models-for-make?make=Toyota
+   * Fast lightweight endpoint — returns just the sorted model list for a given make.
+   * Used by the hero search dropdowns so they don't have to fetch the full filter-options payload.
+   */
+  async getModelsForMake(req, res) {
+    try {
+      const { make } = req.query;
+      if (!make) {
+        return res.status(400).json({ success: false, error: 'make query param is required' });
+      }
+
+      const statusQuery =
+        process.env.SHOW_DRAFT_CARS === 'true'
+          ? { advertStatus: { $in: ['active', 'draft'] }, make }
+          : { advertStatus: 'active', make };
+
+      const models = await Car.distinct('model', statusQuery);
+      const sorted = models.filter(Boolean).sort();
+
+      return res.json({ success: true, data: sorted });
+    } catch (error) {
+      console.error('getModelsForMake error:', error);
+      return res.status(500).json({ success: false, error: 'Failed to fetch models' });
+    }
+  }
+
+  /**
    * GET /api/vehicles/filter-options
    * Get unique filter options from database
    */
