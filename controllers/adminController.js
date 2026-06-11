@@ -839,6 +839,12 @@ const deleteUser = async (req, res) => {
     const { userId } = req.params;
     const { userType = 'normal' } = req.query; // 'normal' or 'trade'
 
+    // ── PROTECTED ACCOUNTS — cannot be deleted ────────────────────────────
+    const PROTECTED_EMAILS = [
+      'shahzad872@live.com',
+      'jjwilliamss180304@gmail.com'
+    ];
+
     const Car          = require('../models/Car');
     const Bike         = require('../models/Bike');
     const Van          = require('../models/Van');
@@ -856,6 +862,11 @@ const deleteUser = async (req, res) => {
 
       userEmail = dealer.email;
       userName  = dealer.businessName || dealer.contactPerson;
+
+      // Block deletion of protected accounts
+      if (PROTECTED_EMAILS.includes(userEmail?.toLowerCase())) {
+        return res.status(403).json({ success: false, message: 'This account is protected and cannot be deleted.' });
+      }
 
       const [c, b, v] = await Promise.all([
         Car.deleteMany({ dealerId: userId }),
@@ -879,6 +890,11 @@ const deleteUser = async (req, res) => {
 
       userEmail = user.email;
       userName  = user.name;
+
+      // Block deletion of protected accounts
+      if (PROTECTED_EMAILS.includes(userEmail?.toLowerCase())) {
+        return res.status(403).json({ success: false, message: 'This account is protected and cannot be deleted.' });
+      }
 
       const [c, b, v] = await Promise.all([
         Car.deleteMany({ userId }),

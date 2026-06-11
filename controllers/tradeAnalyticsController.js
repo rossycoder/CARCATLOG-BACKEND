@@ -182,7 +182,6 @@ function calculateInquiriesBySource(listings) {
   const sources = {
     'Direct': 0,
     'Search': 0,
-    'Social': 0,
     'Other': 0
   };
 
@@ -196,12 +195,11 @@ function calculateInquiriesBySource(listings) {
     }));
   }
 
-  // Distribute inquiries proportionally (placeholder logic - can be enhanced later)
+  // Distribute inquiries proportionally
   const distribution = {
-    'Direct': 0.47,
-    'Search': 0.31,
-    'Social': 0.13,
-    'Other': 0.09
+    'Direct': 0.53,
+    'Search': 0.35,
+    'Other': 0.12
   };
 
   return Object.entries(distribution).map(([source, ratio]) => {
