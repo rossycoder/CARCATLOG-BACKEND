@@ -44,7 +44,14 @@ exports.importFeed = async (req, res) => {
       });
     }
     
-    const { feedUrl, removeSoldVehicles, importImages } = req.body;
+    const { 
+      feedUrl, 
+      removeSoldVehicles, 
+      importImages, 
+      useUnsplashFallback, 
+      limitVehicles, 
+      selectionMode 
+    } = req.body;
 
     if (!feedUrl) {
       return res.status(400).json({
@@ -53,20 +60,51 @@ exports.importFeed = async (req, res) => {
       });
     }
 
-    const result = await feedImportService.importFeed(dealerId, feedUrl, {
-      removeSoldVehicles: removeSoldVehicles !== false,
-      importImages: importImages !== false,
-      createCarListings: true
-    });
+    // Check if enhanced features are requested
+    const useEnhancedImport = useUnsplashFallback || limitVehicles || selectionMode !== 'first';
 
-    res.json({
+    let result;
+    if (useEnhancedImport) {
+      // Use enhanced import service with advanced image processing and subscription limits
+      result = await feedImportService.importFeedEnhanced(dealerId, feedUrl, {
+        removeSoldVehicles: removeSoldVehicles !== false,
+        importImages: importImages !== false,
+        useUnsplashFallback: useUnsplashFallback === true,
+        limitVehicles: limitVehicles === true,
+        selectionMode: selectionMode || 'first',
+        uploadToCloudinary: true,
+        createCarListings: true
+      });
+    } else {
+      // Use standard import service
+      result = await feedImportService.importFeed(dealerId, feedUrl, {
+        removeSoldVehicles: removeSoldVehicles !== false,
+        importImages: importImages !== false,
+        createCarListings: true
+      });
+    }
+
+    const response = {
       success: true,
       message: `Successfully imported ${result.stats.vehicles_imported} vehicles`,
       stats: result.stats,
       provider: result.provider,
       format: result.format,
       duration: result.duration
-    });
+    };
+
+    // Add enhanced features info if applicable
+    if (result.limitApplied) {
+      response.limitApplied = true;
+      response.message += `. Subscription limit was applied using ${selectionMode} selection.`;
+    }
+    
+    if (result.unsplashImagesUsed > 0) {
+      response.unsplashImagesUsed = result.unsplashImagesUsed;
+      response.message += ` ${result.unsplashImagesUsed} professional images were added automatically.`;
+    }
+
+    res.json(response);
 
   } catch (error) {
     console.error('Error importing feed:', error);
@@ -286,6 +324,55 @@ exports.syncFeed = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to sync feed',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Test enhanced image processing
+ */
+exports.testImageProcessing = async (req, res) => {
+  try {
+    const { imageUrls, vehicleData } = req.body;
+
+    if (!imageUrls && !vehicleData) {
+      return res.status(400).json({
+        success: false,
+        message: 'Either imageUrls array or vehicleData object is required'
+      });
+    }
+
+    const feedImageProcessor = require('../services/feedImageProcessor');
+    
+    let testVehicle = vehicleData || {
+      images: imageUrls,
+      make: 'BMW',
+      model: '3 Series',
+      year: '2022'
+    };
+
+    const results = await feedImageProcessor.processVehicleImages(testVehicle, {
+      useUnsplashFallback: true,
+      uploadToCloudinary: false // Don't upload during testing
+    });
+
+    res.json({
+      success: true,
+      results: {
+        totalProcessed: results.totalProcessed,
+        processedImages: results.processedImages,
+        failedImages: results.failedImages,
+        unsplashUsed: results.unsplashUsed
+      },
+      message: `Processed ${results.totalProcessed} images successfully`
+    });
+
+  } catch (error) {
+    console.error('Error testing image processing:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to test image processing',
       error: error.message
     });
   }
