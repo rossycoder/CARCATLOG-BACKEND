@@ -3,6 +3,7 @@ const feedProviderDetector = require('./feedProviderDetector');
 const feedMapper = require('./feedMapper');
 const feedImageService = require('./feedImageService');
 const feedImageProcessor = require('./feedImageProcessor'); // New enhanced image processor
+const imageCleanupService = require('./imageCleanupService'); // Auto-delete cars without images
 const DealerFeed = require('../models/DealerFeed');
 const FeedVehicle = require('../models/FeedVehicle');
 const FeedLog = require('../models/FeedLog');
@@ -288,13 +289,14 @@ class FeedImportService {
         stats.vehicles_archived = archived;
       }
 
-      // 6. Update feed and create log
+      // 10. Update feed last sync
       await DealerFeed.findByIdAndUpdate(dealerFeed._id, {
         lastSync: new Date(),
         provider,
         status: 'active'
       });
 
+      // 11. Create log entry
       const duration = Date.now() - startTime;
       await FeedLog.create({
         dealerId,
@@ -313,6 +315,27 @@ class FeedImportService {
           selectionMode: options.selectionMode
         }
       });
+
+      // 12. Schedule cleanup of cars without images (automatic)
+      if (options.deleteVehiclesWithoutImages !== false) {
+        console.log('🗑️ [Feed Import] Scheduling cleanup for vehicles without images...');
+        
+        // Wait 30 seconds for image processing to complete, then cleanup
+        setTimeout(async () => {
+          try {
+            const imageCleanupService = require('./imageCleanupService');
+            const cleanupStats = await imageCleanupService.enforceImageRequirements(dealerId, {
+              minImages: 1,
+              deleteWithoutImages: true,
+              deleteWithBrokenImages: true
+            });
+            
+            console.log(`✅ [Post-Import Cleanup] Removed ${cleanupStats.cars_deleted} cars without proper images`);
+          } catch (error) {
+            console.error('❌ [Post-Import Cleanup] Failed:', error.message);
+          }
+        }, 30000);
+      }
 
       return {
         success: true,
