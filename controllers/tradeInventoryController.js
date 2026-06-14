@@ -167,6 +167,11 @@ exports.getStats = async (req, res) => {
 
     const totalVehicles = Object.values(combinedStats).reduce((sum, count) => sum + count, 0);
 
+    // Calculate totals by vehicle type (not just status)
+    const totalCars = carStats.reduce((sum, stat) => sum + stat.count, 0);
+    const totalBikes = bikeStats.reduce((sum, stat) => sum + stat.count, 0);
+    const totalVans = vanStats.reduce((sum, stat) => sum + stat.count, 0);
+
     res.json({
       success: true,
       stats: {
@@ -176,7 +181,11 @@ exports.getStats = async (req, res) => {
         draft: combinedStats.draft || 0,
         expired: combinedStats.expired || 0,
         totalViews: totalViewsCount,
-        mostViewed: allMostViewed
+        mostViewed: allMostViewed,
+        // Add vehicle type totals
+        cars: totalCars,
+        bikes: totalBikes,
+        vans: totalVans
       }
     });
   } catch (error) {

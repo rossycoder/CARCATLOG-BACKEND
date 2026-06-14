@@ -9,5 +9,10 @@ module.exports = {
   TradeDealer: require('./TradeDealer'),
   SubscriptionPlan: require('./SubscriptionPlan'),
   TradeSubscription: require('./TradeSubscription'),
-  Van: require('./Van')
+  Van: require('./Van'),
+  // Stock Feed Import Models
+  DealerFeed: require('./DealerFeed'),
+  FeedVehicle: require('./FeedVehicle'),
+  FeedImage: require('./FeedImage'),
+  FeedLog: require('./FeedLog')
 };

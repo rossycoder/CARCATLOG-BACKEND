@@ -165,6 +165,7 @@ const electricVehicleRoutes = require('./routes/electricVehicles');
 const demoRoutes = require('./routes/demo');
 const refreshMOTRoutes = require('./routes/refreshMOT');
 const callRoutes = require('./routes/callRoutes');
+const feedRoutes = require('./routes/feedRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/vehicles', vehicleRoutes);
@@ -183,6 +184,7 @@ app.use('/api/trade/auth', tradeDealerRoutes);
 app.use('/api/trade/inventory', tradeInventoryRoutes);
 app.use('/api/trade/subscriptions', tradeSubscriptionRoutes);
 app.use('/api/trade/analytics', tradeAnalyticsRoutes);
+app.use('/api/trade/feed', feedRoutes); // Stock feed import system
 // app.use('/api/bikes', bikeRoutes); // DISABLED - Car-only deployment
 // app.use('/api/vans', vanRoutes); // DISABLED - Car-only deployment
 app.use('/api/seo', seoRoutes);
@@ -222,6 +224,14 @@ initializeCronJobs();
 // Initialize subscription cron jobs for renewal reminders and expiration handling
 const { initSubscriptionCron } = require('./jobs/subscriptionCron');
 initSubscriptionCron();
+
+// Initialize feed sync cron job for automatic stock imports
+const feedSyncCron = require('./jobs/feedSyncCron');
+feedSyncCron.start();
+
+// Initialize image processing cron job for feed images
+const { startImageProcessingCron } = require('./jobs/imageProcessingCron');
+startImageProcessingCron();
 
 // Cleanup expired call sessions every 10 minutes — release proxy numbers back to pool
 const cron = require('node-cron');

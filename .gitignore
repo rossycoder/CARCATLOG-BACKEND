@@ -29,3 +29,18 @@ build/
 
 # Apple private key
 *.p8
+# Test and Fix Files - Don't commit to git
+test-*.js
+check-*.js
+fix-*.js
+debug-*.js
+generate-*.js
+update-*.js
+seed-*.js
+setup-*.js
+
+# Development utilities
+*test*.js
+*check*.js
+*fix*.js
+*debug*.js

@@ -77,7 +77,7 @@ const carSchema = new mongoose.Schema({
   longitude: { type: Number, min: -180, max: 180 },
   location: {
     type: { type: String, enum: ['Point'] },
-    coordinates: { type: [Number], index: '2dsphere' }
+    coordinates: { type: [Number] }
   },
   condition: { type: String, enum: ['new', 'used'], default: 'used' },
   vehicleType: { type: String, enum: ['car', 'bike', 'van'], default: 'car' },
@@ -237,7 +237,10 @@ const carSchema = new mongoose.Schema({
   userEditedFields: { type: [String], default: [] },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
-}, { timestamps: true });
+}, { 
+  timestamps: true,
+  suppressReservedKeysWarning: true
+});
 
 // ─── Indexes ────────────────────────────────────────────────────────────────
 carSchema.index({ advertStatus: 1 });                          // ← most-used filter on every query
@@ -528,11 +531,14 @@ carSchema.pre('save', async function(next) {
     // Only called when specific fields are genuinely missing.
     // NEVER saves the document inside — just sets fields on `this`.
     // SKIP if this is a RELIST (car already existed and has data)
+    // SKIP if this is a FEED IMPORT (skipAPIFetch flag set)
     const isRelist = !this.isNew && 
                      this.isModified('advertStatus') && 
                      (this.advertStatus === 'active' || this.advertStatus === 'pending_payment');
     
-    if (reg && !this.$locals.skipPreSave && !isRelist) {
+    const isFeedImport = this.$locals.skipAPIFetch === true;
+    
+    if (reg && !this.$locals.skipPreSave && !isRelist && !isFeedImport) {
       const needsColor = !this.color || this.color === 'null';
       const needsTax   = !this.taxStatus;
       const hasMOTHistory = this.motHistory && this.motHistory.length > 0;
@@ -580,7 +586,8 @@ carSchema.pre('save', async function(next) {
     // ── STEP 7: Variant fetch (only when missing) ───────────────────────────
     // Uses updateOne() pattern internally — no nested save() calls.
     // SKIP if this is a RELIST (car already existed and has data)
-    if (reg && (!this.variant || this.variant === 'null' || this.variant === 'undefined' || this.variant.trim() === '') && !isRelist) {
+    // SKIP if this is a FEED IMPORT (skipAPIFetch flag set)
+    if (reg && (!this.variant || this.variant === 'null' || this.variant === 'undefined' || this.variant.trim() === '') && !isRelist && !isFeedImport) {
       try {
         const variantOnlyService = require('../services/variantOnlyService');
 
@@ -694,7 +701,8 @@ carSchema.pre('save', async function(next) {
 
     // ── STEP 13: Valuation (new listings only) ──────────────────────────────
     // SKIP if this is a RELIST (car already existed and has valuation data)
-    if (this.isNew && reg && this.mileage && !isRelist) {
+    // SKIP if this is a FEED IMPORT (skipAPIFetch flag set)
+    if (this.isNew && reg && this.mileage && !isRelist && !isFeedImport) {
       const needsVal = !this.valuation?.privatePrice || !this.price || this.price === 0;
       if (needsVal) {
         try {
@@ -717,20 +725,24 @@ carSchema.pre('save', async function(next) {
     }
 
     // ── STEP 16: userId from sellerContact email ────────────────────────────
-    if (!this.userId && this.sellerContact?.email) {
-      try {
-        const User = require('./User');
-        const user = await User.findOne({ email: this.sellerContact.email });
-        if (user) {
-          this.userId = user._id;
-        } else {
-          console.warn(`⚠️  [Pre-Save] No user found for ${this.sellerContact.email} — car won't appear in My Listings`);
+    // ── STEP 16: userId lookup (skip for trade dealer listings) ───────────
+    // Trade dealer cars use dealerId, not userId
+    if (!this.isDealerListing) {
+      if (!this.userId && this.sellerContact?.email) {
+        try {
+          const User = require('./User');
+          const user = await User.findOne({ email: this.sellerContact.email });
+          if (user) {
+            this.userId = user._id;
+          } else {
+            console.warn(`⚠️  [Pre-Save] No user found for ${this.sellerContact.email} — car won't appear in My Listings`);
+          }
+        } catch (err) {
+          console.warn(`⚠️  [Pre-Save] userId lookup failed: ${err.message}`);
         }
-      } catch (err) {
-        console.warn(`⚠️  [Pre-Save] userId lookup failed: ${err.message}`);
+      } else if (!this.userId) {
+        console.warn(`⚠️  [Pre-Save] No userId and no email — car won't appear in My Listings (id=${this._id})`);
       }
-    } else if (!this.userId) {
-      console.warn(`⚠️  [Pre-Save] No userId and no email — car won't appear in My Listings (id=${this._id})`);
     }
 
     // ── STEP 17: sellerContact defaults ────────────────────────────────────

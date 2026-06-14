@@ -1,0 +1,335 @@
+const axios = require('axios');
+const xml2js = require('xml2js');
+const Papa = require('papaparse');
+
+class FeedFetcher {
+  constructor() {
+    this.timeout = 30000; // 30 seconds
+  }
+
+  /**
+   * Convert common URLs to raw content URLs
+   */
+  convertToRawUrl(url) {
+    try {
+      const urlObj = new URL(url);
+      
+      // GitHub file URLs (convert to raw.githubusercontent.com)
+      if (urlObj.hostname === 'github.com' && urlObj.pathname.includes('/blob/')) {
+        const rawPath = urlObj.pathname.replace('/blob/', '/');
+        return `https://raw.githubusercontent.com${rawPath}`;
+      }
+      
+      // GitHub Gist URLs (convert to raw)
+      if (urlObj.hostname === 'gist.github.com') {
+        // If already raw, return as-is
+        if (urlObj.hostname === 'gist.githubusercontent.com') {
+          return url;
+        }
+        // Try to convert gist URL to raw
+        // Gist URLs can be complex, try adding /raw
+        if (!url.endsWith('/raw')) {
+          return `${url}/raw`;
+        }
+      }
+      
+      // Pastebin URLs (convert to raw)
+      if (urlObj.hostname === 'pastebin.com' && !urlObj.pathname.startsWith('/raw/')) {
+        const pasteId = urlObj.pathname.replace('/', '');
+        return `https://pastebin.com/raw/${pasteId}`;
+      }
+      
+      // Google Drive share links (convert to direct download)
+      if (urlObj.hostname === 'drive.google.com' && url.includes('/file/d/')) {
+        const fileIdMatch = url.match(/\/file\/d\/([^\/]+)/);
+        if (fileIdMatch) {
+          return `https://drive.google.com/uc?export=download&id=${fileIdMatch[1]}`;
+        }
+      }
+      
+      // Dropbox share links (convert to direct download)
+      if (urlObj.hostname.includes('dropbox.com') && url.includes('dl=0')) {
+        return url.replace('dl=0', 'dl=1');
+      }
+      
+      return url; // Return original if no conversion needed
+    } catch (error) {
+      return url; // Return original if URL parsing fails
+    }
+  }
+
+  /**
+   * Check if response is HTML instead of feed data
+   */
+  isHtmlResponse(data, contentType) {
+    const dataStr = typeof data === 'string' ? data.trim() : '';
+    const isHtmlContentType = contentType && contentType.toLowerCase().includes('text/html');
+    const startsWithHtml = dataStr.toLowerCase().startsWith('<!doctype html') || 
+                          dataStr.toLowerCase().startsWith('<html');
+    return isHtmlContentType || startsWithHtml;
+  }
+
+  /**
+   * Fetch feed from URL
+   */
+  async fetchFeed(url) {
+    try {
+      // Try to convert URL to raw format first
+      const rawUrl = this.convertToRawUrl(url);
+      const urlUsed = rawUrl !== url ? rawUrl : url;
+      
+      console.log(`Fetching feed from: ${urlUsed}`);
+      if (rawUrl !== url) {
+        console.log(`  (converted from: ${url})`);
+      }
+
+      const response = await axios.get(urlUsed, {
+        timeout: this.timeout,
+        maxContentLength: 50 * 1024 * 1024, // 50MB max
+        headers: {
+          'User-Agent': 'CarCatalog Stock Feed Importer/1.0'
+        }
+      });
+
+      const contentType = response.headers['content-type'];
+      
+      // Check if we got HTML instead of feed data
+      if (this.isHtmlResponse(response.data, contentType)) {
+        let errorMsg = 'Received HTML page instead of feed data. ';
+        
+        // Provide helpful guidance
+        if (url.includes('github.com')) {
+          errorMsg += 'For GitHub files, use the "Raw" button URL (raw.githubusercontent.com).';
+        } else if (url.includes('gist.github.com')) {
+          errorMsg += 'For GitHub Gists, click "Raw" and use that URL.';
+        } else if (url.includes('pastebin.com')) {
+          errorMsg += 'For Pastebin, use the "raw" link URL.';
+        } else if (url.includes('drive.google.com')) {
+          errorMsg += 'For Google Drive, ensure the file has public access and use a direct download link.';
+        } else {
+          errorMsg += 'Please ensure the URL points directly to the XML/CSV/JSON file, not a webpage.';
+        }
+        
+        return {
+          success: false,
+          error: errorMsg
+        };
+      }
+
+      return {
+        success: true,
+        data: response.data,
+        contentType: contentType,
+        status: response.status
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        status: error.response?.status
+      };
+    }
+  }
+
+  /**
+   * Detect feed format automatically
+   */
+  detectFormat(data, contentType) {
+    // Log for debugging
+    console.log('Content-Type:', contentType);
+    const dataStr = typeof data === 'string' ? data.trim() : JSON.stringify(data);
+    console.log('Data preview (first 200 chars):', dataStr.substring(0, 200));
+    
+    // PRIORITY 1: Check actual data structure (most reliable)
+    const start = dataStr.substring(0, 100).toLowerCase();
+    
+    // XML detection (check first 100 chars)
+    if (start.includes('<?xml') || (start.startsWith('<') && start.includes('<vehicle'))) {
+      return 'xml';
+    }
+
+    // JSON detection - Check if data starts with JSON markers
+    if (dataStr.startsWith('{') || dataStr.startsWith('[')) {
+      try {
+        // Try to parse as JSON to confirm
+        JSON.parse(dataStr);
+        return 'json';
+      } catch (e) {
+        // Not valid JSON, continue checking
+      }
+    }
+
+    // PRIORITY 2: Check content type header (less reliable for text/plain)
+    if (contentType) {
+      const ct = contentType.toLowerCase();
+      if (ct.includes('xml') || ct.includes('application/xml') || ct.includes('text/xml')) return 'xml';
+      if (ct.includes('json') || ct.includes('application/json')) return 'json';
+      if (ct.includes('csv') || ct.includes('text/csv')) return 'csv';
+    }
+
+    // PRIORITY 3: CSV detection (only if not JSON/XML)
+    const lines = dataStr.split('\n').filter(line => line.trim());
+    if (lines.length > 1) {
+      const firstLine = lines[0];
+      const secondLine = lines[1];
+      
+      // Check if first line looks like CSV headers
+      const hasCommas = firstLine.includes(',');
+      const commonHeaders = ['make', 'model', 'price', 'year', 'stock', 'registration', 'reg'];
+      const hasCommonHeaders = commonHeaders.some(header => 
+        firstLine.toLowerCase().includes(header)
+      );
+      
+      console.log('CSV detection - hasCommas:', hasCommas, 'hasCommonHeaders:', hasCommonHeaders);
+      
+      if (hasCommas && (hasCommonHeaders || secondLine.includes(','))) {
+        return 'csv';
+      }
+    }
+
+    console.log('Format detection failed - returning unknown');
+    return 'unknown';
+  }
+
+  /**
+   * Parse feed based on format
+   */
+  async parseFeed(data, format) {
+    try {
+      switch (format) {
+        case 'xml':
+          return await this.parseXML(data);
+        case 'json':
+          return this.parseJSON(data);
+        case 'csv':
+          return this.parseCSV(data);
+        default:
+          throw new Error(`Unsupported format: ${format}`);
+      }
+    } catch (error) {
+      throw new Error(`Failed to parse feed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Parse XML feed
+   */
+  async parseXML(data) {
+    const parser = new xml2js.Parser({
+      explicitArray: false,
+      mergeAttrs: true,
+      trim: true,
+      strict: false, // Less strict parsing
+      attrValueProcessors: [
+        (value) => value || '' // Handle empty attribute values
+      ],
+      tagNameProcessors: [
+        (name) => name.toLowerCase() // Normalize tag names
+      ]
+    });
+
+    try {
+      const result = await parser.parseStringPromise(data);
+      return result;
+    } catch (error) {
+      // Provide more helpful error message
+      throw new Error(`XML parsing failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Parse JSON feed
+   */
+  parseJSON(data) {
+    if (typeof data === 'string') {
+      return JSON.parse(data);
+    }
+    return data;
+  }
+
+  /**
+   * Parse CSV feed
+   */
+  parseCSV(data) {
+    try {
+      // Ensure data is a string
+      const csvString = typeof data === 'string' ? data : String(data);
+      
+      // Parse with Papa Parse (Node.js compatible)
+      const result = Papa.parse(csvString, {
+        header: true,
+        skipEmptyLines: true,
+        dynamicTyping: true,
+        transformHeader: (header) => header.trim(), // Trim whitespace from headers
+        delimiter: '', // Auto-detect delimiter
+        newline: '', // Auto-detect newline
+        quoteChar: '"',
+        escapeChar: '"'
+      });
+
+      if (result.errors && result.errors.length > 0) {
+        const criticalErrors = result.errors.filter(e => e.type !== 'Quotes');
+        if (criticalErrors.length > 0) {
+          throw new Error(`CSV parsing errors: ${JSON.stringify(criticalErrors.slice(0, 3))}`);
+        }
+      }
+
+      if (!result.data || result.data.length === 0) {
+        throw new Error('No data found in CSV file');
+      }
+
+      return result.data;
+    } catch (error) {
+      throw new Error(`CSV parsing failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Test feed connection and return preview
+   */
+  async testFeed(url) {
+    const startTime = Date.now();
+
+    // Fetch feed
+    const fetchResult = await this.fetchFeed(url);
+    if (!fetchResult.success) {
+      return {
+        success: false,
+        error: fetchResult.error,
+        status: fetchResult.status
+      };
+    }
+
+    // Detect format
+    const format = this.detectFormat(fetchResult.data, fetchResult.contentType);
+    if (format === 'unknown') {
+      return {
+        success: false,
+        error: 'Could not detect feed format (XML, JSON, or CSV expected)'
+      };
+    }
+
+    // Parse feed
+    try {
+      const parsedData = await this.parseFeed(fetchResult.data, format);
+      
+      const duration = Date.now() - startTime;
+
+      return {
+        success: true,
+        format,
+        duration,
+        preview: parsedData,
+        message: 'Feed successfully fetched and parsed'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        format
+      };
+    }
+  }
+}
+
+module.exports = new FeedFetcher();
