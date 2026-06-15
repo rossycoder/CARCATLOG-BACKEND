@@ -391,6 +391,14 @@ class FeedImportService {
    */
   async processVehicleEnhanced(dealerId, feedId, mappedVehicle, options = {}) {
     try {
+      console.log('🔍 [processVehicleEnhanced] Input mappedVehicle:', {
+        stockId: mappedVehicle.stock_id,
+        make: mappedVehicle.make,
+        model: mappedVehicle.model,
+        registration: mappedVehicle.registration,
+        allKeys: Object.keys(mappedVehicle)
+      });
+
       // Process images using enhanced processor
       const imageResults = await feedImageProcessor.processVehicleImages(mappedVehicle, {
         useUnsplashFallback: options.useUnsplashFallback,
@@ -409,7 +417,7 @@ class FeedImportService {
         dealerId,
         feedId,
         stockId: mappedVehicle.stock_id,
-        vehicleData: mappedVehicle,
+        vehicleData: mappedVehicle, // This should contain all the car data
         images: imageResults.processedImages,
         imageProcessingInfo: {
           totalProcessed: imageResults.totalProcessed,
@@ -418,6 +426,13 @@ class FeedImportService {
         },
         lastUpdated: new Date()
       };
+
+      console.log('💾 [processVehicleEnhanced] feedVehicleData being saved:', {
+        stockId: feedVehicleData.stockId,
+        hasVehicleData: !!feedVehicleData.vehicleData,
+        vehicleDataKeys: feedVehicleData.vehicleData ? Object.keys(feedVehicleData.vehicleData) : 'undefined',
+        vehicleData: feedVehicleData.vehicleData
+      });
 
       let feedVehicle;
       if (existingFeedVehicle) {
