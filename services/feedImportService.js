@@ -837,6 +837,15 @@ class FeedImportService {
         normalizedFuelType = fuelMap[mappedVehicle.fuel_type.toLowerCase()] || mappedVehicle.fuel_type;
       }
 
+      // Add images from feedVehicle to Car model
+      let imageUrls = [];
+      if (feedVehicle.images && feedVehicle.images.length > 0) {
+        imageUrls = feedVehicle.images.map(img => img.processedUrl || img.sourceUrl || img.url).filter(Boolean);
+      } else if (mappedVehicle.images && mappedVehicle.images.length > 0) {
+        // Fallback to original images from feed
+        imageUrls = mappedVehicle.images.map(img => typeof img === 'string' ? img : img.url).filter(Boolean);
+      }
+
       const carData = {
         dealerId: feedVehicle.dealerId,
         isDealerListing: true,
@@ -855,14 +864,16 @@ class FeedImportService {
         advertStatus: 'active',
         dataSource: 'manual',
         condition: 'used',
-        skipNormalization: true
+        skipNormalization: true,
+        images: imageUrls // Add images directly to car
       };
 
       console.log('💾 [createOrUpdateCarListing] Final carData:', {
         make: carData.make,
         model: carData.model,
         registration: carData.registrationNumber,
-        price: carData.price
+        price: carData.price,
+        imageCount: carData.images.length
       });
 
       // Set flag to skip API calls during feed import
