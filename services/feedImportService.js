@@ -969,7 +969,7 @@ class FeedImportService {
         price: mappedVehicle.price || 0,
         description: mappedVehicle.description || `${mappedVehicle.make || 'Unknown'} ${mappedVehicle.model || 'Unknown'}`,
         postcode: dealerPostcode,
-        advertStatus: 'draft', // 📝 Always import as draft, not active
+        advertStatus: 'active', // ✅ Import as active (published)
         dataSource: 'manual',
         condition: 'used',
         skipNormalization: true,
