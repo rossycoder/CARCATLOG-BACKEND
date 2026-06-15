@@ -1,16 +1,24 @@
 /**
  * Enhanced Feed Image Processor
  * Handles different image formats and sources from feeds
+ * Downloads images from ANY source and uploads to Cloudinary
  */
 
 const axios = require('axios');
 const cloudinary = require('cloudinary').v2;
 
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
 class FeedImageProcessor {
 
   /**
    * Process images from feed vehicle data
-   * Supports: Direct URLs, Google Drive, Dropbox, Base64, Local paths
+   * Supports: Direct URLs, Google Drive, Dropbox, Base64, Unsplash - ALL uploaded to Cloudinary
    */
   async processVehicleImages(vehicleData, options = {}) {
     const results = {
@@ -23,11 +31,14 @@ class FeedImageProcessor {
     try {
       // Extract all possible image sources from vehicle data
       const imageUrls = this.extractImageUrls(vehicleData);
-      
+
+      console.log(`🖼️  [FeedImageProcessor] Found ${imageUrls.length} images in feed for ${vehicleData.make} ${vehicleData.model}`);
+
       if (imageUrls.length === 0) {
         // No images found - use Unsplash if enabled
         if (options.useUnsplashFallback) {
-          const unsplashImages = await this.generateUnsplashImages(vehicleData);
+          console.log(`⚠️  [FeedImageProcessor] No images in feed, using Unsplash fallback`);
+          const unsplashImages = await this.generateAndUploadUnsplashImages(vehicleData);
           results.processedImages = unsplashImages;
           results.unsplashUsed = true;
           results.totalProcessed = unsplashImages.length;
@@ -35,16 +46,21 @@ class FeedImageProcessor {
         return results;
       }
 
-      // Process each image URL
+      // Process each image URL - ALWAYS upload to Cloudinary
       for (const imageUrl of imageUrls.slice(0, 10)) { // Limit to 10 images
         try {
-          const processedUrl = await this.processImageUrl(imageUrl, options);
-          if (processedUrl) {
-            results.processedImages.push(processedUrl);
+          console.log(`📸 [FeedImageProcessor] Processing image: ${imageUrl.substring(0, 80)}...`);
+          const cloudinaryUrl = await this.downloadAndUploadToCloudinary(imageUrl, vehicleData);
+          
+          if (cloudinaryUrl) {
+            results.processedImages.push(cloudinaryUrl);
             results.totalProcessed++;
+            console.log(`✅ [FeedImageProcessor] Uploaded to Cloudinary: ${cloudinaryUrl.substring(0, 80)}...`);
+          } else {
+            throw new Error('Upload failed');
           }
         } catch (error) {
-          console.error(`Failed to process image: ${imageUrl}`, error.message);
+          console.error(`❌ [FeedImageProcessor] Failed to process image: ${imageUrl}`, error.message);
           results.failedImages.push({
             originalUrl: imageUrl,
             error: error.message
@@ -54,16 +70,167 @@ class FeedImageProcessor {
 
       // If no images processed successfully and fallback enabled
       if (results.processedImages.length === 0 && options.useUnsplashFallback) {
-        const unsplashImages = await this.generateUnsplashImages(vehicleData);
+        console.log(`⚠️  [FeedImageProcessor] All images failed, using Unsplash fallback`);
+        const unsplashImages = await this.generateAndUploadUnsplashImages(vehicleData);
         results.processedImages = unsplashImages;
         results.unsplashUsed = true;
       }
 
     } catch (error) {
-      console.error('Error processing vehicle images:', error);
+      console.error('❌ [FeedImageProcessor] Error processing vehicle images:', error);
     }
 
+    console.log(`📊 [FeedImageProcessor] Results: ${results.totalProcessed} processed, ${results.failedImages.length} failed`);
     return results;
+  }
+
+  /**
+   * Download image from ANY source and upload to Cloudinary
+   * Handles: HTTP URLs, HTTPS URLs, Google Drive, Dropbox, Base64, Unsplash
+   */
+  async downloadAndUploadToCloudinary(imageUrl, vehicleData) {
+    try {
+      let downloadUrl = imageUrl;
+
+      // Convert special URLs to direct download URLs
+      if (imageUrl.includes('drive.google.com')) {
+        downloadUrl = this.convertGoogleDriveUrl(imageUrl);
+      } else if (imageUrl.includes('dropbox.com')) {
+        downloadUrl = this.convertDropboxUrl(imageUrl);
+      }
+
+      // Handle base64 images
+      if (imageUrl.startsWith('data:image/')) {
+        return await this.uploadBase64ToCloudinary(imageUrl, vehicleData);
+      }
+
+      // Download image
+      console.log(`⬇️  Downloading: ${downloadUrl.substring(0, 80)}...`);
+      const response = await axios.get(downloadUrl, {
+        responseType: 'arraybuffer',
+        timeout: 30000, // 30 seconds
+        maxContentLength: 10 * 1024 * 1024, // 10MB max
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+
+      // Check if it's actually an image
+      const contentType = response.headers['content-type'];
+      if (!contentType || !contentType.startsWith('image/')) {
+        throw new Error(`Not an image: ${contentType}`);
+      }
+
+      // Convert to base64
+      const base64Image = Buffer.from(response.data, 'binary').toString('base64');
+      const dataURI = `data:${contentType};base64,${base64Image}`;
+
+      // Upload to Cloudinary
+      console.log(`☁️  Uploading to Cloudinary...`);
+      const uploadResult = await cloudinary.uploader.upload(dataURI, {
+        folder: `carcatalog/feed-images/${vehicleData.stock_id || 'unknown'}`,
+        quality: 'auto:good',
+        fetch_format: 'auto',
+        resource_type: 'image'
+      });
+
+      return uploadResult.secure_url;
+
+    } catch (error) {
+      console.error(`❌ Download/upload failed for ${imageUrl}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Upload base64 image to Cloudinary
+   */
+  async uploadBase64ToCloudinary(base64Data, vehicleData) {
+    try {
+      const result = await cloudinary.uploader.upload(base64Data, {
+        folder: `carcatalog/feed-images/${vehicleData.stock_id || 'unknown'}`,
+        quality: 'auto:good',
+        fetch_format: 'auto'
+      });
+      return result.secure_url;
+    } catch (error) {
+      console.error('Base64 upload failed:', error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Convert Google Drive share URL to direct download URL
+   */
+  convertGoogleDriveUrl(driveUrl) {
+    let fileId = null;
+
+    if (driveUrl.includes('/file/d/')) {
+      fileId = driveUrl.split('/file/d/')[1].split('/')[0];
+    } else if (driveUrl.includes('id=')) {
+      fileId = driveUrl.split('id=')[1].split('&')[0];
+    }
+
+    if (fileId) {
+      return `https://drive.google.com/uc?export=download&id=${fileId}`;
+    }
+
+    return driveUrl;
+  }
+
+  /**
+   * Convert Dropbox share URL to direct download URL
+   */
+  convertDropboxUrl(dropboxUrl) {
+    let directUrl = dropboxUrl;
+
+    if (dropboxUrl.includes('dropbox.com') && !dropboxUrl.includes('dl.dropboxusercontent.com')) {
+      directUrl = dropboxUrl.replace('dropbox.com', 'dl.dropboxusercontent.com');
+      if (directUrl.includes('?dl=0')) {
+        directUrl = directUrl.replace('?dl=0', '?dl=1');
+      }
+    }
+
+    return directUrl;
+  }
+
+  /**
+   * Generate Unsplash placeholder images and upload to Cloudinary
+   */
+  async generateAndUploadUnsplashImages(vehicleData) {
+    try {
+      // Use real Unsplash photo URLs (not deprecated Source API)
+      const unsplashPhotos = [
+        'https://images.unsplash.com/photo-1555215695-3004980ad54e?w=800&q=80', // BMW
+        'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?w=800&q=80', // Audi  
+        'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=800&q=80'  // Mercedes
+      ];
+
+      const cloudinaryUrls = [];
+
+      // Download and upload each Unsplash image to Cloudinary
+      for (const unsplashUrl of unsplashPhotos) {
+        try {
+          const cloudinaryUrl = await this.downloadAndUploadToCloudinary(unsplashUrl, vehicleData);
+          if (cloudinaryUrl) {
+            cloudinaryUrls.push(cloudinaryUrl);
+          }
+        } catch (error) {
+          console.error(`Failed to upload Unsplash image:`, error.message);
+        }
+      }
+
+      return cloudinaryUrls.length > 0 ? cloudinaryUrls : unsplashPhotos; // Fallback to originals if upload fails
+
+    } catch (error) {
+      console.error('Unsplash fallback failed:', error.message);
+      // Return direct Unsplash URLs as last resort
+      return [
+        'https://images.unsplash.com/photo-1555215695-3004980ad54e?w=800&q=80',
+        'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?w=800&q=80',
+        'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=800&q=80'
+      ];
+    }
   }
 
   /**
@@ -81,12 +248,18 @@ class FeedImageProcessor {
 
     for (const field of imageFields) {
       const value = vehicleData[field];
-      
+
       if (Array.isArray(value)) {
-        // Array of image URLs
-        value.forEach(url => {
-          if (this.isValidImageUrl(url)) {
-            imageUrls.push(url.trim());
+        // Array of image URLs or objects
+        value.forEach(item => {
+          if (typeof item === 'string' && this.isValidImageUrl(item)) {
+            imageUrls.push(item.trim());
+          } else if (typeof item === 'object' && item !== null) {
+            // Handle {url: "...", order: 0} format
+            const url = item.url || item.sourceUrl || item.image || item.src;
+            if (url && this.isValidImageUrl(url)) {
+              imageUrls.push(url.trim());
+            }
           }
         });
       } else if (typeof value === 'string' && value.trim()) {
@@ -108,253 +281,24 @@ class FeedImageProcessor {
   }
 
   /**
-   * Process individual image URL based on its type
-   */
-  async processImageUrl(imageUrl, options = {}) {
-    try {
-      // Detect image source type
-      const sourceType = this.detectImageSource(imageUrl);
-      
-      switch (sourceType) {
-        case 'google_drive':
-          return await this.processGoogleDriveImage(imageUrl);
-          
-        case 'dropbox':
-          return await this.processDropboxImage(imageUrl);
-          
-        case 'base64':
-          return await this.processBase64Image(imageUrl);
-          
-        case 'direct_url':
-          return await this.processDirectUrl(imageUrl, options);
-          
-        case 'local_path':
-          return await this.processLocalPath(imageUrl);
-          
-        default:
-          // Try as direct URL
-          return await this.processDirectUrl(imageUrl, options);
-      }
-      
-    } catch (error) {
-      console.error(`Failed to process image URL: ${imageUrl}`, error);
-      return null;
-    }
-  }
-
-  /**
-   * Detect image source type
-   */
-  detectImageSource(imageUrl) {
-    if (!imageUrl || typeof imageUrl !== 'string') return 'unknown';
-    
-    const url = imageUrl.toLowerCase();
-    
-    if (url.startsWith('data:image/')) return 'base64';
-    if (url.includes('drive.google.com') || url.includes('docs.google.com')) return 'google_drive';
-    if (url.includes('dropbox.com') || url.includes('dl.dropboxusercontent.com')) return 'dropbox';
-    if (url.startsWith('http://') || url.startsWith('https://')) return 'direct_url';
-    if (url.startsWith('/') || url.includes('\\')) return 'local_path';
-    
-    return 'unknown';
-  }
-
-  /**
-   * Process Google Drive image
-   */
-  async processGoogleDriveImage(driveUrl) {
-    try {
-      // Convert Google Drive share URL to direct image URL
-      let fileId = null;
-      
-      if (driveUrl.includes('/file/d/')) {
-        fileId = driveUrl.split('/file/d/')[1].split('/')[0];
-      } else if (driveUrl.includes('id=')) {
-        fileId = driveUrl.split('id=')[1].split('&')[0];
-      }
-      
-      if (!fileId) {
-        throw new Error('Could not extract Google Drive file ID');
-      }
-      
-      // Convert to direct download URL
-      const directUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
-      
-      // Validate the image
-      const response = await axios.head(directUrl, { timeout: 5000 });
-      if (response.status === 200) {
-        return directUrl;
-      }
-      
-      throw new Error('Google Drive image not accessible');
-      
-    } catch (error) {
-      console.error('Google Drive image processing failed:', error.message);
-      return null;
-    }
-  }
-
-  /**
-   * Process Dropbox image
-   */
-  async processDropboxImage(dropboxUrl) {
-    try {
-      // Convert Dropbox share URL to direct URL
-      let directUrl = dropboxUrl;
-      
-      if (dropboxUrl.includes('dropbox.com') && !dropboxUrl.includes('dl.dropboxusercontent.com')) {
-        // Convert share URL to direct URL
-        directUrl = dropboxUrl.replace('dropbox.com', 'dl.dropboxusercontent.com');
-        if (directUrl.includes('?dl=0')) {
-          directUrl = directUrl.replace('?dl=0', '?dl=1');
-        }
-      }
-      
-      // Validate the image
-      const response = await axios.head(directUrl, { timeout: 5000 });
-      if (response.status === 200) {
-        return directUrl;
-      }
-      
-      throw new Error('Dropbox image not accessible');
-      
-    } catch (error) {
-      console.error('Dropbox image processing failed:', error.message);
-      return null;
-    }
-  }
-
-  /**
-   * Process Base64 image
-   */
-  async processBase64Image(base64Data) {
-    try {
-      // Upload base64 to Cloudinary
-      const result = await cloudinary.uploader.upload(base64Data, {
-        folder: 'feed-images',
-        quality: 'auto',
-        format: 'jpg'
-      });
-      
-      return result.secure_url;
-      
-    } catch (error) {
-      console.error('Base64 image processing failed:', error.message);
-      return null;
-    }
-  }
-
-  /**
-   * Process direct URL
-   */
-  async processDirectUrl(imageUrl, options = {}) {
-    try {
-      // Validate image URL
-      const response = await axios.head(imageUrl, { 
-        timeout: 5000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      });
-      
-      if (response.status === 200) {
-        const contentType = response.headers['content-type'];
-        if (contentType && contentType.startsWith('image/')) {
-          
-          // If upload to Cloudinary enabled, upload and return Cloudinary URL
-          if (options.uploadToCloudinary) {
-            const result = await cloudinary.uploader.upload(imageUrl, {
-              folder: 'feed-images',
-              quality: 'auto',
-              format: 'jpg'
-            });
-            return result.secure_url;
-          }
-          
-          return imageUrl;
-        }
-      }
-      
-      throw new Error('URL does not point to a valid image');
-      
-    } catch (error) {
-      console.error('Direct URL processing failed:', error.message);
-      return null;
-    }
-  }
-
-  /**
-   * Process local file path (convert to accessible URL)
-   */
-  async processLocalPath(localPath) {
-    try {
-      // For local paths, we can't directly access them
-      // Return null to indicate this image couldn't be processed
-      console.warn(`Local path detected, cannot process: ${localPath}`);
-      return null;
-      
-    } catch (error) {
-      return null;
-    }
-  }
-
-  /**
-   * Generate Unsplash images as fallback
-   */
-  async generateUnsplashImages(vehicleData) {
-    try {
-      const make = vehicleData.make || 'car';
-      const model = vehicleData.model || '';
-      const year = vehicleData.year || '';
-      
-      // Generate search queries
-      const queries = [
-        `${make} ${model} ${year}`,
-        `${make} ${model}`,
-        `${make} car`,
-        'car showroom',
-        'luxury car'
-      ].filter(q => q.trim());
-
-      const images = [];
-      
-      for (let i = 0; i < Math.min(3, queries.length); i++) {
-        const query = queries[i].replace(/\s+/g, '+');
-        const unsplashUrl = `https://source.unsplash.com/800x600/?${query}`;
-        images.push(unsplashUrl);
-      }
-      
-      return images;
-      
-    } catch (error) {
-      console.error('Unsplash image generation failed:', error.message);
-      return [
-        'https://source.unsplash.com/800x600/?car',
-        'https://source.unsplash.com/800x600/?automobile',
-        'https://source.unsplash.com/800x600/?vehicle'
-      ];
-    }
-  }
-
-  /**
    * Validate if string is a valid image URL
    */
   isValidImageUrl(url) {
     if (!url || typeof url !== 'string') return false;
-    
+
     const urlStr = url.trim().toLowerCase();
-    
+
     // Check if it's a valid URL format
     if (!urlStr.match(/^(https?:\/\/|data:image\/|\/)/)) return false;
-    
+
     // Check for common image extensions
-    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'];
     const hasImageExtension = imageExtensions.some(ext => urlStr.includes(ext));
-    
+
     // Allow URLs without extensions if they contain image-related domains
-    const imageDomains = ['unsplash.com', 'cloudinary.com', 'imgur.com', 'drive.google.com', 'dropbox'];
+    const imageDomains = ['unsplash.com', 'cloudinary.com', 'imgur.com', 'drive.google.com', 'dropbox', 'images.', 'photos.'];
     const hasImageDomain = imageDomains.some(domain => urlStr.includes(domain));
-    
+
     // Allow data URLs
     const isDataUrl = urlStr.startsWith('data:image/');
     

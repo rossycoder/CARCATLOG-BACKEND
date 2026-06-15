@@ -60,29 +60,17 @@ exports.importFeed = async (req, res) => {
       });
     }
 
-    // Check if enhanced features are requested
-    const useEnhancedImport = useUnsplashFallback || limitVehicles || selectionMode !== 'first';
-
-    let result;
-    if (useEnhancedImport) {
-      // Use enhanced import service with advanced image processing and subscription limits
-      result = await feedImportService.importFeedEnhanced(dealerId, feedUrl, {
-        removeSoldVehicles: removeSoldVehicles !== false,
-        importImages: importImages !== false,
-        useUnsplashFallback: useUnsplashFallback === true,
-        limitVehicles: limitVehicles === true,
-        selectionMode: selectionMode || 'first',
-        uploadToCloudinary: true,
-        createCarListings: true
-      });
-    } else {
-      // Use standard import service
-      result = await feedImportService.importFeed(dealerId, feedUrl, {
-        removeSoldVehicles: removeSoldVehicles !== false,
-        importImages: importImages !== false,
-        createCarListings: true
-      });
-    }
+    // ALWAYS use enhanced import with Cloudinary upload
+    // Enhanced import properly downloads images from any source and uploads to Cloudinary
+    result = await feedImportService.importFeedEnhanced(dealerId, feedUrl, {
+      removeSoldVehicles: removeSoldVehicles !== false,
+      importImages: importImages !== false,
+      useUnsplashFallback: useUnsplashFallback === true,
+      limitVehicles: limitVehicles === true,
+      selectionMode: selectionMode || 'first',
+      uploadToCloudinary: true, // ✅ Always upload to Cloudinary
+      createCarListings: true
+    });
 
     const response = {
       success: true,

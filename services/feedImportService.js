@@ -1,9 +1,7 @@
 const feedFetcher = require('./feedFetcher');
 const feedProviderDetector = require('./feedProviderDetector');
 const feedMapper = require('./feedMapper');
-const feedImageService = require('./feedImageService');
-const feedImageProcessor = require('./feedImageProcessor'); // New enhanced image processor
-// const imageCleanupService = require('./imageCleanupService'); // Commented out for testing
+const feedImageService = require('./feedImageService'); // Enhanced image service (replaces feedImageProcessor too)
 const DealerFeed = require('../models/DealerFeed');
 const FeedVehicle = require('../models/FeedVehicle');
 const FeedLog = require('../models/FeedLog');
@@ -17,26 +15,13 @@ class FeedImportService {
    */
   async testFeed(feedUrl) {
     try {
-      // Fetch and parse feed
       const testResult = await feedFetcher.testFeed(feedUrl);
-      
       if (!testResult.success) {
-        return {
-          success: false,
-          error: testResult.error
-        };
+        return { success: false, error: testResult.error };
       }
 
-      // Detect provider
       const provider = feedProviderDetector.detect(testResult.preview, testResult.format);
-
-      // Map vehicles to get count
-      const mappedVehicles = feedMapper.mapVehicles(
-        testResult.preview,
-        testResult.format,
-        provider
-      );
-
+      const mappedVehicles = feedMapper.mapVehicles(testResult.preview, testResult.format, provider);
       const hasImages = mappedVehicles.some(v => v.images && v.images.length > 0);
 
       return {
@@ -46,15 +31,11 @@ class FeedImportService {
         vehicleCount: mappedVehicles.length,
         hasImages,
         duration: testResult.duration,
-        preview: mappedVehicles.slice(0, 3), // First 3 vehicles as preview
+        preview: mappedVehicles.slice(0, 3),
         message: `Feed found! ${mappedVehicles.length} vehicles detected.`
       };
-
     } catch (error) {
-      return {
-        success: false,
-        error: error.message
-      };
+      return { success: false, error: error.message };
     }
   }
 
@@ -73,28 +54,21 @@ class FeedImportService {
     };
 
     try {
-      // 1. Fetch feed
       const fetchResult = await feedFetcher.fetchFeed(feedUrl);
       if (!fetchResult.success) {
         throw new Error(`Failed to fetch feed: ${fetchResult.error}`);
       }
 
-      // 2. Detect format
       const format = feedFetcher.detectFormat(fetchResult.data, fetchResult.contentType);
       if (format === 'unknown') {
-        const dataPreview = typeof fetchResult.data === 'string' 
-          ? fetchResult.data.substring(0, 200) 
+        const dataPreview = typeof fetchResult.data === 'string'
+          ? fetchResult.data.substring(0, 200)
           : JSON.stringify(fetchResult.data).substring(0, 200);
         throw new Error(`Could not detect feed format. Expected XML, CSV, or JSON. Data preview: ${dataPreview}`);
       }
 
-      // 3. Parse feed
       const parsedData = await feedFetcher.parseFeed(fetchResult.data, format);
-
-      // 4. Detect provider
       const provider = feedProviderDetector.detect(parsedData, format);
-
-      // 5. Map vehicles
       const mappedVehicles = feedMapper.mapVehicles(parsedData, format, provider);
       stats.vehicles_found = mappedVehicles.length;
 
@@ -102,62 +76,29 @@ class FeedImportService {
         throw new Error('No vehicles found in feed');
       }
 
-      // 6. Find or create dealer feed record
-      let dealerFeed = await DealerFeed.findOne({
-        dealerId, 
-        feedUrl
-      });
-
+      let dealerFeed = await DealerFeed.findOne({ dealerId, feedUrl });
       if (!dealerFeed) {
-        dealerFeed = await DealerFeed.create({
-          dealerId,
-          feedUrl,
-          feedType: format,
-          provider
-        });
+        dealerFeed = await DealerFeed.create({ dealerId, feedUrl, feedType: format, provider });
       }
 
-      // 7. Process each vehicle
       for (const mappedVehicle of mappedVehicles) {
         try {
-          const result = await this.processVehicle(
-            dealerId,
-            dealerFeed._id,
-            mappedVehicle,
-            options
-          );
-
+          const result = await this.processVehicle(dealerId, dealerFeed._id, mappedVehicle, options);
           if (result.action === 'imported') stats.vehicles_imported++;
           if (result.action === 'updated') stats.vehicles_updated++;
           if (result.images) stats.images_imported += result.images;
-
         } catch (error) {
-          stats.errors.push({
-            stockId: mappedVehicle.stock_id,
-            error: error.message
-          });
+          stats.errors.push({ stockId: mappedVehicle.stock_id, error: error.message });
         }
       }
 
-      // 8. Mark vehicles as sold if they disappeared from feed
       if (options.removeSoldVehicles !== false) {
         const currentStockIds = mappedVehicles.map(v => v.stock_id);
-        const archived = await this.archiveMissingVehicles(
-          dealerId,
-          dealerFeed._id,
-          currentStockIds
-        );
-        stats.vehicles_archived = archived;
+        stats.vehicles_archived = await this.archiveMissingVehicles(dealerId, dealerFeed._id, currentStockIds);
       }
 
-      // 9. Update feed last sync
-      await DealerFeed.findByIdAndUpdate(dealerFeed._id, {
-        lastSync: new Date(),
-        provider,
-        status: 'active'
-      });
+      await DealerFeed.findByIdAndUpdate(dealerFeed._id, { lastSync: new Date(), provider, status: 'active' });
 
-      // 10. Create log entry
       const duration = Date.now() - startTime;
       await FeedLog.create({
         dealerId,
@@ -172,16 +113,9 @@ class FeedImportService {
         durationMs: duration
       });
 
-      return {
-        success: true,
-        stats,
-        duration,
-        provider,
-        format
-      };
+      return { success: true, stats, duration, provider, format };
 
     } catch (error) {
-      // Log error
       await FeedLog.create({
         dealerId,
         feedId: null,
@@ -192,7 +126,6 @@ class FeedImportService {
         errors: [{ error: error.message }],
         durationMs: Date.now() - startTime
       });
-
       throw error;
     }
   }
@@ -206,7 +139,7 @@ class FeedImportService {
       vehicles_found: 0,
       vehicles_imported: 0,
       vehicles_updated: 0,
-      vehicles_skipped: 0, // Track cars that were skipped (already published)
+      vehicles_skipped: 0,
       vehicles_archived: 0,
       images_imported: 0,
       unsplash_images_used: 0,
@@ -215,10 +148,8 @@ class FeedImportService {
     };
 
     try {
-      // Check subscription limits
       const subscription = await this.checkSubscriptionLimits(dealerId);
-      
-      // 1. Fetch and parse feed (same as before)
+
       const fetchResult = await feedFetcher.fetchFeed(feedUrl);
       if (!fetchResult.success) {
         throw new Error(`Failed to fetch feed: ${fetchResult.error}`);
@@ -231,7 +162,7 @@ class FeedImportService {
 
       const parsedData = await feedFetcher.parseFeed(fetchResult.data, format);
       const provider = feedProviderDetector.detect(parsedData, format);
-      
+
       let mappedVehicles = feedMapper.mapVehicles(parsedData, format, provider);
       stats.vehicles_found = mappedVehicles.length;
 
@@ -239,113 +170,74 @@ class FeedImportService {
         throw new Error('No vehicles found in feed');
       }
 
-      // 2. Apply subscription limits and selection BEFORE processing
-      if (options.limitVehicles && subscription.listingsLimit) {
+      // Apply subscription limits
+      if (subscription.listingsLimit) {
         const availableSlots = Math.max(0, subscription.listingsLimit - subscription.listingsUsed);
-        
+
         console.log(`🔒 [Feed Import] Subscription check:`, {
           limit: subscription.listingsLimit,
           used: subscription.listingsUsed,
           available: availableSlots,
           foundInFeed: mappedVehicles.length
         });
-        
+
         if (availableSlots <= 0) {
-          throw new Error(`Subscription limit reached. You have used ${subscription.listingsUsed} out of ${subscription.listingsLimit} listings. Please upgrade your plan to import more vehicles.`);
+          throw new Error(`Subscription limit reached. You have used ${subscription.listingsUsed} out of ${subscription.listingsLimit} listings.`);
         }
-        
+
         if (availableSlots < mappedVehicles.length) {
           console.log(`⚠️  [Feed Import] Applying limit: reducing from ${mappedVehicles.length} to ${availableSlots} vehicles`);
-          mappedVehicles = this.applyVehicleSelection(mappedVehicles, availableSlots, options.selectionMode);
-          stats.limit_applied = true;
-        }
-      } else if (subscription.listingsLimit) {
-        // Even if limitVehicles is false, prevent going over limit
-        const availableSlots = Math.max(0, subscription.listingsLimit - subscription.listingsUsed);
-        
-        if (availableSlots <= 0) {
-          throw new Error(`Subscription limit reached. You have used ${subscription.listingsUsed} out of ${subscription.listingsLimit} listings. No more vehicles can be imported.`);
-        }
-        
-        if (availableSlots < mappedVehicles.length) {
-          console.log(`🚫 [Feed Import] Hard limit enforced: reducing from ${mappedVehicles.length} to ${availableSlots} vehicles`);
-          mappedVehicles = mappedVehicles.slice(0, availableSlots);
+          mappedVehicles = options.limitVehicles
+            ? this.applyVehicleSelection(mappedVehicles, availableSlots, options.selectionMode)
+            : mappedVehicles.slice(0, availableSlots);
           stats.limit_applied = true;
         }
       }
 
-      // 3. Find or create dealer feed record
       let dealerFeed = await DealerFeed.findOne({ dealerId, feedUrl });
       if (!dealerFeed) {
-        dealerFeed = await DealerFeed.create({
-          dealerId,
-          feedUrl,
-          feedType: format,
-          provider
-        });
+        dealerFeed = await DealerFeed.create({ dealerId, feedUrl, feedType: format, provider });
       }
 
-      // 4. Process each vehicle with enhanced image processing
-      let processedCount = 0;
       for (const mappedVehicle of mappedVehicles) {
         try {
-          // Double-check subscription limit before each vehicle
+          // Double-check limit before each vehicle
           if (subscription.listingsLimit) {
             const currentUsage = await this.getCurrentListingUsage(dealerId);
             if (currentUsage >= subscription.listingsLimit) {
-              console.log(`🚫 [Feed Import] Stopping import - subscription limit ${subscription.listingsLimit} reached`);
+              console.log(`🚫 [Feed Import] Stopping - subscription limit reached`);
               stats.errors.push({
                 stockId: mappedVehicle.stock_id,
-                error: `Subscription limit ${subscription.listingsLimit} reached. Vehicle not imported.`
+                error: `Subscription limit ${subscription.listingsLimit} reached.`
               });
-              break; // Stop processing more vehicles
+              break;
             }
           }
 
-          const result = await this.processVehicleEnhanced(
-            dealerId,
-            dealerFeed._id,
-            mappedVehicle,
-            options
-          );
+          const result = await this.processVehicleEnhanced(dealerId, dealerFeed._id, mappedVehicle, options);
 
-          if (result.action === 'imported') {
-            stats.vehicles_imported++;
-            processedCount++;
-          } else if (result.action === 'updated') {
-            stats.vehicles_updated++;
-          } else if (result.action === 'skipped') {
-            // Track skipped cars (already published)
-            stats.vehicles_skipped = (stats.vehicles_skipped || 0) + 1;
-            console.log(`⏭️  [Feed Import] Skipped published car: ${mappedVehicle.make} ${mappedVehicle.model} (${mappedVehicle.stock_id})`);
+          if (result.action === 'imported') stats.vehicles_imported++;
+          else if (result.action === 'updated') stats.vehicles_updated++;
+          else if (result.action === 'skipped') {
+            stats.vehicles_skipped++;
+            console.log(`⏭️  [Feed Import] Skipped: ${mappedVehicle.make} ${mappedVehicle.model} (${mappedVehicle.stock_id})`);
           }
-          
+
           if (result.images) stats.images_imported += result.images;
           if (result.unsplashImages) stats.unsplash_images_used += result.unsplashImages;
 
         } catch (error) {
-          stats.errors.push({
-            stockId: mappedVehicle.stock_id,
-            error: error.message
-          });
+          stats.errors.push({ stockId: mappedVehicle.stock_id, error: error.message });
         }
       }
 
-      // 5. Archive missing vehicles if enabled
       if (options.removeSoldVehicles !== false) {
         const currentStockIds = mappedVehicles.map(v => v.stock_id);
-        const archived = await this.archiveMissingVehicles(dealerId, dealerFeed._id, currentStockIds);
-        stats.vehicles_archived = archived;
+        stats.vehicles_archived = await this.archiveMissingVehicles(dealerId, dealerFeed._id, currentStockIds);
       }
 
-      // 10. Update feed last sync
-      await DealerFeed.findByIdAndUpdate(dealerFeed._id, {
-        lastSync: new Date(),
-        provider,
-        status: 'active'
-      });
+      await DealerFeed.findByIdAndUpdate(dealerFeed._id, { lastSync: new Date(), provider, status: 'active' });
 
-      // 11. Create log entry
       const duration = Date.now() - startTime;
       await FeedLog.create({
         dealerId,
@@ -364,27 +256,6 @@ class FeedImportService {
           selectionMode: options.selectionMode
         }
       });
-
-      // 12. Optional cleanup of cars without images (disabled for testing)
-      if (options.deleteVehiclesWithoutImages !== false) {
-        console.log('🗑️ [Feed Import] Image cleanup scheduled (disabled for testing)');
-        
-        // Wait 30 seconds for image processing to complete, then cleanup
-        setTimeout(async () => {
-          try {
-            // const imageCleanupService = require('./imageCleanupService');
-            // const cleanupStats = await imageCleanupService.enforceImageRequirements(dealerId, {
-            //   minImages: 1,
-            //   deleteWithoutImages: true,
-            //   deleteWithBrokenImages: true
-            // });
-            
-            console.log(`✅ [Post-Import Cleanup] Image cleanup temporarily disabled for testing`);
-          } catch (error) {
-            console.error('❌ [Post-Import Cleanup] Failed:', error.message);
-          }
-        }, 30000);
-      }
 
       return {
         success: true,
@@ -415,20 +286,11 @@ class FeedImportService {
   applyVehicleSelection(vehicles, limit, selectionMode = 'first') {
     switch (selectionMode) {
       case 'highest-price':
-        return vehicles
-          .sort((a, b) => (b.price || 0) - (a.price || 0))
-          .slice(0, limit);
-          
+        return [...vehicles].sort((a, b) => (b.price || 0) - (a.price || 0)).slice(0, limit);
       case 'newest':
-        return vehicles
-          .sort((a, b) => new Date(b.date_added || 0) - new Date(a.date_added || 0))
-          .slice(0, limit);
-          
+        return [...vehicles].sort((a, b) => new Date(b.date_added || 0) - new Date(a.date_added || 0)).slice(0, limit);
       case 'lowest-mileage':
-        return vehicles
-          .sort((a, b) => (a.mileage || 999999) - (b.mileage || 999999))
-          .slice(0, limit);
-          
+        return [...vehicles].sort((a, b) => (a.mileage || 999999) - (b.mileage || 999999)).slice(0, limit);
       case 'first':
       default:
         return vehicles.slice(0, limit);
@@ -436,101 +298,103 @@ class FeedImportService {
   }
 
   /**
-   * Enhanced vehicle processing with advanced image handling
+   * Enhanced vehicle processing — uses feedImageService for all image handling
    */
   async processVehicleEnhanced(dealerId, feedId, mappedVehicle, options = {}) {
     try {
-      console.log('🔍 [processVehicleEnhanced] Input mappedVehicle:', {
+      console.log('🔍 [processVehicleEnhanced] Processing:', {
         stockId: mappedVehicle.stock_id,
         make: mappedVehicle.make,
         model: mappedVehicle.model,
-        registration: mappedVehicle.registration,
-        allKeys: Object.keys(mappedVehicle)
+        imageCount: mappedVehicle.images?.length || 0
       });
 
-      // Process images using enhanced processor
-      const imageResults = await feedImageProcessor.processVehicleImages(mappedVehicle, {
-        useUnsplashFallback: options.useUnsplashFallback,
-        uploadToCloudinary: options.uploadToCloudinary || true,
-        maxImagesPerCar: options.maxImagesPerCar || 10
-      });
-
-      // Create or update feed vehicle record
-      const existingFeedVehicle = await FeedVehicle.findOne({
-        dealerId,
-        feedId,
-        stockId: mappedVehicle.stock_id
-      });
+      // ── Step 1: Save/update FeedVehicle record ─────────────────────────────
+      const existingFeedVehicle = await FeedVehicle.findOne({ dealerId, feedId, stockId: mappedVehicle.stock_id });
 
       const feedVehicleData = {
         dealerId,
         feedId,
         stockId: mappedVehicle.stock_id,
-        vehicleData: mappedVehicle, // This should contain all the car data
-        hasVehicleData: true, // Explicitly set flag
-        vehicleDataKeys: Object.keys(mappedVehicle), // Track available keys
-        images: this.normalizeImagesForFeedVehicle(imageResults.processedImages || mappedVehicle.images),
-        imageProcessingInfo: {
-          totalProcessed: imageResults.totalProcessed,
-          failedImages: imageResults.failedImages.length,
-          unsplashUsed: imageResults.unsplashUsed
-        },
+        vehicleData: mappedVehicle,
+        hasVehicleData: true,
+        vehicleDataKeys: Object.keys(mappedVehicle),
+        // Normalize images from feed into FeedVehicle format
+        images: this.normalizeImagesForFeedVehicle(mappedVehicle.images),
         lastUpdated: new Date()
       };
 
-      console.log('💾 [processVehicleEnhanced] feedVehicleData being saved:', {
-        stockId: feedVehicleData.stockId,
-        hasVehicleData: !!feedVehicleData.vehicleData,
-        vehicleDataKeys: feedVehicleData.vehicleData ? Object.keys(feedVehicleData.vehicleData) : 'undefined',
-        vehicleData: feedVehicleData.vehicleData
-      });
-
       let feedVehicle;
       if (existingFeedVehicle) {
-        // Update existing FeedVehicle
-        feedVehicle = await FeedVehicle.findByIdAndUpdate(
-          existingFeedVehicle._id,
-          feedVehicleData,
-          { new: true }
-        );
-        console.log(`♻️  [processVehicleEnhanced] Updated existing FeedVehicle: ${feedVehicle._id}`);
+        feedVehicle = await FeedVehicle.findByIdAndUpdate(existingFeedVehicle._id, feedVehicleData, { new: true });
+        console.log(`♻️  [processVehicleEnhanced] Updated FeedVehicle: ${feedVehicle._id}`);
       } else {
-        // Create new FeedVehicle with upsert to handle race conditions
         try {
           feedVehicle = await FeedVehicle.create(feedVehicleData);
-          console.log(`🆕 [processVehicleEnhanced] Created new FeedVehicle: ${feedVehicle._id}`);
+          console.log(`🆕 [processVehicleEnhanced] Created FeedVehicle: ${feedVehicle._id}`);
         } catch (error) {
           if (error.code === 11000) {
-            // Duplicate key error - someone else created it, try to update
-            console.log(`🔄 [processVehicleEnhanced] Duplicate detected for stockId ${mappedVehicle.stock_id}, attempting update...`);
-            const existingVehicle = await FeedVehicle.findOne({
-              dealerId,
-              feedId,
-              stockId: mappedVehicle.stock_id
-            });
-            if (existingVehicle) {
-              feedVehicle = await FeedVehicle.findByIdAndUpdate(
-                existingVehicle._id,
-                feedVehicleData,
-                { new: true }
-              );
+            // Race condition — find and update
+            const existing = await FeedVehicle.findOne({ dealerId, feedId, stockId: mappedVehicle.stock_id });
+            if (existing) {
+              feedVehicle = await FeedVehicle.findByIdAndUpdate(existing._id, feedVehicleData, { new: true });
               console.log(`✅ [processVehicleEnhanced] Updated after duplicate: ${feedVehicle._id}`);
             } else {
-              throw error; // Re-throw if we can't find the duplicate
+              throw error;
             }
           } else {
-            throw error; // Re-throw other errors
+            throw error;
           }
         }
       }
 
-      // Create or update Car listing
+      // ── Step 2: Create/update Car listing ─────────────────────────────────
       const carResult = await this.createOrUpdateCarListing(feedVehicle, options);
+
+      // ── Step 3: Save image records to DB and process in background ─────────
+      let imagesCount = 0;
+      let unsplashUsed = false;
+
+      const imageList = mappedVehicle.images || [];
+
+      if (imageList.length > 0) {
+        // Save FeedImage records (pending download)
+        imagesCount = await this.importImages(feedVehicle._id, imageList);
+
+        // Kick off background download → Cloudinary → Car.images update
+        if (carResult.car && imagesCount > 0) {
+          console.log(`🖼️  [processVehicleEnhanced] Background image processing for car ${carResult.car._id}`);
+          this.processImagesAsync(feedVehicle._id, carResult.car._id).catch(err => {
+            console.error(`Background image processing failed for ${feedVehicle._id}:`, err.message);
+          });
+        }
+
+      } else if (options.useUnsplashFallback) {
+        // No images in feed — use Unsplash fallback
+        const make = mappedVehicle.make || 'car';
+        const model = mappedVehicle.model || '';
+        const unsplashUrls = [
+          `https://source.unsplash.com/800x600/?${encodeURIComponent(make + ' ' + model)}`,
+          `https://source.unsplash.com/800x600/?${encodeURIComponent(make)}`,
+          `https://source.unsplash.com/800x600/?car`
+        ];
+
+        if (carResult.car) {
+          // Process Unsplash URLs directly through enhanced service
+          const cloudinaryUrls = await feedImageService.processImageUrls(unsplashUrls, carResult.car._id.toString());
+          if (cloudinaryUrls.length > 0) {
+            await Car.findByIdAndUpdate(carResult.car._id, { images: cloudinaryUrls });
+            imagesCount = cloudinaryUrls.length;
+            unsplashUsed = true;
+            console.log(`🌄 [processVehicleEnhanced] Used ${cloudinaryUrls.length} Unsplash images`);
+          }
+        }
+      }
 
       return {
         action: carResult.action,
-        images: imageResults.totalProcessed,
-        unsplashImages: imageResults.unsplashUsed ? imageResults.processedImages.length : 0,
+        images: imagesCount,
+        unsplashImages: unsplashUsed ? imagesCount : 0,
         feedVehicle,
         carListing: carResult.car
       };
@@ -547,15 +411,11 @@ class FeedImportService {
   async checkSubscriptionLimits(dealerId) {
     try {
       const TradeSubscription = require('../models/TradeSubscription');
-      const subscription = await TradeSubscription.findOne({ 
-        dealerId, 
-        status: 'active' 
-      }).populate('planId');
-
+      const subscription = await TradeSubscription.findOne({ dealerId, status: 'active' }).populate('planId');
       return {
         listingsLimit: subscription?.planId?.listingsLimit || null,
         listingsUsed: subscription?.listingsUsed || 0,
-        hasLimit: subscription?.planId?.listingsLimit !== null
+        hasLimit: !!subscription?.planId?.listingsLimit
       };
     } catch (error) {
       return { listingsLimit: null, listingsUsed: 0, hasLimit: false };
@@ -563,24 +423,26 @@ class FeedImportService {
   }
 
   /**
-   * Process single vehicle (create or update)
+   * Get current listing usage count
+   */
+  async getCurrentListingUsage(dealerId) {
+    try {
+      return await Car.countDocuments({ dealerId, advertStatus: 'active' });
+    } catch (error) {
+      return 0;
+    }
+  }
+
+  /**
+   * Process single vehicle (create or update) — used by importFeed (basic)
    */
   async processVehicle(dealerId, feedId, mappedVehicle, options = {}) {
-    // Find existing feed vehicle by stock_id or VIN or registration
     const searchCriteria = {
       dealerId,
-      $or: [
-        { stockId: mappedVehicle.stock_id }
-      ]
+      $or: [{ stockId: mappedVehicle.stock_id }]
     };
-
-    if (mappedVehicle.vin) {
-      searchCriteria.$or.push({ vin: mappedVehicle.vin });
-    }
-
-    if (mappedVehicle.registration) {
-      searchCriteria.$or.push({ registration: mappedVehicle.registration });
-    }
+    if (mappedVehicle.vin) searchCriteria.$or.push({ vin: mappedVehicle.vin });
+    if (mappedVehicle.registration) searchCriteria.$or.push({ registration: mappedVehicle.registration });
 
     let feedVehicle = await FeedVehicle.findOne(searchCriteria);
 
@@ -610,62 +472,41 @@ class FeedImportService {
     };
 
     if (!feedVehicle) {
-      // Create new feed vehicle
       feedVehicle = await FeedVehicle.create(vehicleData);
       action = 'imported';
     } else {
-      // Update existing feed vehicle
       await FeedVehicle.findByIdAndUpdate(feedVehicle._id, vehicleData);
     }
 
-    // Create or update Car listing
-    let car = null; // Declare outside to use later
+    let car = null;
     if (options.createCarListings !== false) {
       car = await this.syncCarListing(dealerId, feedVehicle, mappedVehicle);
-      
       if (car) {
         await FeedVehicle.findByIdAndUpdate(feedVehicle._id, { carId: car._id });
       } else {
-        // Car creation failed - this is an error
         throw new Error('Failed to create/update car listing');
       }
     }
 
-    // Import images - Always check and import
-    console.log(`🔍 [Feed Import] Checking images for ${mappedVehicle.stock_id}:`);
-    console.log(`   - options.importImages: ${options.importImages}`);
-    console.log(`   - has images: ${!!(mappedVehicle.images && mappedVehicle.images.length > 0)}`);
-    console.log(`   - images array:`, JSON.stringify(mappedVehicle.images));
-    
-    // Default importImages to TRUE if not explicitly set to false
     const shouldImportImages = options.importImages !== false;
-    
-    if (shouldImportImages && mappedVehicle.images && Array.isArray(mappedVehicle.images) && mappedVehicle.images.length > 0) {
-      console.log(`📸 [Feed Import] Importing ${mappedVehicle.images.length} images for ${mappedVehicle.stock_id}`);
+    if (shouldImportImages && Array.isArray(mappedVehicle.images) && mappedVehicle.images.length > 0) {
       try {
         imagesCount = await this.importImages(feedVehicle._id, mappedVehicle.images);
-        console.log(`✅ [Feed Import] Saved ${imagesCount} FeedImage records to database`);
-        
-        // Process images asynchronously (download and upload to Cloudinary)
         if (car && imagesCount > 0) {
-          console.log(`🖼️  [Feed Import] Starting async processing for car ${car._id}`);
-          // Don't wait for image processing - do it in background
           this.processImagesAsync(feedVehicle._id, car._id).catch(err => {
-            console.error(`Background image processing failed for vehicle ${feedVehicle._id}:`, err.message);
+            console.error(`Background image processing failed for ${feedVehicle._id}:`, err.message);
           });
         }
       } catch (error) {
-        console.error(`❌ [Feed Import] Failed to import images for ${mappedVehicle.stock_id}:`, error.message);
+        console.error(`Failed to import images for ${mappedVehicle.stock_id}:`, error.message);
       }
-    } else {
-      console.log(`⚠️  [Feed Import] Skipping images - shouldImport: ${shouldImportImages}, hasImages: ${!!(mappedVehicle.images && mappedVehicle.images.length > 0)}, isArray: ${Array.isArray(mappedVehicle.images)}, length: ${mappedVehicle.images?.length || 0}`);
     }
 
     return { action, images: imagesCount };
   }
 
   /**
-   * Process images asynchronously (background job)
+   * Background image processor — downloads and uploads to Cloudinary
    */
   async processImagesAsync(feedVehicleId, carId) {
     try {
@@ -676,64 +517,26 @@ class FeedImportService {
   }
 
   /**
-   * Sync car listing from feed vehicle
+   * Sync car listing from feed vehicle (used by basic importFeed)
    */
   async syncCarListing(dealerId, feedVehicle, mappedVehicle) {
     try {
       let car = null;
 
-      // Try to find existing car
-      if (feedVehicle.carId) {
-        car = await Car.findById(feedVehicle.carId);
-      }
-
+      if (feedVehicle.carId) car = await Car.findById(feedVehicle.carId);
       if (!car && mappedVehicle.registration) {
-        car = await Car.findOne({
-          registrationNumber: mappedVehicle.registration,
-          dealerId
-        });
+        car = await Car.findOne({ registrationNumber: mappedVehicle.registration, dealerId });
       }
 
-      // Try to get dealer's postcode, fallback to default
-      let dealerPostcode = 'SW1A 1AA'; // Default London postcode
+      let dealerPostcode = 'SW1A 1AA';
       try {
         const TradeDealer = require('../models/TradeDealer');
         const dealer = await TradeDealer.findById(dealerId).select('businessAddress');
-        if (dealer?.businessAddress?.postcode) {
-          dealerPostcode = dealer.businessAddress.postcode;
-        }
-      } catch (err) {
-        console.log('Could not fetch dealer postcode, using default:', err.message);
-      }
+        if (dealer?.businessAddress?.postcode) dealerPostcode = dealer.businessAddress.postcode;
+      } catch (err) {}
 
-      // Normalize transmission to lowercase enum values
-      let normalizedTransmission = null;
-      if (mappedVehicle.transmission) {
-        const trans = mappedVehicle.transmission.toLowerCase();
-        if (trans.includes('auto') || trans.includes('automatic')) {
-          normalizedTransmission = 'automatic';
-        } else if (trans.includes('manual')) {
-          normalizedTransmission = 'manual';
-        } else if (trans.includes('semi')) {
-          normalizedTransmission = 'semi-automatic';
-        }
-      }
-
-      // Normalize fuel type to match enum
-      let normalizedFuelType = mappedVehicle.fuel_type;
-      if (normalizedFuelType) {
-        const fuelMap = {
-          'petrol': 'Petrol',
-          'diesel': 'Diesel',
-          'electric': 'Electric',
-          'hybrid': 'Hybrid',
-          'petrol hybrid': 'Petrol Hybrid',
-          'diesel hybrid': 'Diesel Hybrid',
-          'plug-in hybrid': 'Plug-in Hybrid',
-          'phev': 'Plug-in Hybrid'
-        };
-        normalizedFuelType = fuelMap[normalizedFuelType.toLowerCase()] || normalizedFuelType;
-      }
+      const normalizedTransmission = this.normalizeTransmission(mappedVehicle.transmission);
+      const normalizedFuelType = this.normalizeFuelType(mappedVehicle.fuel_type);
 
       const carData = {
         dealerId,
@@ -741,90 +544,73 @@ class FeedImportService {
         registrationNumber: mappedVehicle.registration,
         make: mappedVehicle.make,
         model: mappedVehicle.model,
-        variant: mappedVehicle.derivative, // derivative → variant
-        year: mappedVehicle.year || new Date().getFullYear(), // Default to current year if missing
-        mileage: mappedVehicle.mileage || 0, // Default to 0 if missing
-        fuelType: normalizedFuelType || 'Petrol', // Default if missing
-        transmission: normalizedTransmission || 'manual', // Default if missing
-        color: mappedVehicle.colour || 'Not Specified', // colour → color, with default
+        variant: mappedVehicle.derivative,
+        year: mappedVehicle.year || new Date().getFullYear(),
+        mileage: mappedVehicle.mileage || 0,
+        fuelType: normalizedFuelType || 'Petrol',
+        transmission: normalizedTransmission || 'manual',
+        color: mappedVehicle.colour || 'Not Specified',
         price: mappedVehicle.price,
-        description: mappedVehicle.description || `${mappedVehicle.make} ${mappedVehicle.model}`, // Default description
-        postcode: dealerPostcode, // Use dealer's postcode or default
+        description: mappedVehicle.description || `${mappedVehicle.make} ${mappedVehicle.model}`,
+        postcode: dealerPostcode,
         advertStatus: 'active',
         dataSource: 'manual',
         condition: 'used',
         skipNormalization: true
       };
 
-      // Set flag to skip API calls during feed import (DVLA, Valuation, Variant fetch)
-      // This prevents automatic API charges for bulk feed imports
       const skipAPIFetchFlag = { skipAPIFetch: true };
 
       if (car) {
-        // Update existing car
         car.$locals = skipAPIFetchFlag;
         await Car.findByIdAndUpdate(car._id, carData);
       } else {
-        // Create new car with skipAPIFetch flag
         car = new Car(carData);
         car.$locals = skipAPIFetchFlag;
         await car.save();
       }
 
       return car;
-
     } catch (error) {
       console.error('Error syncing car listing:', error);
-      console.error('Failed vehicle data:', {
-        stockId: mappedVehicle.stock_id,
-        registration: mappedVehicle.registration,
-        make: mappedVehicle.make,
-        model: mappedVehicle.model
-      });
       return null;
     }
   }
 
   /**
-   * Import images for vehicle
+   * Save image URLs as FeedImage records (pending download)
    */
   async importImages(feedVehicleId, images) {
     let count = 0;
-
     try {
-      console.log(`🗑️  [importImages] Deleting old images for feedVehicleId: ${feedVehicleId}`);
-      // Delete old images
-      const deleteResult = await FeedImage.deleteMany({ feedVehicleId });
-      console.log(`   Deleted ${deleteResult.deletedCount} old images`);
+      await FeedImage.deleteMany({ feedVehicleId });
 
-      // Create new image records
-      console.log(`💾 [importImages] Creating ${images.length} new image records...`);
       for (const image of images) {
         try {
-          console.log(`   Creating image ${count + 1}: ${image.url}`);
-          const feedImage = await FeedImage.create({
+          const url = typeof image === 'string' ? image : image?.url;
+          if (!url) continue;
+
+          await FeedImage.create({
             feedVehicleId,
-            sourceUrl: image.url,
+            sourceUrl: url,
             imageOrder: image.order !== undefined ? image.order : count,
             downloadStatus: 'pending'
           });
-          console.log(`   ✓ Created FeedImage with ID: ${feedImage._id}`);
           count++;
         } catch (error) {
-          console.error(`   ✗ Error creating image record for ${image.url}:`, error.message);
+          console.error(`Error creating image record:`, error.message);
         }
       }
 
-      console.log(`✅ [importImages] Successfully created ${count} image records`);
       return count;
     } catch (error) {
-      console.error('❌ [importImages] Fatal error:', error);
+      console.error('importImages fatal error:', error);
       throw error;
     }
   }
 
   /**
-   * Archive vehicles that are no longer in feed
+   * Archive vehicles no longer in feed
    */
   async archiveMissingVehicles(dealerId, feedId, currentStockIds) {
     const missingVehicles = await FeedVehicle.find({
@@ -837,15 +623,9 @@ class FeedImportService {
     let count = 0;
     for (const vehicle of missingVehicles) {
       await FeedVehicle.findByIdAndUpdate(vehicle._id, { status: 'sold' });
-
-      // Also update the car listing
       if (vehicle.carId) {
-        const car = await Car.findById(vehicle.carId);
-        if (car) {
-          await Car.findByIdAndUpdate(car._id, { status: 'sold' });
-        }
+        await Car.findByIdAndUpdate(vehicle.carId, { advertStatus: 'sold' });
       }
-
       count++;
     }
 
@@ -857,153 +637,76 @@ class FeedImportService {
    */
   async createOrUpdateCarListing(feedVehicle, options = {}) {
     try {
-      // Debug logging
-      console.log('🔍 [createOrUpdateCarListing] Input feedVehicle:', {
-        id: feedVehicle._id,
-        hasVehicleData: !!feedVehicle.vehicleData,
-        vehicleDataKeys: feedVehicle.vehicleData ? Object.keys(feedVehicle.vehicleData) : 'undefined'
-      });
-
       const mappedVehicle = feedVehicle.vehicleData || {};
-      
-      // Debug logging for mappedVehicle
-      console.log('🔍 [createOrUpdateCarListing] mappedVehicle:', {
-        stockId: mappedVehicle.stock_id,
-        registration: mappedVehicle.registration,
-        make: mappedVehicle.make,
-        model: mappedVehicle.model,
-        allKeys: Object.keys(mappedVehicle)
-      });
 
       let car = null;
-
-      // Try to find existing car
-      if (feedVehicle.carId) {
-        car = await Car.findById(feedVehicle.carId);
-      }
-
-      // Safe check for registration
+      if (feedVehicle.carId) car = await Car.findById(feedVehicle.carId);
       if (!car && mappedVehicle.registration) {
-        car = await Car.findOne({
-          registrationNumber: mappedVehicle.registration,
-          dealerId: feedVehicle.dealerId
-        });
+        car = await Car.findOne({ registrationNumber: mappedVehicle.registration, dealerId: feedVehicle.dealerId });
       }
 
-      // 🚫 SKIP PUBLISHED CARS - Don't update cars that are already active/published
+      // Skip cars already published — don't overwrite dealer edits
       if (car && car.advertStatus === 'active') {
-        console.log(`🚫 [createOrUpdateCarListing] Skipping published car: ${car.make} ${car.model} (${car.registrationNumber}) - Status: ${car.advertStatus}`);
-        return { 
-          action: 'skipped', 
-          car,
-          reason: 'Car is already published/active'
-        };
+        console.log(`🚫 [createOrUpdateCarListing] Skipping active car: ${car.make} ${car.model} (${car.registrationNumber})`);
+        return { action: 'skipped', car, reason: 'Already published' };
       }
 
-      // Try to get dealer's postcode, fallback to default
-      let dealerPostcode = 'SW1A 1AA'; // Default London postcode
+      let dealerPostcode = 'SW1A 1AA';
       try {
         const TradeDealer = require('../models/TradeDealer');
         const dealer = await TradeDealer.findById(feedVehicle.dealerId).select('businessAddress');
-        if (dealer?.businessAddress?.postcode) {
-          dealerPostcode = dealer.businessAddress.postcode;
-        }
-      } catch (err) {
-        console.log('Could not fetch dealer postcode, using default:', err.message);
-      }
+        if (dealer?.businessAddress?.postcode) dealerPostcode = dealer.businessAddress.postcode;
+      } catch (err) {}
 
-      // Normalize transmission to lowercase enum values
-      let normalizedTransmission = 'manual'; // Default
-      if (mappedVehicle.transmission) {
-        const trans = mappedVehicle.transmission.toLowerCase();
-        if (trans.includes('auto') || trans.includes('automatic')) {
-          normalizedTransmission = 'automatic';
-        } else if (trans.includes('manual')) {
-          normalizedTransmission = 'manual';
-        } else if (trans.includes('semi')) {
-          normalizedTransmission = 'semi-automatic';
-        }
-      }
-
-      // Normalize fuel type to match enum
-      let normalizedFuelType = 'Petrol'; // Default
-      if (mappedVehicle.fuel_type) {
-        const fuelMap = {
-          'petrol': 'Petrol',
-          'diesel': 'Diesel',
-          'electric': 'Electric',
-          'hybrid': 'Hybrid',
-          'petrol hybrid': 'Petrol Hybrid',
-          'diesel hybrid': 'Diesel Hybrid',
-          'plug-in hybrid': 'Plug-in Hybrid',
-          'phev': 'Plug-in Hybrid'
-        };
-        normalizedFuelType = fuelMap[mappedVehicle.fuel_type.toLowerCase()] || mappedVehicle.fuel_type;
-      }
-
-      // Add images from feedVehicle to Car model
+      // Get image URLs — prefer already-processed Cloudinary URLs
       let imageUrls = [];
-      if (feedVehicle.images && feedVehicle.images.length > 0) {
-        imageUrls = feedVehicle.images.map(img => img.processedUrl || img.sourceUrl || img.url).filter(Boolean);
-        console.log(`🖼️  [createOrUpdateCarListing] Found ${imageUrls.length} images in feedVehicle.images`);
-      } else if (mappedVehicle.images && mappedVehicle.images.length > 0) {
-        // Fallback to original images from feed
-        imageUrls = mappedVehicle.images.map(img => typeof img === 'string' ? img : img.url).filter(Boolean);
-        console.log(`🖼️  [createOrUpdateCarListing] Found ${imageUrls.length} images in mappedVehicle.images`);
-      } else {
-        console.log(`⚠️  [createOrUpdateCarListing] No images found in feedVehicle or mappedVehicle`);
+      if (feedVehicle.images?.length > 0) {
+        imageUrls = feedVehicle.images
+          .map(img => img.processedUrl || img.sourceUrl || img.url)
+          .filter(Boolean);
+      } else if (mappedVehicle.images?.length > 0) {
+        imageUrls = mappedVehicle.images
+          .map(img => typeof img === 'string' ? img : img?.url)
+          .filter(Boolean);
       }
 
       const carData = {
         dealerId: feedVehicle.dealerId,
         isDealerListing: true,
-        registrationNumber: mappedVehicle.registration || 'TBD' + Date.now(), // Generate temp reg if missing
+        registrationNumber: mappedVehicle.registration || `TBD${Date.now()}`,
         make: mappedVehicle.make || 'Unknown',
         model: mappedVehicle.model || 'Unknown',
         variant: mappedVehicle.derivative || null,
         year: mappedVehicle.year || new Date().getFullYear(),
         mileage: mappedVehicle.mileage || 0,
-        fuelType: normalizedFuelType,
-        transmission: normalizedTransmission,
+        fuelType: this.normalizeFuelType(mappedVehicle.fuel_type) || 'Petrol',
+        transmission: this.normalizeTransmission(mappedVehicle.transmission) || 'manual',
         color: mappedVehicle.colour || mappedVehicle.color || 'Not Specified',
         price: mappedVehicle.price || 0,
         description: mappedVehicle.description || `${mappedVehicle.make || 'Unknown'} ${mappedVehicle.model || 'Unknown'}`,
         postcode: dealerPostcode,
-        advertStatus: 'active', // ✅ Import as active (published)
+        advertStatus: 'active',
         dataSource: 'manual',
         condition: 'used',
         skipNormalization: true,
-        images: imageUrls // Add images directly to car
+        images: imageUrls
       };
 
-      console.log('💾 [createOrUpdateCarListing] Final carData:', {
-        make: carData.make,
-        model: carData.model,
-        registration: carData.registrationNumber,
-        price: carData.price,
-        imageCount: carData.images.length,
-        advertStatus: carData.advertStatus
-      });
-
-      // Set flag to skip API calls during feed import
       const skipAPIFetchFlag = { skipAPIFetch: true };
       let action = 'updated';
 
       if (car) {
-        // Update existing car (only if not active)
         car.$locals = skipAPIFetchFlag;
         await Car.findByIdAndUpdate(car._id, carData);
-        console.log('✅ [createOrUpdateCarListing] Updated existing car:', car._id);
+        console.log('✅ [createOrUpdateCarListing] Updated car:', car._id);
       } else {
-        // Create new car
         car = new Car(carData);
         car.$locals = skipAPIFetchFlag;
         await car.save();
         action = 'imported';
-        console.log('✅ [createOrUpdateCarListing] Created new car:', car._id);
+        console.log('✅ [createOrUpdateCarListing] Created car:', car._id);
       }
 
-      // Update feedVehicle with carId
       if (car && !feedVehicle.carId) {
         await FeedVehicle.findByIdAndUpdate(feedVehicle._id, { carId: car._id });
       }
@@ -1012,22 +715,17 @@ class FeedImportService {
 
     } catch (error) {
       console.error('❌ [createOrUpdateCarListing] Error:', error);
-      console.error('❌ [createOrUpdateCarListing] feedVehicle:', feedVehicle);
       throw error;
     }
   }
 
   /**
-   * Normalize images for FeedVehicle model
-   * Ensures images are in the correct object format expected by the schema
+   * Normalize images array for FeedVehicle schema
    */
   normalizeImagesForFeedVehicle(images) {
-    if (!images || !Array.isArray(images)) {
-      return [];
-    }
+    if (!images || !Array.isArray(images)) return [];
 
     return images.map((img, index) => {
-      // If it's already an object with the correct structure, return as-is
       if (typeof img === 'object' && img !== null && (img.url || img.sourceUrl)) {
         return {
           url: img.url || img.sourceUrl || '',
@@ -1037,45 +735,54 @@ class FeedImportService {
           downloadStatus: img.downloadStatus || 'pending'
         };
       }
-      
-      // If it's a plain string URL, convert to object format
       if (typeof img === 'string') {
-        return {
-          url: img,
-          sourceUrl: img,
-          processedUrl: null,
-          order: index,
-          downloadStatus: 'pending'
-        };
+        return { url: img, sourceUrl: img, processedUrl: null, order: index, downloadStatus: 'pending' };
       }
+      return null;
+    }).filter(img => img && img.url);
+  }
 
-      // Fallback for unknown formats
-      console.warn(`Unknown image format:`, img);
-      return {
-        url: String(img),
-        sourceUrl: String(img),
-        processedUrl: null,
-        order: index,
-        downloadStatus: 'pending'
-      };
-    }).filter(img => img.url); // Remove any images without URLs
+  /**
+   * Normalize transmission value to enum
+   */
+  normalizeTransmission(value) {
+    if (!value) return 'manual';
+    const t = value.toLowerCase();
+    if (t.includes('auto')) return 'automatic';
+    if (t.includes('semi')) return 'semi-automatic';
+    return 'manual';
+  }
+
+  /**
+   * Normalize fuel type value to enum
+   */
+  normalizeFuelType(value) {
+    if (!value) return 'Petrol';
+    const fuelMap = {
+      'petrol': 'Petrol',
+      'diesel': 'Diesel',
+      'electric': 'Electric',
+      'hybrid': 'Hybrid',
+      'petrol hybrid': 'Petrol Hybrid',
+      'diesel hybrid': 'Diesel Hybrid',
+      'plug-in hybrid': 'Plug-in Hybrid',
+      'phev': 'Plug-in Hybrid'
+    };
+    return fuelMap[value.toLowerCase()] || value;
   }
 
   /**
    * Get feed logs for dealer
    */
   async getFeedLogs(dealerId, limit = 20) {
-    return await FeedLog.find({ dealerId })
-      .sort({ syncTime: -1 })
-      .limit(limit);
+    return await FeedLog.find({ dealerId }).sort({ syncTime: -1 }).limit(limit);
   }
 
   /**
    * Get dealer feeds
    */
   async getDealerFeeds(dealerId) {
-    return await DealerFeed.find({ dealerId })
-      .sort({ createdAt: -1 });
+    return await DealerFeed.find({ dealerId }).sort({ createdAt: -1 });
   }
 }
 
