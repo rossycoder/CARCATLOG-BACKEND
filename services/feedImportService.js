@@ -763,7 +763,24 @@ class FeedImportService {
    */
   async createOrUpdateCarListing(feedVehicle, options = {}) {
     try {
-      const mappedVehicle = feedVehicle.vehicleData;
+      // Debug logging
+      console.log('🔍 [createOrUpdateCarListing] Input feedVehicle:', {
+        id: feedVehicle._id,
+        hasVehicleData: !!feedVehicle.vehicleData,
+        vehicleDataKeys: feedVehicle.vehicleData ? Object.keys(feedVehicle.vehicleData) : 'undefined'
+      });
+
+      const mappedVehicle = feedVehicle.vehicleData || {};
+      
+      // Debug logging for mappedVehicle
+      console.log('🔍 [createOrUpdateCarListing] mappedVehicle:', {
+        stockId: mappedVehicle.stock_id,
+        registration: mappedVehicle.registration,
+        make: mappedVehicle.make,
+        model: mappedVehicle.model,
+        allKeys: Object.keys(mappedVehicle)
+      });
+
       let car = null;
 
       // Try to find existing car
@@ -771,6 +788,7 @@ class FeedImportService {
         car = await Car.findById(feedVehicle.carId);
       }
 
+      // Safe check for registration
       if (!car && mappedVehicle.registration) {
         car = await Car.findOne({
           registrationNumber: mappedVehicle.registration,
@@ -791,7 +809,7 @@ class FeedImportService {
       }
 
       // Normalize transmission to lowercase enum values
-      let normalizedTransmission = null;
+      let normalizedTransmission = 'manual'; // Default
       if (mappedVehicle.transmission) {
         const trans = mappedVehicle.transmission.toLowerCase();
         if (trans.includes('auto') || trans.includes('automatic')) {
@@ -804,8 +822,8 @@ class FeedImportService {
       }
 
       // Normalize fuel type to match enum
-      let normalizedFuelType = mappedVehicle.fuel_type;
-      if (normalizedFuelType) {
+      let normalizedFuelType = 'Petrol'; // Default
+      if (mappedVehicle.fuel_type) {
         const fuelMap = {
           'petrol': 'Petrol',
           'diesel': 'Diesel',
@@ -816,29 +834,36 @@ class FeedImportService {
           'plug-in hybrid': 'Plug-in Hybrid',
           'phev': 'Plug-in Hybrid'
         };
-        normalizedFuelType = fuelMap[normalizedFuelType.toLowerCase()] || normalizedFuelType;
+        normalizedFuelType = fuelMap[mappedVehicle.fuel_type.toLowerCase()] || mappedVehicle.fuel_type;
       }
 
       const carData = {
         dealerId: feedVehicle.dealerId,
         isDealerListing: true,
-        registrationNumber: mappedVehicle.registration,
-        make: mappedVehicle.make,
-        model: mappedVehicle.model,
-        variant: mappedVehicle.derivative,
+        registrationNumber: mappedVehicle.registration || 'TBD' + Date.now(), // Generate temp reg if missing
+        make: mappedVehicle.make || 'Unknown',
+        model: mappedVehicle.model || 'Unknown',
+        variant: mappedVehicle.derivative || null,
         year: mappedVehicle.year || new Date().getFullYear(),
         mileage: mappedVehicle.mileage || 0,
-        fuelType: normalizedFuelType || 'Petrol',
-        transmission: normalizedTransmission || 'manual',
-        color: mappedVehicle.colour || 'Not Specified',
-        price: mappedVehicle.price,
-        description: mappedVehicle.description || `${mappedVehicle.make} ${mappedVehicle.model}`,
+        fuelType: normalizedFuelType,
+        transmission: normalizedTransmission,
+        color: mappedVehicle.colour || mappedVehicle.color || 'Not Specified',
+        price: mappedVehicle.price || 0,
+        description: mappedVehicle.description || `${mappedVehicle.make || 'Unknown'} ${mappedVehicle.model || 'Unknown'}`,
         postcode: dealerPostcode,
         advertStatus: 'active',
         dataSource: 'manual',
         condition: 'used',
         skipNormalization: true
       };
+
+      console.log('💾 [createOrUpdateCarListing] Final carData:', {
+        make: carData.make,
+        model: carData.model,
+        registration: carData.registrationNumber,
+        price: carData.price
+      });
 
       // Set flag to skip API calls during feed import
       const skipAPIFetchFlag = { skipAPIFetch: true };
@@ -848,12 +873,14 @@ class FeedImportService {
         // Update existing car
         car.$locals = skipAPIFetchFlag;
         await Car.findByIdAndUpdate(car._id, carData);
+        console.log('✅ [createOrUpdateCarListing] Updated existing car:', car._id);
       } else {
         // Create new car
         car = new Car(carData);
         car.$locals = skipAPIFetchFlag;
         await car.save();
         action = 'imported';
+        console.log('✅ [createOrUpdateCarListing] Created new car:', car._id);
       }
 
       // Update feedVehicle with carId
@@ -864,7 +891,8 @@ class FeedImportService {
       return { action, car };
 
     } catch (error) {
-      console.error('Error creating/updating car listing:', error);
+      console.error('❌ [createOrUpdateCarListing] Error:', error);
+      console.error('❌ [createOrUpdateCarListing] feedVehicle:', feedVehicle);
       throw error;
     }
   }
