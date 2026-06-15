@@ -238,12 +238,37 @@ class FeedImportService {
         throw new Error('No vehicles found in feed');
       }
 
-      // 2. Apply subscription limits and selection
+      // 2. Apply subscription limits and selection BEFORE processing
       if (options.limitVehicles && subscription.listingsLimit) {
         const availableSlots = Math.max(0, subscription.listingsLimit - subscription.listingsUsed);
         
+        console.log(`🔒 [Feed Import] Subscription check:`, {
+          limit: subscription.listingsLimit,
+          used: subscription.listingsUsed,
+          available: availableSlots,
+          foundInFeed: mappedVehicles.length
+        });
+        
+        if (availableSlots <= 0) {
+          throw new Error(`Subscription limit reached. You have used ${subscription.listingsUsed} out of ${subscription.listingsLimit} listings. Please upgrade your plan to import more vehicles.`);
+        }
+        
         if (availableSlots < mappedVehicles.length) {
+          console.log(`⚠️  [Feed Import] Applying limit: reducing from ${mappedVehicles.length} to ${availableSlots} vehicles`);
           mappedVehicles = this.applyVehicleSelection(mappedVehicles, availableSlots, options.selectionMode);
+          stats.limit_applied = true;
+        }
+      } else if (subscription.listingsLimit) {
+        // Even if limitVehicles is false, prevent going over limit
+        const availableSlots = Math.max(0, subscription.listingsLimit - subscription.listingsUsed);
+        
+        if (availableSlots <= 0) {
+          throw new Error(`Subscription limit reached. You have used ${subscription.listingsUsed} out of ${subscription.listingsLimit} listings. No more vehicles can be imported.`);
+        }
+        
+        if (availableSlots < mappedVehicles.length) {
+          console.log(`🚫 [Feed Import] Hard limit enforced: reducing from ${mappedVehicles.length} to ${availableSlots} vehicles`);
+          mappedVehicles = mappedVehicles.slice(0, availableSlots);
           stats.limit_applied = true;
         }
       }
@@ -260,8 +285,22 @@ class FeedImportService {
       }
 
       // 4. Process each vehicle with enhanced image processing
+      let processedCount = 0;
       for (const mappedVehicle of mappedVehicles) {
         try {
+          // Double-check subscription limit before each vehicle
+          if (subscription.listingsLimit) {
+            const currentUsage = await this.getCurrentListingUsage(dealerId);
+            if (currentUsage >= subscription.listingsLimit) {
+              console.log(`🚫 [Feed Import] Stopping import - subscription limit ${subscription.listingsLimit} reached`);
+              stats.errors.push({
+                stockId: mappedVehicle.stock_id,
+                error: `Subscription limit ${subscription.listingsLimit} reached. Vehicle not imported.`
+              });
+              break; // Stop processing more vehicles
+            }
+          }
+
           const result = await this.processVehicleEnhanced(
             dealerId,
             dealerFeed._id,
@@ -269,7 +308,10 @@ class FeedImportService {
             options
           );
 
-          if (result.action === 'imported') stats.vehicles_imported++;
+          if (result.action === 'imported') {
+            stats.vehicles_imported++;
+            processedCount++;
+          }
           if (result.action === 'updated') stats.vehicles_updated++;
           if (result.images) stats.images_imported += result.images;
           if (result.unsplashImages) stats.unsplash_images_used += result.unsplashImages;
@@ -459,6 +501,22 @@ class FeedImportService {
     } catch (error) {
       console.error(`Error processing vehicle ${mappedVehicle.stock_id}:`, error);
       throw error;
+    }
+  }
+
+  /**
+   * Get current listing usage for dealer
+   */
+  async getCurrentListingUsage(dealerId) {
+    try {
+      const count = await Car.countDocuments({
+        dealerId,
+        advertStatus: 'active'
+      });
+      return count;
+    } catch (error) {
+      console.error('Error getting current listing usage:', error);
+      return 0;
     }
   }
 

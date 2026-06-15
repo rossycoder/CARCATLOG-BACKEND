@@ -36,6 +36,14 @@ class FeedMapper {
    * Extract vehicles array from parsed data
    */
   extractVehiclesArray(data, format, provider) {
+    console.log('🔍 [extractVehiclesArray] Input data structure:', {
+      format,
+      provider,
+      dataKeys: typeof data === 'object' && data ? Object.keys(data) : 'not an object',
+      dataType: typeof data,
+      isArray: Array.isArray(data)
+    });
+
     if (format === 'csv') {
       return data; // CSV is already an array of objects
     }
@@ -46,8 +54,20 @@ class FeedMapper {
     }
 
     if (format === 'xml') {
+      console.log('🔍 [extractVehiclesArray] XML data structure:', JSON.stringify(data, null, 2).substring(0, 500));
+      
       // Try common XML structures
-      if (data.vehicles?.vehicle) return data.vehicles.vehicle;
+      if (data.vehicles?.vehicle) {
+        console.log('✅ Found data.vehicles.vehicle, count:', Array.isArray(data.vehicles.vehicle) ? data.vehicles.vehicle.length : 1);
+        return data.vehicles.vehicle;
+      }
+      
+      // Check for direct vehicles array (your XML structure)
+      if (data.vehicles && Array.isArray(data.vehicles)) {
+        console.log('✅ Found data.vehicles as array, count:', data.vehicles.length);
+        return data.vehicles;
+      }
+      
       if (data.stock?.vehicle) return data.stock.vehicle;
       if (data.cars?.car) return data.cars.car;
       if (data.advertlist?.advert) return data.advertlist.advert;
