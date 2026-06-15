@@ -206,6 +206,7 @@ class FeedImportService {
       vehicles_found: 0,
       vehicles_imported: 0,
       vehicles_updated: 0,
+      vehicles_skipped: 0, // Track cars that were skipped (already published)
       vehicles_archived: 0,
       images_imported: 0,
       unsplash_images_used: 0,
@@ -311,8 +312,14 @@ class FeedImportService {
           if (result.action === 'imported') {
             stats.vehicles_imported++;
             processedCount++;
+          } else if (result.action === 'updated') {
+            stats.vehicles_updated++;
+          } else if (result.action === 'skipped') {
+            // Track skipped cars (already published)
+            stats.vehicles_skipped = (stats.vehicles_skipped || 0) + 1;
+            console.log(`⏭️  [Feed Import] Skipped published car: ${mappedVehicle.make} ${mappedVehicle.model} (${mappedVehicle.stock_id})`);
           }
-          if (result.action === 'updated') stats.vehicles_updated++;
+          
           if (result.images) stats.images_imported += result.images;
           if (result.unsplashImages) stats.unsplash_images_used += result.unsplashImages;
 
@@ -460,6 +467,8 @@ class FeedImportService {
         feedId,
         stockId: mappedVehicle.stock_id,
         vehicleData: mappedVehicle, // This should contain all the car data
+        hasVehicleData: true, // Explicitly set flag
+        vehicleDataKeys: Object.keys(mappedVehicle), // Track available keys
         images: imageResults.processedImages,
         imageProcessingInfo: {
           totalProcessed: imageResults.totalProcessed,
@@ -478,13 +487,41 @@ class FeedImportService {
 
       let feedVehicle;
       if (existingFeedVehicle) {
+        // Update existing FeedVehicle
         feedVehicle = await FeedVehicle.findByIdAndUpdate(
           existingFeedVehicle._id,
           feedVehicleData,
           { new: true }
         );
+        console.log(`♻️  [processVehicleEnhanced] Updated existing FeedVehicle: ${feedVehicle._id}`);
       } else {
-        feedVehicle = await FeedVehicle.create(feedVehicleData);
+        // Create new FeedVehicle with upsert to handle race conditions
+        try {
+          feedVehicle = await FeedVehicle.create(feedVehicleData);
+          console.log(`🆕 [processVehicleEnhanced] Created new FeedVehicle: ${feedVehicle._id}`);
+        } catch (error) {
+          if (error.code === 11000) {
+            // Duplicate key error - someone else created it, try to update
+            console.log(`🔄 [processVehicleEnhanced] Duplicate detected for stockId ${mappedVehicle.stock_id}, attempting update...`);
+            const existingVehicle = await FeedVehicle.findOne({
+              dealerId,
+              feedId,
+              stockId: mappedVehicle.stock_id
+            });
+            if (existingVehicle) {
+              feedVehicle = await FeedVehicle.findByIdAndUpdate(
+                existingVehicle._id,
+                feedVehicleData,
+                { new: true }
+              );
+              console.log(`✅ [processVehicleEnhanced] Updated after duplicate: ${feedVehicle._id}`);
+            } else {
+              throw error; // Re-throw if we can't find the duplicate
+            }
+          } else {
+            throw error; // Re-throw other errors
+          }
+        }
       }
 
       // Create or update Car listing
@@ -501,22 +538,6 @@ class FeedImportService {
     } catch (error) {
       console.error(`Error processing vehicle ${mappedVehicle.stock_id}:`, error);
       throw error;
-    }
-  }
-
-  /**
-   * Get current listing usage for dealer
-   */
-  async getCurrentListingUsage(dealerId) {
-    try {
-      const count = await Car.countDocuments({
-        dealerId,
-        advertStatus: 'active'
-      });
-      return count;
-    } catch (error) {
-      console.error('Error getting current listing usage:', error);
-      return 0;
     }
   }
 
@@ -869,6 +890,16 @@ class FeedImportService {
         });
       }
 
+      // 🚫 SKIP PUBLISHED CARS - Don't update cars that are already active/published
+      if (car && car.advertStatus === 'active') {
+        console.log(`🚫 [createOrUpdateCarListing] Skipping published car: ${car.make} ${car.model} (${car.registrationNumber}) - Status: ${car.advertStatus}`);
+        return { 
+          action: 'skipped', 
+          car,
+          reason: 'Car is already published/active'
+        };
+      }
+
       // Try to get dealer's postcode, fallback to default
       let dealerPostcode = 'SW1A 1AA'; // Default London postcode
       try {
@@ -914,9 +945,13 @@ class FeedImportService {
       let imageUrls = [];
       if (feedVehicle.images && feedVehicle.images.length > 0) {
         imageUrls = feedVehicle.images.map(img => img.processedUrl || img.sourceUrl || img.url).filter(Boolean);
+        console.log(`🖼️  [createOrUpdateCarListing] Found ${imageUrls.length} images in feedVehicle.images`);
       } else if (mappedVehicle.images && mappedVehicle.images.length > 0) {
         // Fallback to original images from feed
         imageUrls = mappedVehicle.images.map(img => typeof img === 'string' ? img : img.url).filter(Boolean);
+        console.log(`🖼️  [createOrUpdateCarListing] Found ${imageUrls.length} images in mappedVehicle.images`);
+      } else {
+        console.log(`⚠️  [createOrUpdateCarListing] No images found in feedVehicle or mappedVehicle`);
       }
 
       const carData = {
@@ -934,7 +969,7 @@ class FeedImportService {
         price: mappedVehicle.price || 0,
         description: mappedVehicle.description || `${mappedVehicle.make || 'Unknown'} ${mappedVehicle.model || 'Unknown'}`,
         postcode: dealerPostcode,
-        advertStatus: 'active',
+        advertStatus: 'draft', // 📝 Always import as draft, not active
         dataSource: 'manual',
         condition: 'used',
         skipNormalization: true,
@@ -946,7 +981,8 @@ class FeedImportService {
         model: carData.model,
         registration: carData.registrationNumber,
         price: carData.price,
-        imageCount: carData.images.length
+        imageCount: carData.images.length,
+        advertStatus: carData.advertStatus
       });
 
       // Set flag to skip API calls during feed import
@@ -954,7 +990,7 @@ class FeedImportService {
       let action = 'updated';
 
       if (car) {
-        // Update existing car
+        // Update existing car (only if not active)
         car.$locals = skipAPIFetchFlag;
         await Car.findByIdAndUpdate(car._id, carData);
         console.log('✅ [createOrUpdateCarListing] Updated existing car:', car._id);

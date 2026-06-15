@@ -56,6 +56,18 @@ class FeedMapper {
     if (format === 'xml') {
       console.log('🔍 [extractVehiclesArray] XML data structure:', JSON.stringify(data, null, 2).substring(0, 500));
       
+      // Handle nested feed structure: { feed: { vehicles: {...} } }
+      if (data.feed && data.feed.vehicles) {
+        console.log('✅ Found data.feed.vehicles structure');
+        const vehicles = data.feed.vehicles;
+        // If it's a single vehicle object, wrap it in an array
+        if (!Array.isArray(vehicles)) {
+          console.log('✅ Converting single vehicle to array');
+          return [vehicles];
+        }
+        return vehicles;
+      }
+      
       // Try common XML structures
       if (data.vehicles?.vehicle) {
         console.log('✅ Found data.vehicles.vehicle, count:', Array.isArray(data.vehicles.vehicle) ? data.vehicles.vehicle.length : 1);
@@ -301,6 +313,24 @@ class FeedMapper {
       
       // If we found images, stop looking
       if (images.length > 0) break;
+    }
+
+    // CSV-specific image handling: look for image_url_1, image_url_2, etc.
+    if (images.length === 0) {
+      for (let i = 1; i <= 10; i++) {
+        const imageUrl = this.getNestedProperty(vehicle, `image_url_${i}`);
+        const imageOrder = this.getNestedProperty(vehicle, `image_order_${i}`) || (i - 1);
+        
+        if (imageUrl && this.isValidImageUrl(imageUrl)) {
+          images.push({ url: imageUrl, order: parseInt(imageOrder) });
+        }
+      }
+      
+      // Also check for single image_url field
+      const singleImageUrl = this.getNestedProperty(vehicle, 'image_url');
+      if (singleImageUrl && this.isValidImageUrl(singleImageUrl)) {
+        images.push({ url: singleImageUrl, order: 0 });
+      }
     }
 
     // Return null instead of empty array if no images found

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const feedController = require('../controllers/feedController');
 const { authenticateTradeDealer } = require('../middleware/tradeDealerAuth');
+const Car = require('../models/Car');
 
 // Apply authentication middleware to all feed routes
 router.use(authenticateTradeDealer);

@@ -68,6 +68,35 @@ const FeedVehicleSchema = new mongoose.Schema({
   description: {
     type: String
   },
+  // Enhanced feed import fields
+  vehicleData: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  hasVehicleData: {
+    type: Boolean,
+    default: false
+  },
+  vehicleDataKeys: {
+    type: [String],
+    default: []
+  },
+  images: [{
+    url: { type: String },
+    sourceUrl: { type: String },
+    processedUrl: { type: String },
+    order: { type: Number, default: 0 },
+    downloadStatus: { 
+      type: String, 
+      enum: ['pending', 'completed', 'failed'], 
+      default: 'pending' 
+    }
+  }],
+  imageProcessingInfo: {
+    totalProcessed: { type: Number, default: 0 },
+    failedImages: { type: Number, default: 0 },
+    unsplashUsed: { type: Boolean, default: false }
+  },
   rawData: {
     type: mongoose.Schema.Types.Mixed
   },
