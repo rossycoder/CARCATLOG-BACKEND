@@ -469,7 +469,7 @@ class FeedImportService {
         vehicleData: mappedVehicle, // This should contain all the car data
         hasVehicleData: true, // Explicitly set flag
         vehicleDataKeys: Object.keys(mappedVehicle), // Track available keys
-        images: imageResults.processedImages,
+        images: this.normalizeImagesForFeedVehicle(imageResults.processedImages || mappedVehicle.images),
         imageProcessingInfo: {
           totalProcessed: imageResults.totalProcessed,
           failedImages: imageResults.failedImages.length,
@@ -1015,6 +1015,50 @@ class FeedImportService {
       console.error('❌ [createOrUpdateCarListing] feedVehicle:', feedVehicle);
       throw error;
     }
+  }
+
+  /**
+   * Normalize images for FeedVehicle model
+   * Ensures images are in the correct object format expected by the schema
+   */
+  normalizeImagesForFeedVehicle(images) {
+    if (!images || !Array.isArray(images)) {
+      return [];
+    }
+
+    return images.map((img, index) => {
+      // If it's already an object with the correct structure, return as-is
+      if (typeof img === 'object' && img !== null && (img.url || img.sourceUrl)) {
+        return {
+          url: img.url || img.sourceUrl || '',
+          sourceUrl: img.sourceUrl || img.url || '',
+          processedUrl: img.processedUrl || null,
+          order: img.order !== undefined ? img.order : index,
+          downloadStatus: img.downloadStatus || 'pending'
+        };
+      }
+      
+      // If it's a plain string URL, convert to object format
+      if (typeof img === 'string') {
+        return {
+          url: img,
+          sourceUrl: img,
+          processedUrl: null,
+          order: index,
+          downloadStatus: 'pending'
+        };
+      }
+
+      // Fallback for unknown formats
+      console.warn(`Unknown image format:`, img);
+      return {
+        url: String(img),
+        sourceUrl: String(img),
+        processedUrl: null,
+        order: index,
+        downloadStatus: 'pending'
+      };
+    }).filter(img => img.url); // Remove any images without URLs
   }
 
   /**

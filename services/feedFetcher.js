@@ -26,8 +26,17 @@ class FeedFetcher {
         if (urlObj.hostname === 'gist.githubusercontent.com') {
           return url;
         }
+        
+        // Handle fragment-based URLs like #file-test-feed-xml/raw
+        if (urlObj.hash && urlObj.hash.includes('/raw')) {
+          // Extract the raw part: #file-test-feed-xml/raw -> /raw
+          const rawPart = urlObj.hash.split('/raw')[0].replace('#file-', '');
+          // Construct proper raw URL
+          const gistId = urlObj.pathname.replace('/', '');
+          return `https://gist.githubusercontent.com/${urlObj.pathname}/raw/${rawPart}`;
+        }
+        
         // Try to convert gist URL to raw
-        // Gist URLs can be complex, try adding /raw
         if (!url.endsWith('/raw')) {
           return `${url}/raw`;
         }
