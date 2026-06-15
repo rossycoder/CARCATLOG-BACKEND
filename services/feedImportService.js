@@ -3,7 +3,7 @@ const feedProviderDetector = require('./feedProviderDetector');
 const feedMapper = require('./feedMapper');
 const feedImageService = require('./feedImageService');
 const feedImageProcessor = require('./feedImageProcessor'); // New enhanced image processor
-const imageCleanupService = require('./imageCleanupService'); // Auto-delete cars without images
+// const imageCleanupService = require('./imageCleanupService'); // Commented out for testing
 const DealerFeed = require('../models/DealerFeed');
 const FeedVehicle = require('../models/FeedVehicle');
 const FeedLog = require('../models/FeedLog');
@@ -316,21 +316,21 @@ class FeedImportService {
         }
       });
 
-      // 12. Schedule cleanup of cars without images (automatic)
+      // 12. Optional cleanup of cars without images (disabled for testing)
       if (options.deleteVehiclesWithoutImages !== false) {
-        console.log('🗑️ [Feed Import] Scheduling cleanup for vehicles without images...');
+        console.log('🗑️ [Feed Import] Image cleanup scheduled (disabled for testing)');
         
         // Wait 30 seconds for image processing to complete, then cleanup
         setTimeout(async () => {
           try {
-            const imageCleanupService = require('./imageCleanupService');
-            const cleanupStats = await imageCleanupService.enforceImageRequirements(dealerId, {
-              minImages: 1,
-              deleteWithoutImages: true,
-              deleteWithBrokenImages: true
-            });
+            // const imageCleanupService = require('./imageCleanupService');
+            // const cleanupStats = await imageCleanupService.enforceImageRequirements(dealerId, {
+            //   minImages: 1,
+            //   deleteWithoutImages: true,
+            //   deleteWithBrokenImages: true
+            // });
             
-            console.log(`✅ [Post-Import Cleanup] Removed ${cleanupStats.cars_deleted} cars without proper images`);
+            console.log(`✅ [Post-Import Cleanup] Image cleanup temporarily disabled for testing`);
           } catch (error) {
             console.error('❌ [Post-Import Cleanup] Failed:', error.message);
           }
@@ -756,6 +756,117 @@ class FeedImportService {
     }
 
     return count;
+  }
+
+  /**
+   * Create or update Car listing from FeedVehicle
+   */
+  async createOrUpdateCarListing(feedVehicle, options = {}) {
+    try {
+      const mappedVehicle = feedVehicle.vehicleData;
+      let car = null;
+
+      // Try to find existing car
+      if (feedVehicle.carId) {
+        car = await Car.findById(feedVehicle.carId);
+      }
+
+      if (!car && mappedVehicle.registration) {
+        car = await Car.findOne({
+          registrationNumber: mappedVehicle.registration,
+          dealerId: feedVehicle.dealerId
+        });
+      }
+
+      // Try to get dealer's postcode, fallback to default
+      let dealerPostcode = 'SW1A 1AA'; // Default London postcode
+      try {
+        const TradeDealer = require('../models/TradeDealer');
+        const dealer = await TradeDealer.findById(feedVehicle.dealerId).select('businessAddress');
+        if (dealer?.businessAddress?.postcode) {
+          dealerPostcode = dealer.businessAddress.postcode;
+        }
+      } catch (err) {
+        console.log('Could not fetch dealer postcode, using default:', err.message);
+      }
+
+      // Normalize transmission to lowercase enum values
+      let normalizedTransmission = null;
+      if (mappedVehicle.transmission) {
+        const trans = mappedVehicle.transmission.toLowerCase();
+        if (trans.includes('auto') || trans.includes('automatic')) {
+          normalizedTransmission = 'automatic';
+        } else if (trans.includes('manual')) {
+          normalizedTransmission = 'manual';
+        } else if (trans.includes('semi')) {
+          normalizedTransmission = 'semi-automatic';
+        }
+      }
+
+      // Normalize fuel type to match enum
+      let normalizedFuelType = mappedVehicle.fuel_type;
+      if (normalizedFuelType) {
+        const fuelMap = {
+          'petrol': 'Petrol',
+          'diesel': 'Diesel',
+          'electric': 'Electric',
+          'hybrid': 'Hybrid',
+          'petrol hybrid': 'Petrol Hybrid',
+          'diesel hybrid': 'Diesel Hybrid',
+          'plug-in hybrid': 'Plug-in Hybrid',
+          'phev': 'Plug-in Hybrid'
+        };
+        normalizedFuelType = fuelMap[normalizedFuelType.toLowerCase()] || normalizedFuelType;
+      }
+
+      const carData = {
+        dealerId: feedVehicle.dealerId,
+        isDealerListing: true,
+        registrationNumber: mappedVehicle.registration,
+        make: mappedVehicle.make,
+        model: mappedVehicle.model,
+        variant: mappedVehicle.derivative,
+        year: mappedVehicle.year || new Date().getFullYear(),
+        mileage: mappedVehicle.mileage || 0,
+        fuelType: normalizedFuelType || 'Petrol',
+        transmission: normalizedTransmission || 'manual',
+        color: mappedVehicle.colour || 'Not Specified',
+        price: mappedVehicle.price,
+        description: mappedVehicle.description || `${mappedVehicle.make} ${mappedVehicle.model}`,
+        postcode: dealerPostcode,
+        advertStatus: 'active',
+        dataSource: 'manual',
+        condition: 'used',
+        skipNormalization: true
+      };
+
+      // Set flag to skip API calls during feed import
+      const skipAPIFetchFlag = { skipAPIFetch: true };
+      let action = 'updated';
+
+      if (car) {
+        // Update existing car
+        car.$locals = skipAPIFetchFlag;
+        await Car.findByIdAndUpdate(car._id, carData);
+      } else {
+        // Create new car
+        car = new Car(carData);
+        car.$locals = skipAPIFetchFlag;
+        await car.save();
+        action = 'imported';
+      }
+
+      // Update feedVehicle with carId
+      if (car && !feedVehicle.carId) {
+        await FeedVehicle.findByIdAndUpdate(feedVehicle._id, { carId: car._id });
+      }
+
+      return { action, car };
+
+    } catch (error) {
+      console.error('Error creating/updating car listing:', error);
+      throw error;
+    }
   }
 
   /**
