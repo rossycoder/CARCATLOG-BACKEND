@@ -89,7 +89,7 @@ class FeedMapper {
         return data.motordesk.vehicle;
       }
       
-      // Fallback: try to find any array-like structure
+      // Fallback: try to find any array-like structure (2 levels deep)
       const keys = Object.keys(data);
       for (const key of keys) {
         if (Array.isArray(data[key])) {
@@ -104,9 +104,51 @@ class FeedMapper {
           }
         }
       }
+      
+      // Last resort: recursively search the whole structure for the
+      // array that looks most like a vehicle list, no matter how nested
+      const deepFallback = this.findBestVehicleArray(data);
+      if (deepFallback) {
+        console.log('✅ [extractVehiclesArray] Found vehicles via deep recursive search, count:', deepFallback.length);
+        return deepFallback;
+      }
     }
 
     return [];
+  }
+
+  /**
+   * Last-resort recursive search: finds the array anywhere in the parsed
+   * structure that looks most like a vehicle list (most items + most
+   * vehicle-like field names), regardless of how deeply it's nested.
+   */
+  findBestVehicleArray(data, maxDepth = 8) {
+    const vehicleKeyHints = ['make', 'model', 'price', 'stock', 'registration', 'reg', 'mileage', 'vin'];
+    let best = null;
+    let bestScore = 0;
+    
+    const scoreArray = (arr) => {
+      if (!Array.isArray(arr) || arr.length === 0) return 0;
+      const sample = arr[0];
+      if (!sample || typeof sample !== 'object') return 0;
+      const keys = Object.keys(sample).map(k => k.toLowerCase());
+      const hits = vehicleKeyHints.filter(hint => keys.some(k => k.includes(hint))).length;
+      return hits * arr.length;
+    };
+    
+    const visit = (node, depth) => {
+      if (depth > maxDepth || !node || typeof node !== 'object') return;
+      if (Array.isArray(node)) {
+        const score = scoreArray(node);
+        if (score > bestScore) { bestScore = score; best = node; }
+        node.forEach(item => visit(item, depth + 1));
+        return;
+      }
+      for (const key of Object.keys(node)) visit(node[key], depth + 1);
+    };
+    
+    visit(data, 0);
+    return bestScore > 0 ? best : null;
   }
 
   /**
@@ -114,6 +156,17 @@ class FeedMapper {
    */
   mapVehicle(rawVehicle, provider, index) {
     try {
+      // ✅ Extract stock_id - prioritize 'id' field for JSON feeds
+      const stockId = this.extractField(rawVehicle, [
+        'stock_id', 'stockid', 'stocknumber', 'stock_number', 'id', 'vehicle_id', 'vehicleid', 'vin'
+      ]);
+      
+      // ✅ Extract and NORMALIZE status
+      const rawStatus = this.extractField(rawVehicle, [
+        'status', 'state', 'availability', 'advert_status', 'advertstatus', 'stock_status'
+      ]);
+      const normalizedStatus = this.normalizeStatus(rawStatus);
+      
       // Extract raw fuel type
       const rawFuelType = this.extractField(rawVehicle, [
         'fuel_type', 'fueltype', 'fuel', 'engine_type', 'fuel'
@@ -123,9 +176,7 @@ class FeedMapper {
       const fuelType = this.normalizeFuelType(rawFuelType);
       
       const mapped = {
-        stock_id: this.extractField(rawVehicle, [
-          'stock_id', 'stockid', 'stocknumber', 'stock_number', 'id', 'vehicle_id', 'vehicleid', 'vin'
-        ]) || `AUTO_${Date.now()}_${index}`,
+        stock_id: stockId || `AUTO_${Date.now()}_${index}`,
         
         registration: this.extractField(rawVehicle, [
           'registration', 'reg', 'vrm', 'regnumber', 'reg_number'
@@ -169,6 +220,8 @@ class FeedMapper {
           'price', 'asking_price', 'askingprice', 'retail_price', 'retailprice', 'price_eur'
         ])) || null,
         
+        status: normalizedStatus,  // ✅ Use normalized status
+        
         description: this.extractField(rawVehicle, [
           'description', 'comments', 'notes', 'details', 'advert_text'
         ]),
@@ -178,8 +231,18 @@ class FeedMapper {
         raw_data: rawVehicle
       };
 
+      // ✅ Log extracted data for debugging
+      console.log(`🔍 [mapVehicle] Mapped vehicle:`, {
+        stock_id: mapped.stock_id,
+        make: mapped.make,
+        model: mapped.model,
+        rawStatus: rawStatus,
+        normalizedStatus: mapped.status
+      });
+
       // Validate minimum required fields
       if (!mapped.stock_id || !mapped.make) {
+        console.warn('⚠️  [mapVehicle] Skipping vehicle - missing stock_id or make');
         return null;
       }
 
@@ -189,6 +252,41 @@ class FeedMapper {
       console.error('Error mapping vehicle:', error, rawVehicle);
       return null;
     }
+  }
+
+  /**
+   * Normalize status to match standard values
+   */
+  normalizeStatus(rawStatus) {
+    if (!rawStatus) return 'active'; // Default to active
+    
+    const status = String(rawStatus).toLowerCase().trim();
+    
+    // Map various status values to standard ones
+    const statusMap = {
+      'sold': 'sold',
+      'sold out': 'sold',
+      'sold_out': 'sold',
+      'soldout': 'sold',
+      'sale': 'sold',
+      'active': 'active',
+      'available': 'active',
+      'in stock': 'active',
+      'instock': 'active',
+      'in_stock': 'active',
+      'for sale': 'active',
+      'forsale': 'active',
+      'draft': 'draft',
+      'pending': 'draft',
+      'archived': 'archived',
+      'deleted': 'archived'
+    };
+    
+    const normalized = statusMap[status] || 'active';
+    
+    console.log(`🔄 [normalizeStatus] "${rawStatus}" → "${normalized}"`);
+    
+    return normalized;
   }
 
   /**

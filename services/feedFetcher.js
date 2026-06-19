@@ -83,6 +83,50 @@ class FeedFetcher {
    */
   async fetchFeed(url) {
     try {
+      // ═══════════════════════════════════════════════════════════════════════
+      // 🧪 TESTING MODE: Support local file:// URLs for development
+      // ═══════════════════════════════════════════════════════════════════════
+      if (url.startsWith('file://')) {
+        console.log('🧪 [Testing Mode] Loading local file:', url);
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Convert file:// URL to local path (handle both Windows and Unix)
+        let filePath = url.replace('file:///', '').replace('file://', '');
+        
+        // Handle Windows paths (C:/ format)
+        if (process.platform === 'win32' && filePath.match(/^[a-zA-Z]:\//)) {
+          // Path is already correct: C:/Users/...
+        } else if (process.platform === 'win32' && !path.isAbsolute(filePath)) {
+          // Relative path - resolve from current directory
+          filePath = path.resolve(process.cwd(), filePath);
+        }
+        
+        console.log('📂 Reading file from:', filePath);
+        
+        try {
+          const content = fs.readFileSync(filePath, 'utf8');
+          console.log(`✅ File loaded successfully (${content.length} bytes)`);
+          
+          return {
+            success: true,
+            data: content,
+            contentType: 'text/xml', // Assume XML for local files
+            status: 200
+          };
+        } catch (fileError) {
+          console.error('❌ File read error:', fileError.message);
+          return {
+            success: false,
+            error: `Cannot read local file: ${fileError.message}. Try uploading the feed to GitHub Gist, Pastebin, or use an HTTP URL instead.`
+          };
+        }
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // 🌐 PRODUCTION MODE: Fetch from HTTP/HTTPS URL
+      // ═══════════════════════════════════════════════════════════════════════
+      
       // Try to convert URL to raw format first
       const rawUrl = this.convertToRawUrl(url);
       const urlUsed = rawUrl !== url ? rawUrl : url;
@@ -142,11 +186,13 @@ class FeedFetcher {
 
   /**
    * Detect feed format automatically
+   * Strips BOM before detection to handle Excel exports
    */
   detectFormat(data, contentType) {
     // Log for debugging
     console.log('Content-Type:', contentType);
-    const dataStr = typeof data === 'string' ? data.trim() : JSON.stringify(data);
+    let dataStr = typeof data === 'string' ? data.trim() : JSON.stringify(data);
+    dataStr = dataStr.replace(/^\uFEFF/, ''); // Strip BOM (Byte Order Mark) common in Excel/Windows exports
     console.log('Data preview (first 200 chars):', dataStr.substring(0, 200));
     
     // PRIORITY 1: Check actual data structure (most reliable)
@@ -221,27 +267,25 @@ class FeedFetcher {
   }
 
   /**
-   * Parse XML feed
+   * Parse XML feed with namespace support and BOM handling
+   * Handles namespace prefixes (ns:vehicle) and BOM characters
    */
   async parseXML(data) {
+    const { stripPrefix } = xml2js.processors;
+    const xmlString = typeof data === 'string' ? data.replace(/^\uFEFF/, '') : data;
+    
     const parser = new xml2js.Parser({
       explicitArray: false,
       mergeAttrs: true,
       trim: true,
-      strict: false, // Less strict parsing
-      attrValueProcessors: [
-        (value) => value || '' // Handle empty attribute values
-      ],
-      tagNameProcessors: [
-        (name) => name.toLowerCase() // Normalize tag names
-      ]
+      strict: false,
+      attrValueProcessors: [(value) => value || ''],
+      tagNameProcessors: [stripPrefix, (name) => name.toLowerCase()] // Strips "ns:" prefixes + lowercases
     });
 
     try {
-      const result = await parser.parseStringPromise(data);
-      return result;
+      return await parser.parseStringPromise(xmlString);
     } catch (error) {
-      // Provide more helpful error message
       throw new Error(`XML parsing failed: ${error.message}`);
     }
   }
@@ -257,36 +301,52 @@ class FeedFetcher {
   }
 
   /**
-   * Parse CSV feed
+   * Parse CSV feed with intelligent delimiter detection
+   * Handles BOM, semicolon, tab, pipe delimiters common in European/legacy systems
    */
   parseCSV(data) {
     try {
-      // Ensure data is a string
-      const csvString = typeof data === 'string' ? data : String(data);
+      let csvString = typeof data === 'string' ? data : String(data);
+      csvString = csvString.replace(/^\uFEFF/, ''); // Strip BOM (common in Excel exports)
       
-      // Parse with Papa Parse (Node.js compatible)
-      const result = Papa.parse(csvString, {
+      const baseOptions = {
         header: true,
         skipEmptyLines: true,
         dynamicTyping: true,
-        transformHeader: (header) => header.trim(), // Trim whitespace from headers
-        delimiter: '', // Auto-detect delimiter
-        newline: '', // Auto-detect newline
+        transformHeader: (header) => header.trim(),
+        newline: '',
         quoteChar: '"',
         escapeChar: '"'
-      });
-
+      };
+      
+      let result = Papa.parse(csvString, { ...baseOptions, delimiter: '' }); // Auto-detect first
+      
+      // If auto-detect produced single-column rows, it likely picked the wrong
+      // delimiter — manually test common alternatives and keep the best one
+      const firstRowKeys = result.data?.[0] ? Object.keys(result.data[0]) : [];
+      if (firstRowKeys.length <= 1) {
+        let bestColumnCount = firstRowKeys.length;
+        for (const delim of [',', ';', '\t', '|']) {
+          const attempt = Papa.parse(csvString, { ...baseOptions, delimiter: delim });
+          const cols = attempt.data?.[0] ? Object.keys(attempt.data[0]).length : 0;
+          if (cols > bestColumnCount) {
+            bestColumnCount = cols;
+            result = attempt;
+          }
+        }
+      }
+      
       if (result.errors && result.errors.length > 0) {
         const criticalErrors = result.errors.filter(e => e.type !== 'Quotes');
         if (criticalErrors.length > 0) {
           throw new Error(`CSV parsing errors: ${JSON.stringify(criticalErrors.slice(0, 3))}`);
         }
       }
-
+      
       if (!result.data || result.data.length === 0) {
         throw new Error('No data found in CSV file');
       }
-
+      
       return result.data;
     } catch (error) {
       throw new Error(`CSV parsing failed: ${error.message}`);

@@ -118,6 +118,29 @@ const tradeDealerSchema = new mongoose.Schema({
     trim: true
   },
   
+  // Feed & API Settings
+  settings: {
+    // API Enrichment Control
+    enableAPIEnrichment: {
+      type: Boolean,
+      default: false // ⚠️ DEFAULT: DISABLED to control costs
+    },
+    maxAPIEnrichmentCost: {
+      type: Number,
+      default: 2.00 // Max £2 per car
+    },
+    // Feed import settings
+    autoPublishFeedCars: {
+      type: Boolean,
+      default: true
+    },
+    feedImportSchedule: {
+      type: String,
+      enum: ['manual', 'daily', 'weekly'],
+      default: 'manual'
+    }
+  },
+  
   // Statistics
   stats: {
     totalListings: {

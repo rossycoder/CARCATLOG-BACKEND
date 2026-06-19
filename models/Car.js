@@ -147,6 +147,7 @@ const carSchema = new mongoose.Schema({
     stripePaymentIntentId: String
   },
   dealerId: { type: mongoose.Schema.Types.ObjectId, ref: 'TradeDealer', index: true },
+  stockId: { type: String, trim: true, index: true }, // 🔑 Dealer's stock/inventory ID from feed
   isDealerListing: { type: Boolean, default: false },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
   viewCount: { type: Number, default: 0, min: 0 },
@@ -259,6 +260,9 @@ carSchema.index({ condition: 1 });
 carSchema.index({ fuelType: 1 });
 carSchema.index({ historyCheckStatus: 1 });
 carSchema.index({ dealerId: 1, advertStatus: 1 });
+// 🔑 REMOVED unique constraint on stockId - causing duplicate key errors when null
+// StockId is now just an indexed field, not unique, to allow feed imports without stockId
+carSchema.index({ dealerId: 1, stockId: 1 }); // Non-unique index for performance
 carSchema.index({ isDealerListing: 1 });
 carSchema.index({ vehicleType: 1 });
 carSchema.index({ vehicleType: 1, condition: 1 });

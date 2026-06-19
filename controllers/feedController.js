@@ -34,10 +34,22 @@ exports.testFeed = async (req, res) => {
  */
 exports.importFeed = async (req, res) => {
   try {
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🔍 DIAGNOSTIC LOGGING - Track frontend requests
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('\n' + '═'.repeat(80));
+    console.log('📥 FRONTEND IMPORT REQUEST RECEIVED');
+    console.log('═'.repeat(80));
+    console.log('⏰ Timestamp:', new Date().toISOString());
+    console.log('🔐 Dealer ID:', req.dealerId || req.dealer?.id || 'NOT FOUND');
+    console.log('📋 Request Body:', JSON.stringify(req.body, null, 2));
+    console.log('═'.repeat(80) + '\n');
+    
     // Get dealerId from authenticated session
     const dealerId = req.dealerId || req.dealer?.id;
     
     if (!dealerId) {
+      console.error('❌ No dealer ID found in request\n');
       return res.status(401).json({
         success: false,
         message: 'Unauthorized: Dealer authentication required'
@@ -54,11 +66,21 @@ exports.importFeed = async (req, res) => {
     } = req.body;
 
     if (!feedUrl) {
+      console.error('❌ No feed URL provided\n');
       return res.status(400).json({
         success: false,
         message: 'Feed URL is required'
       });
     }
+
+    console.log('✅ Starting import with options:', {
+      removeSoldVehicles: removeSoldVehicles !== false,
+      importImages: importImages !== false,
+      useUnsplashFallback: useUnsplashFallback === true,
+      limitVehicles: limitVehicles === true,
+      selectionMode: selectionMode || 'first'
+    });
+    console.log();
 
     // ALWAYS use enhanced import with Cloudinary upload
     // Enhanced import properly downloads images from any source and uploads to Cloudinary
@@ -71,10 +93,19 @@ exports.importFeed = async (req, res) => {
       uploadToCloudinary: true, // ✅ Always upload to Cloudinary
       createCarListings: true
     });
+    
+    console.log('\n' + '─'.repeat(80));
+    console.log('📊 IMPORT COMPLETED');
+    console.log('─'.repeat(80));
+    console.log('✅ Success:', result.success);
+    console.log('📈 Stats:', JSON.stringify(result.stats, null, 2));
+    console.log('─'.repeat(80) + '\n');
 
     const response = {
       success: true,
-      message: `Successfully imported ${result.stats.vehicles_imported} vehicles`,
+      message: result.stats.vehicles_imported > 0 || result.stats.vehicles_updated > 0 
+        ? `Successfully imported ${result.stats.vehicles_imported} vehicles` 
+        : `No vehicles imported`,
       stats: result.stats,
       provider: result.provider,
       format: result.format,
@@ -95,7 +126,13 @@ exports.importFeed = async (req, res) => {
     res.json(response);
 
   } catch (error) {
-    console.error('Error importing feed:', error);
+    console.error('\n' + '═'.repeat(80));
+    console.error('❌ IMPORT FAILED - ERROR DETAILS');
+    console.error('═'.repeat(80));
+    console.error('Error Message:', error.message);
+    console.error('Error Stack:', error.stack);
+    console.error('═'.repeat(80) + '\n');
+    
     res.status(500).json({
       success: false,
       message: 'Failed to import feed',
@@ -150,7 +187,15 @@ exports.updateFeed = async (req, res) => {
     }
     
     const { feedId } = req.params;
-    const { autoImportEnabled, syncIntervalMinutes, removeSoldVehicles, importImages } = req.body;
+    
+    // Accept both snake_case (from frontend) and camelCase
+    const { 
+      autoImportEnabled, 
+      auto_import_enabled,
+      syncIntervalMinutes, 
+      removeSoldVehicles, 
+      importImages 
+    } = req.body;
 
     const feed = await DealerFeed.findOne({
       _id: feedId,
@@ -164,14 +209,31 @@ exports.updateFeed = async (req, res) => {
       });
     }
 
-    await DealerFeed.findByIdAndUpdate(feedId, {
-      autoImportEnabled,
-      syncIntervalMinutes,
-      removeSoldVehicles,
-      importImages
-    });
+    // Build update object dynamically
+    const updateData = {};
+    
+    // Handle autoImportEnabled (accept both formats)
+    if (autoImportEnabled !== undefined) {
+      updateData.autoImportEnabled = autoImportEnabled;
+    } else if (auto_import_enabled !== undefined) {
+      updateData.autoImportEnabled = auto_import_enabled;
+    }
+    
+    if (syncIntervalMinutes !== undefined) {
+      updateData.syncIntervalMinutes = syncIntervalMinutes;
+    }
+    if (removeSoldVehicles !== undefined) {
+      updateData.removeSoldVehicles = removeSoldVehicles;
+    }
+    if (importImages !== undefined) {
+      updateData.importImages = importImages;
+    }
+
+    await DealerFeed.findByIdAndUpdate(feedId, updateData);
 
     const updatedFeed = await DealerFeed.findById(feedId);
+
+    console.log(`✅ Feed ${feedId} updated - Auto-import: ${updatedFeed.autoImportEnabled}`);
 
     res.json({
       success: true,
@@ -295,15 +357,29 @@ exports.syncFeed = async (req, res) => {
       });
     }
 
-    const result = await feedImportService.importFeed(dealerId, feed.feedUrl, {
-      removeSoldVehicles: feed.removeSoldVehicles,
-      importImages: feed.importImages,
-      createCarListings: true
+    // ✅ Same enhanced logic as "Import Stock" — subscription limits,
+    // robust image handling, proper per-vehicle error tracking.
+    // 🔄 SYNC MODE: Process sold vehicles to update their status (isFirstImport: false)
+    const result = await feedImportService.importFeedEnhanced(dealerId, feed.feedUrl, {
+      removeSoldVehicles: feed.removeSoldVehicles !== false,
+      importImages: feed.importImages !== false,
+      useUnsplashFallback: feed.useUnsplashFallback === true,
+      createCarListings: true,
+      isFirstImport: false // 🔄 SYNC mode: update status of existing sold cars, don't skip them
     });
 
+    const imported = result.stats.vehicles_imported || 0;
+    const updated = result.stats.vehicles_updated || 0;
+    const errors = result.stats.errors || [];
+    const hasSucceeded = imported > 0 || updated > 0;
+
     res.json({
-      success: true,
-      message: 'Feed synced successfully',
+      success: hasSucceeded || errors.length === 0,
+      message: hasSucceeded
+        ? `Synced: ${imported} imported, ${updated} updated${errors.length > 0 ? `, ${errors.length} errors` : ''}`
+        : errors.length > 0
+          ? `Sync completed with ${errors.length} errors — nothing was imported or updated`
+          : 'No changes — feed already up to date',
       stats: result.stats
     });
 

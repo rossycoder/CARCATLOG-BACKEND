@@ -418,9 +418,9 @@ class FeedImageService {
     // Update Car with all successfully uploaded image URLs
     if (uploadedUrls.length > 0) {
       await Car.findByIdAndUpdate(carId, {
-        $addToSet: { images: { $each: uploadedUrls } } // Add without duplicates
+        $set: { images: uploadedUrls } // ✅ REPLACE images on sync (don't add to old ones)
       });
-      console.log(`[ImageDownloader] ✅ Updated car ${carId} with ${uploadedUrls.length} images`);
+      console.log(`[ImageDownloader] ✅ Updated car ${carId} with ${uploadedUrls.length} images (replaced)`);
     }
 
     return {

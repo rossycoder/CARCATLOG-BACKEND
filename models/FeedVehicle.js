@@ -114,7 +114,8 @@ const FeedVehicleSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Compound index for unique stock ID per dealer
-FeedVehicleSchema.index({ dealerId: 1, stockId: 1 }, { unique: true });
+// Compound index for query performance (non-unique to allow re-imports)
+// Multiple FeedVehicles can have same stockId during re-import process
+FeedVehicleSchema.index({ dealerId: 1, stockId: 1 }, { unique: false });
 
 module.exports = mongoose.model('FeedVehicle', FeedVehicleSchema);
