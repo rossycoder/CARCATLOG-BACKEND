@@ -49,8 +49,41 @@ class FeedMapper {
     }
 
     if (format === 'json') {
-      // Try common JSON structures
-      return data.vehicles || data.stock || data.cars || data.items || data;
+      // ── Step 1: Seedha array ho to wahi use karo ──────────────────────────
+      if (Array.isArray(data)) {
+        console.log(`✅ [JSON] Root is array, count: ${data.length}`);
+        return data;
+      }
+      
+      // ── Step 2: Known wrapper keys try karo ───────────────────────────────
+      const knownKeys = [
+        'vehicles', 'vehicle', 'testData', 'stock', 'cars', 'car',
+        'items', 'item', 'listings', 'listing', 'inventory',
+        'data', 'results', 'records', 'feed', 'adverts', 'advert'
+      ];
+      
+      for (const key of knownKeys) {
+        if (Array.isArray(data[key]) && data[key].length > 0) {
+          console.log(`✅ [JSON] Found vehicles at key: "${key}", count: ${data[key].length}`);
+          return data[key];
+        }
+      }
+      
+      // ── Step 3: Last resort - koi bhi array dhoondo ────────────────────────
+      console.log(`🔍 [JSON] Known keys not found, searching all keys...`);
+      for (const key of Object.keys(data)) {
+        if (Array.isArray(data[key]) && data[key].length > 0) {
+          const sample = data[key][0];
+          // Check if array contains objects (not primitives)
+          if (sample && typeof sample === 'object' && !Array.isArray(sample)) {
+            console.log(`✅ [JSON] Found array at key: "${key}", count: ${data[key].length}`);
+            return data[key];
+          }
+        }
+      }
+      
+      console.warn(`⚠️  [JSON] No vehicle arrays found in data`);
+      return [];
     }
 
     if (format === 'xml') {
@@ -156,9 +189,10 @@ class FeedMapper {
    */
   mapVehicle(rawVehicle, provider, index) {
     try {
-      // ✅ Extract stock_id - prioritize 'id' field for JSON feeds
+      // ✅ Extract stock_id - vrm bhi try karo
       const stockId = this.extractField(rawVehicle, [
-        'stock_id', 'stockid', 'stocknumber', 'stock_number', 'id', 'vehicle_id', 'vehicleid', 'vin'
+        'stock_id', 'stockid', 'stocknumber', 'stock_number',
+        'id', 'vehicle_id', 'vehicleid', 'vin', 'vrm', 'reg'
       ]);
       
       // ✅ Extract and NORMALIZE status
@@ -167,10 +201,10 @@ class FeedMapper {
       ]);
       const normalizedStatus = this.normalizeStatus(rawStatus);
       
-      // Extract raw fuel type
+      // Extract raw fuel type - check both direct and features
       const rawFuelType = this.extractField(rawVehicle, [
-        'fuel_type', 'fueltype', 'fuel', 'engine_type', 'fuel'
-      ]);
+        'fuel_type', 'fueltype', 'fuel', 'engine_type'
+      ]) || this.extractFromFeatures(rawVehicle, 'fuelType') || this.extractFromFeatures(rawVehicle, 'fuel_type');
       
       // Normalize fuel type to match Car model enum
       const fuelType = this.normalizeFuelType(rawFuelType);
@@ -178,8 +212,10 @@ class FeedMapper {
       const mapped = {
         stock_id: stockId || `AUTO_${Date.now()}_${index}`,
         
+        // Registration — vrm common field hai
         registration: this.extractField(rawVehicle, [
-          'registration', 'reg', 'vrm', 'regnumber', 'reg_number'
+          'registration', 'reg', 'vrm', 'regnumber', 'reg_number',
+          'plate', 'number_plate', 'licence_plate', 'license_plate'
         ]),
         
         vin: this.extractField(rawVehicle, [
@@ -204,17 +240,21 @@ class FeedMapper {
         
         mileage: parseInt(this.extractField(rawVehicle, [
           'mileage', 'miles', 'odometer', 'current_mileage'
-        ])) || null,
+        ]) || this.extractFromFeatures(rawVehicle, 'mileage')) || null,
         
         fuel_type: fuelType,
         
         transmission: this.extractField(rawVehicle, [
           'transmission', 'gearbox', 'trans', 'transmission_type'
-        ]),
+        ]) || this.extractFromFeatures(rawVehicle, 'transmission'),
         
         colour: this.extractField(rawVehicle, [
           'colour', 'color', 'exterior_colour', 'exteriorcolour'
-        ]),
+        ]) || this.extractFromFeatures(rawVehicle, 'color') || this.extractFromFeatures(rawVehicle, 'colour'),
+        
+        body_type: this.extractField(rawVehicle, [
+          'body_type', 'bodytype', 'body_style', 'bodystyle', 'type'
+        ]) || this.extractFromFeatures(rawVehicle, 'bodyStyle') || this.extractFromFeatures(rawVehicle, 'body_type'),
         
         price: parseFloat(this.extractField(rawVehicle, [
           'price', 'asking_price', 'askingprice', 'retail_price', 'retailprice', 'price_eur'
@@ -224,32 +264,46 @@ class FeedMapper {
         
         description: this.extractField(rawVehicle, [
           'description', 'comments', 'notes', 'details', 'advert_text'
-        ]),
+        ]) || this.extractFromFeatures(rawVehicle, 'description') || this.extractFromFeatures(rawVehicle, 'notes'),
         
         images: this.extractImages(rawVehicle),
         
         raw_data: rawVehicle
       };
 
-      // ✅ Log extracted data for debugging
-      console.log(`🔍 [mapVehicle] Mapped vehicle:`, {
+      // ✅ Enhanced logging for debugging
+      console.log(`🔍 [mapVehicle] Vehicle #${index}:`, {
         stock_id: mapped.stock_id,
+        registration: mapped.registration,
+        vrm: rawVehicle.vrm,
         make: mapped.make,
         model: mapped.model,
+        year: mapped.year,
+        mileage: mapped.mileage,
+        fuel_type: mapped.fuel_type,
+        transmission: mapped.transmission,
+        colour: mapped.colour,
+        body_type: mapped.body_type,
         rawStatus: rawStatus,
-        normalizedStatus: mapped.status
+        normalizedStatus: mapped.status,
+        rawVehicleKeys: Object.keys(rawVehicle),
+        hasFeatures: !!rawVehicle.features,
+        featuresKeys: rawVehicle.features ? Object.keys(rawVehicle.features) : []
       });
 
       // Validate minimum required fields
-      if (!mapped.stock_id || !mapped.make) {
-        console.warn('⚠️  [mapVehicle] Skipping vehicle - missing stock_id or make');
+      if (!mapped.make) {
+        console.warn(`⚠️  [mapVehicle] Skipping vehicle #${index} - missing make field`);
+        console.warn(`   Available fields:`, Object.keys(rawVehicle));
+        console.warn(`   Raw vehicle:`, JSON.stringify(rawVehicle, null, 2).substring(0, 500));
         return null;
       }
 
       return mapped;
 
     } catch (error) {
-      console.error('Error mapping vehicle:', error, rawVehicle);
+      console.error(`❌ [mapVehicle] Error mapping vehicle #${index}:`, error);
+      console.error(`   Raw vehicle:`, rawVehicle);
       return null;
     }
   }
@@ -350,6 +404,23 @@ class FeedMapper {
     }
 
     return undefined;
+  }
+
+  /**
+   * Extract field from features object (for flexible JSON formats like Gist)
+   * Example: { features: { mileage: 18500, color: "White" } }
+   */
+  extractFromFeatures(vehicle, fieldName) {
+    if (!vehicle || !vehicle.features || typeof vehicle.features !== 'object') {
+      return null;
+    }
+    
+    const value = this.getNestedProperty(vehicle.features, fieldName);
+    if (value !== undefined && value !== null && value !== '') {
+      return String(value).trim();
+    }
+    
+    return null;
   }
 
   /**

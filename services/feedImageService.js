@@ -417,10 +417,25 @@ class FeedImageService {
 
     // Update Car with all successfully uploaded image URLs
     if (uploadedUrls.length > 0) {
+      // Cloudinary URLs available — replace karo
       await Car.findByIdAndUpdate(carId, {
         $set: { images: uploadedUrls } // ✅ REPLACE images on sync (don't add to old ones)
       });
-      console.log(`[ImageDownloader] ✅ Updated car ${carId} with ${uploadedUrls.length} images (replaced)`);
+      console.log(`✅ [ImageDownloader] Updated car ${carId} with ${uploadedUrls.length} Cloudinary images`);
+    } else {
+      // Upload fail hua — source URLs fallback ke tor par rakho
+      const sourceUrls = feedImages
+        .map(fi => fi.sourceUrl)
+        .filter(Boolean);
+      
+      if (sourceUrls.length > 0) {
+        await Car.findByIdAndUpdate(carId, {
+          $set: { images: sourceUrls }
+        });
+        console.log(`⚠️  [ImageDownloader] Cloudinary failed — using ${sourceUrls.length} source URLs as fallback`);
+      } else {
+        console.log(`❌ [ImageDownloader] No images available for car ${carId}`);
+      }
     }
 
     return {

@@ -82,6 +82,17 @@ exports.importFeed = async (req, res) => {
     });
     console.log();
 
+    // ── Get dealer settings to check if API enrichment is enabled ──
+    const TradeDealer = require('../models/TradeDealer');
+    const dealer = await TradeDealer.findById(dealerId).select('settings');
+    const enableAPIEnrichment = dealer?.settings?.enableAPIEnrichment === true;
+    
+    if (enableAPIEnrichment) {
+      console.log('✅ API Enrichment ENABLED for this dealer');
+    } else {
+      console.log('⏭️  API Enrichment DISABLED for this dealer (default)');
+    }
+
     // ALWAYS use enhanced import with Cloudinary upload
     // Enhanced import properly downloads images from any source and uploads to Cloudinary
     result = await feedImportService.importFeedEnhanced(dealerId, feedUrl, {
@@ -91,7 +102,8 @@ exports.importFeed = async (req, res) => {
       limitVehicles: limitVehicles === true,
       selectionMode: selectionMode || 'first',
       uploadToCloudinary: true, // ✅ Always upload to Cloudinary
-      createCarListings: true
+      createCarListings: true,
+      enableAPIEnrichment: enableAPIEnrichment // 🆕 Smart API enrichment with cost control
     });
     
     console.log('\n' + '─'.repeat(80));
@@ -131,12 +143,20 @@ exports.importFeed = async (req, res) => {
     console.error('═'.repeat(80));
     console.error('Error Message:', error.message);
     console.error('Error Stack:', error.stack);
+    console.error('Feed URL:', feedUrl);
+    console.error('Dealer ID:', dealerId);
     console.error('═'.repeat(80) + '\n');
     
+    // Send detailed error to frontend
     res.status(500).json({
       success: false,
       message: 'Failed to import feed',
-      error: error.message
+      error: error.message,
+      details: {
+        feedUrl,
+        dealerId,
+        timestamp: new Date().toISOString()
+      }
     });
   }
 };
@@ -365,7 +385,8 @@ exports.syncFeed = async (req, res) => {
       importImages: feed.importImages !== false,
       useUnsplashFallback: feed.useUnsplashFallback === true,
       createCarListings: true,
-      isFirstImport: false // 🔄 SYNC mode: update status of existing sold cars, don't skip them
+      isFirstImport: false, // 🔄 SYNC mode: update status of existing sold cars, don't skip them
+      enableAPIEnrichment: false // 🔒 SYNC NOW: No API calls - cost control
     });
 
     const imported = result.stats.vehicles_imported || 0;

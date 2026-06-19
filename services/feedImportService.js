@@ -73,6 +73,13 @@ class FeedImportService {
       stats.vehicles_found = mappedVehicles.length;
 
       if (mappedVehicles.length === 0) {
+        console.error('❌ No vehicles found in feed!');
+        console.error('   Feed URL:', feedUrl);
+        console.error('   Format:', format);
+        console.error('   Provider:', provider);
+        console.error('   Parsed data keys:', typeof parsedData === 'object' ? Object.keys(parsedData) : 'not an object');
+        console.error('   Parsed data type:', typeof parsedData);
+        console.error('   Is array?:', Array.isArray(parsedData));
         throw new Error('No vehicles found in feed');
       }
 
@@ -861,42 +868,18 @@ class FeedImportService {
    * @returns {Promise<Object>} Enriched data from APIs
    */
   async enrichVehicleDataFromAPIs(mappedVehicle, options = {}, dealerId = null) {
-    // ═══════════════════════════════════════════════════════════════════════
-    // 🚨 TESTING MODE: API CALLS DISABLED
-    // ═══════════════════════════════════════════════════════════════════════
-    console.log('🧪 [TESTING MODE] API enrichment is DISABLED - skipping all API calls');
-    console.log('   To enable: Set options.enableAPIEnrichment = true');
-    return null;
+    // ══════════════════════════════════════════════════════════════════════════
+    // 🎯 SMART API ENRICHMENT - Only fetch what's missing!
+    // ══════════════════════════════════════════════════════════════════════════
     
-    // ═══════════════════════════════════════════════════════════════════════
-    // 🚨 COST CONTROL: Skip API calls by default
-    // ═══════════════════════════════════════════════════════════════════════
-    
-    // 1. Skip if no registration number
-    // if (!mappedVehicle.registration) {
-    //   console.log('⏭️  [enrichVehicleDataFromAPIs] No registration - skipping');
-    //   return null;
-    // }
-
-    // 2. Skip if explicitly disabled (DEFAULT BEHAVIOR)
-    // if (options.enableAPIEnrichment !== true) {
-    //   console.log('⏭️  [enrichVehicleDataFromAPIs] API enrichment not enabled (default: disabled)');
-    //   return null;
-    // }
-
-    // 3. Check dealer settings - has dealer enabled this feature?
-    if (dealerId) {
-      const dealerSettings = await this.getDealerEnrichmentSettings(dealerId);
-      if (!dealerSettings.enabled) {
-        console.log(`⏭️  [enrichVehicleDataFromAPIs] Dealer ${dealerId} has not enabled API enrichment`);
-        return null;
-      }
+    // ── COST CONTROL: Skip if not enabled ─────────────────────────────────────
+    if (options.enableAPIEnrichment !== true) {
+      return null;
     }
-
-    // 4. Only enrich for vehicles that will be published (not draft)
-    const willBePublished = options.autoPublish !== false; // default true
-    if (!willBePublished) {
-      console.log('⏭️  [enrichVehicleDataFromAPIs] Skipping draft vehicles - only enriching published cars');
+    
+    // ── Registration zaroori hai ──────────────────────────────────────────────
+    if (!mappedVehicle.registration) {
+      console.log(`⏭️  [API] No registration — skipping enrichment`);
       return null;
     }
 
@@ -904,160 +887,151 @@ class FeedImportService {
     const enrichment = {};
 
     try {
-      console.log(`🔍 [enrichVehicleDataFromAPIs] Starting smart enrichment for ${registration}...`);
-
-      // ═══════════════════════════════════════════════════════════════════════
-      // 🎯 SMART DETECTION: Only fetch what's truly missing + not cached
-      // ═══════════════════════════════════════════════════════════════════════
-      
-      // Check cache first - avoid duplicate API calls
+      // ── Step 1: Cache check (30 din valid) ──────────────────────────────────
+      // Agar pehle call ho chuki hai aur 30 din nahi guzre, dobara call nahi hogi
       const cachedData = await this.checkCachedVehicleData(registration);
       
-      const needsValuation = (!mappedVehicle.price || mappedVehicle.price === 0) && !cachedData.hasValuation;
-      const needsBodyType = (!mappedVehicle.body_type && !mappedVehicle.bodyType) && !cachedData.hasSpecs;
-      const needsMOT = (!mappedVehicle.mot_history && !mappedVehicle.motHistory) && !cachedData.hasMOT;
-      const needsHistory = !cachedData.hasHistory; // Only if not cached (30-day validity)
-
-      console.log(`📋 [enrichVehicleDataFromAPIs] Missing data check for ${registration}:`, {
-        valuation: needsValuation,
-        bodyType: needsBodyType,
-        mot: needsMOT,
-        history: needsHistory,
-        cached: cachedData.summary
+      console.log(`🔍 [API] Smart check for ${registration}:`, {
+        hasSpecs: cachedData.hasSpecs,
+        hasMOT: cachedData.hasMOT,
+        hasHistory: cachedData.hasHistory,
+        hasValuation: cachedData.hasValuation,
+        cache: cachedData.summary
       });
 
-      // Prepare API calls
+      // ── Step 2: Decide kya kya missing hai ────────────────────────────────────
+      // Specs: sirf tab call ho jab body type ya doors feed mein nahi hain
+      const needsSpecs = (
+        !mappedVehicle.body_type && 
+        !mappedVehicle.bodyType && 
+        !cachedData.hasSpecs
+      );
+      
+      // MOT: sirf tab call ho jab MOT history feed mein nahi hai
+      const needsMOT = (
+        !mappedVehicle.mot_history && 
+        !mappedVehicle.motHistory && 
+        !cachedData.hasMOT
+      );
+      
+      // History: sirf tab call ho jab cache nahi hai ya expire ho gaya (£1.82 — mehenga!)
+      const needsHistory = !cachedData.hasHistory;
+      
+      // Valuation: sirf tab call ho jab price missing ya 0 hai
+      const needsValuation = (
+        (!mappedVehicle.price || mappedVehicle.price === 0) && 
+        !cachedData.hasValuation &&
+        !!mappedVehicle.mileage // mileage zaroori hai valuation ke liye
+      );
+
+      const totalCost = (needsSpecs ? 0.02 : 0) + 
+                        (needsMOT ? 0.02 : 0) + 
+                        (needsHistory ? 1.82 : 0) + 
+                        (needsValuation ? 0.02 : 0);
+
+      if (!needsSpecs && !needsMOT && !needsHistory && !needsValuation) {
+        console.log(`✅ [API] ${registration}: Sab data already available — no API calls needed`);
+        return null;
+      }
+
+      console.log(`📞 [API] ${registration} ke liye calls:`, {
+        specs: needsSpecs ? '£0.02' : '✓ skip',
+        mot: needsMOT ? '£0.02' : '✓ skip',
+        history: needsHistory ? '£1.82' : '✓ skip (cached)',
+        valuation: needsValuation ? '£0.02' : '✓ skip',
+        totalCost: `£${totalCost.toFixed(2)}`
+      });
+
+      // ── Step 3: Parallel API calls — sirf jo zaroori hain ────────────────────
       const apiCalls = [];
 
-      // ═══════════════════════════════════════════════════════════════════════
-      // 📞 API CALLS: Only call what's truly needed
-      // ═══════════════════════════════════════════════════════════════════════
-
-      // 1. Vehicle Specs (for body type, doors, seats, engine size, etc.)
-      if (needsBodyType) {
-        console.log(`📞 [enrichVehicleDataFromAPIs] Calling Specs API for ${registration} (£0.02)`);
+      if (needsSpecs) {
         const CheckCarDetailsClient = require('../clients/CheckCarDetailsClient');
         const specsClient = new CheckCarDetailsClient();
         apiCalls.push(
           specsClient.getVehicleData(registration)
             .then(data => ({ type: 'specs', data }))
             .catch(err => {
-              console.warn(`⚠️  [enrichVehicleDataFromAPIs] Specs API failed for ${registration}:`, err.message);
+              console.warn(`⚠️  [API] Specs failed for ${registration}:`, err.message);
               return { type: 'specs', data: null };
             })
         );
-      } else {
-        console.log(`✓ [enrichVehicleDataFromAPIs] Specs already available (cached or in feed)`);
       }
 
-      // 2. MOT History
       if (needsMOT) {
-        console.log(`📞 [enrichVehicleDataFromAPIs] Calling MOT API for ${registration} (£0.02)`);
         const MOTHistoryService = require('./motHistoryService');
         const motService = new MOTHistoryService();
         apiCalls.push(
           motService.getMOTHistory(registration)
             .then(data => ({ type: 'mot', data }))
             .catch(err => {
-              console.warn(`⚠️  [enrichVehicleDataFromAPIs] MOT API failed for ${registration}:`, err.message);
+              console.warn(`⚠️  [API] MOT failed for ${registration}:`, err.message);
               return { type: 'mot', data: null };
             })
         );
-      } else {
-        console.log(`✓ [enrichVehicleDataFromAPIs] MOT already available (cached or in feed)`);
       }
 
-      // 3. Vehicle History (includes previous owners, color changes, etc.)
-      // ⚠️ EXPENSIVE: £1.82 per call - only if not cached
       if (needsHistory) {
-        console.log(`📞 [enrichVehicleDataFromAPIs] Calling History API for ${registration} (£1.82 or cached)`);
         const HistoryService = require('./historyService');
         const historyService = new HistoryService();
         apiCalls.push(
-          historyService.checkVehicleHistory(registration, false) // use cache if available (30 days)
+          // false = use cache if available (30 days) — expensive call!
+          historyService.checkVehicleHistory(registration, false)
             .then(data => ({ type: 'history', data }))
             .catch(err => {
-              console.warn(`⚠️  [enrichVehicleDataFromAPIs] History API failed for ${registration}:`, err.message);
+              console.warn(`⚠️  [API] History failed for ${registration}:`, err.message);
               return { type: 'history', data: null };
             })
         );
-      } else {
-        console.log(`✓ [enrichVehicleDataFromAPIs] History already cached (< 30 days old)`);
       }
 
-      // 4. Valuation (only if price is missing)
-      if (needsValuation && mappedVehicle.mileage) {
-        console.log(`📞 [enrichVehicleDataFromAPIs] Calling Valuation API for ${registration} (£0.02)`);
+      if (needsValuation) {
         const ValuationAPIClient = require('../clients/ValuationAPIClient');
         const { loadAPICredentials, getActiveAPIKey, getActiveBaseUrl } = require('../config/apiCredentials');
-        
         const credentials = loadAPICredentials();
         const environment = credentials.environment || 'production';
-        const isTestMode = environment === 'test';
         const apiKey = getActiveAPIKey(credentials.valuationAPI, environment);
         const baseUrl = getActiveBaseUrl(credentials.valuationAPI, environment);
-        
-        const valuationClient = new ValuationAPIClient(apiKey, baseUrl, isTestMode);
+        const valuationClient = new ValuationAPIClient(apiKey, baseUrl, environment === 'test');
         
         apiCalls.push(
           valuationClient.getValuation(registration, mappedVehicle.mileage)
             .then(data => ({ type: 'valuation', data }))
             .catch(err => {
-              console.warn(`⚠️  [enrichVehicleDataFromAPIs] Valuation API failed for ${registration}:`, err.message);
+              console.warn(`⚠️  [API] Valuation failed for ${registration}:`, err.message);
               return { type: 'valuation', data: null };
             })
         );
-      } else {
-        console.log(`✓ [enrichVehicleDataFromAPIs] Valuation not needed (price available or cached)`);
       }
 
-      // Execute all API calls in parallel
-      if (apiCalls.length > 0) {
-        const totalEstimatedCost = this.calculateAPICost({
-          needsSpecs: needsBodyType,
-          needsMOT,
-          needsHistory,
-          needsValuation
-        });
-        
-        console.log(`📞 [enrichVehicleDataFromAPIs] Making ${apiCalls.length} API calls for ${registration}...`);
-        console.log(`💰 [enrichVehicleDataFromAPIs] Estimated cost: £${totalEstimatedCost.toFixed(2)}`);
-        
-        const results = await Promise.all(apiCalls);
+      // ── Step 4: Sab calls parallel chalao ─────────────────────────────────────
+      const results = await Promise.all(apiCalls);
 
-        // Process results
-        for (const result of results) {
-          if (result.data) {
-            if (result.type === 'specs') {
-              enrichment.specs = result.data;
-            } else if (result.type === 'mot') {
-              enrichment.motHistory = result.data.motTests || result.data.motHistory || [];
-              enrichment.motStatus = result.data.motStatus;
-              enrichment.motDue = result.data.motExpiryDate || result.data.motDueDate;
-              enrichment.motExpiry = result.data.motExpiryDate;
-            } else if (result.type === 'history') {
-              enrichment.history = result.data;
-            } else if (result.type === 'valuation') {
-              enrichment.valuation = result.data;
-            }
-          }
+      for (const result of results) {
+        if (!result.data) continue;
+        
+        if (result.type === 'specs') {
+          enrichment.specs = result.data;
+          console.log(`✅ [API] Specs fetched for ${registration}`);
+        } else if (result.type === 'mot') {
+          enrichment.motHistory = result.data.motTests || result.data.motHistory || [];
+          enrichment.motStatus  = result.data.motStatus;
+          enrichment.motDue     = result.data.motExpiryDate || result.data.motDueDate;
+          enrichment.motExpiry  = result.data.motExpiryDate;
+          console.log(`✅ [API] MOT fetched for ${registration}: ${enrichment.motHistory.length} tests`);
+        } else if (result.type === 'history') {
+          enrichment.history = result.data;
+          console.log(`✅ [API] History fetched for ${registration}`);
+        } else if (result.type === 'valuation') {
+          enrichment.valuation = result.data;
+          console.log(`✅ [API] Valuation fetched for ${registration}: £${result.data.estimatedValue || result.data.privatePrice}`);
         }
-
-        console.log(`✅ [enrichVehicleDataFromAPIs] Enrichment complete for ${registration}:`, {
-          hasSpecs: !!enrichment.specs,
-          hasMOT: !!enrichment.motHistory,
-          hasHistory: !!enrichment.history,
-          hasValuation: !!enrichment.valuation
-        });
-      } else {
-        console.log(`✓ [enrichVehicleDataFromAPIs] No API calls needed - all data available from cache or feed`);
       }
 
       return Object.keys(enrichment).length > 0 ? enrichment : null;
 
     } catch (error) {
-      console.error(`❌ [enrichVehicleDataFromAPIs] Error enriching ${registration}:`, error.message);
-      // Don't throw — return partial enrichment if any
+      console.error(`❌ [API] Error enriching ${registration}:`, error.message);
       return Object.keys(enrichment).length > 0 ? enrichment : null;
     }
   }
