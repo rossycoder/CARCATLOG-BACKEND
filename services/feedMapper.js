@@ -256,6 +256,18 @@ class FeedMapper {
           'body_type', 'bodytype', 'body_style', 'bodystyle', 'type'
         ]) || this.extractFromFeatures(rawVehicle, 'bodyStyle') || this.extractFromFeatures(rawVehicle, 'body_type'),
         
+        doors: parseInt(this.extractField(rawVehicle, [
+          'doors', 'door_count', 'num_doors', 'number_of_doors'
+        ])) || null,
+        
+        seats: parseInt(this.extractField(rawVehicle, [
+          'seats', 'seat_count', 'num_seats', 'number_of_seats', 'seating_capacity'
+        ])) || null,
+        
+        engine_size: parseFloat(this.extractField(rawVehicle, [
+          'engine_size', 'enginesize', 'engine_capacity', 'cc', 'capacity'
+        ])) || null,
+        
         price: parseFloat(this.extractField(rawVehicle, [
           'price', 'asking_price', 'askingprice', 'retail_price', 'retailprice', 'price_eur'
         ])) || null,
@@ -530,9 +542,15 @@ class FeedMapper {
     const trimmedUrl = url.trim();
     if (!trimmedUrl.startsWith('http')) return false;
     
+    const lowerUrl = trimmedUrl.toLowerCase();
+    
+    // ✅ GOOGLE DRIVE SUPPORT - Accept Drive links (will be converted to direct URLs later)
+    if (lowerUrl.includes('drive.google.com/file/d/')) {
+      return true;
+    }
+    
     // Check for common image extensions
     const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
-    const lowerUrl = trimmedUrl.toLowerCase();
     
     // Check if URL has image extension
     if (imageExtensions.some(ext => lowerUrl.includes(ext))) {
@@ -556,7 +574,9 @@ class FeedMapper {
       'images.pexels.com',
       'pixabay.com',
       'flickr.com',
-      'staticflickr.com'
+      'staticflickr.com',
+      'dropbox.com',  // Dropbox shared links
+      'amazonaws.com' // AWS S3 links
     ];
     
     if (imageHosts.some(host => lowerUrl.includes(host))) {

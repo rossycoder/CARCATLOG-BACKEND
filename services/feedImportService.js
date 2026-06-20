@@ -924,12 +924,68 @@ class FeedImportService {
       });
 
       // ── Step 2: Decide kya kya missing hai ────────────────────────────────────
-      // Specs: sirf tab call ho jab body type ya doors feed mein nahi hain
+      // SMART SPECS LOGIC: Call API if ANY critical spec field is missing from CSV
+      // This ensures high-quality, complete listings that build user trust
+      const criticalSpecFields = [
+        'body_type',      // Body type (Saloon, Hatchback, etc.)
+        'fuel_type',      // Fuel type (Petrol, Diesel, etc.)
+        'transmission',   // Transmission (Automatic, Manual)
+        'doors',          // Number of doors
+        'seats',          // Number of seats
+        'engine_size'     // Engine size in liters
+      ];
+      
+      // Check which critical fields are missing from CSV
+      const missingFields = criticalSpecFields.filter(field => {
+        const value = mappedVehicle[field];
+        return !value || value === 'null' || value === 'undefined' || value === '';
+      });
+      
+      // Also check if running costs data is missing (CO2, MPG, Tax, Insurance)
+      // These are NEVER in CSV, so we check existing Car record
+      let needsRunningCosts = false;
+      if (cachedData.hasSpecs) {
+        // Check if existing car has running costs
+        const Car = require('../models/Car');
+        const existingCar = await Car.findOne({ registrationNumber: registration.toUpperCase() })
+          .select('co2Emissions combinedMpg insuranceGroup annualTax runningCosts');
+        
+        const hasRunningCosts = existingCar && (
+          existingCar.co2Emissions ||
+          existingCar.combinedMpg ||
+          existingCar.insuranceGroup ||
+          existingCar.annualTax ||
+          existingCar.runningCosts?.co2Emissions ||
+          existingCar.runningCosts?.fuelEconomy?.combined
+        );
+        
+        needsRunningCosts = !hasRunningCosts;
+      }
+      
+      // Call Specs API if:
+      // 1. Any critical field is missing from CSV, OR
+      // 2. Running costs are missing, OR
+      // 3. No cached specs data exists
       const needsSpecs = (
-        !mappedVehicle.body_type && 
-        !mappedVehicle.bodyType && 
-        !cachedData.hasSpecs
+        missingFields.length > 0 ||   // CSV incomplete
+        needsRunningCosts ||           // Running costs missing
+        !cachedData.hasSpecs           // No cache available
       );
+      
+      if (needsSpecs) {
+        const reasons = [];
+        if (missingFields.length > 0) {
+          reasons.push(`Missing ${missingFields.length} spec(s): ${missingFields.join(', ')}`);
+        }
+        if (needsRunningCosts) {
+          reasons.push('Running costs missing (CO2, MPG, Tax)');
+        }
+        if (!cachedData.hasSpecs) {
+          reasons.push('No cached specs');
+        }
+        console.log(`   🔍 ${reasons.join(' | ')}`);
+        console.log(`   📞 Calling Specs API to complete data...`);
+      }
       
       // MOT: sirf tab call ho jab MOT history feed mein nahi hai
       const needsMOT = (
@@ -955,7 +1011,50 @@ class FeedImportService {
 
       if (!needsSpecs && !needsMOT && !needsHistory && !needsValuation) {
         console.log(`✅ [API] ${registration}: Sab data already available — no API calls needed`);
-        return null;
+        
+        // ✅ FIX: Return cached data instead of null!
+        // Load cached data from existing car/history
+        const enrichment = {};
+        
+        if (cachedData.hasHistory) {
+          const VehicleHistory = require('../models/VehicleHistory');
+          const cached = await VehicleHistory.findOne({ vrm: registration.toUpperCase() }).sort({ checkDate: -1 });
+          if (cached) {
+            enrichment.history = cached;
+            console.log(`   📋 Using cached history (${cachedData.cacheAge})`);
+          }
+        }
+        
+        if (cachedData.hasValuation) {
+          const Car = require('../models/Car');
+          const existingCar = await Car.findOne({ registrationNumber: registration.toUpperCase() })
+            .select('estimatedValue valuationData');
+          if (existingCar && (existingCar.estimatedValue || existingCar.valuationData)) {
+            enrichment.valuation = {
+              estimatedValue: existingCar.estimatedValue, // Already a single number in DB
+              privatePrice: existingCar.valuationData?.privatePrice,
+              dealerPrice: existingCar.valuationData?.dealerPrice,
+              partExchangePrice: existingCar.valuationData?.partExchangePrice,
+              retailPrice: existingCar.valuationData?.retailPrice,
+              confidence: existingCar.valuationData?.confidence || 'medium'
+            };
+            console.log(`   💷 Using cached valuation: £${existingCar.estimatedValue}`);
+          }
+        }
+        
+        if (cachedData.hasMOT) {
+          const Car = require('../models/Car');
+          const existingCar = await Car.findOne({ registrationNumber: registration.toUpperCase() })
+            .select('motHistory motStatus motExpiry');
+          if (existingCar && existingCar.motHistory) {
+            enrichment.motHistory = existingCar.motHistory;
+            enrichment.motStatus = existingCar.motStatus;
+            enrichment.motExpiry = existingCar.motExpiry;
+            console.log(`   🔧 Using cached MOT: ${existingCar.motHistory.length} tests`);
+          }
+        }
+        
+        return Object.keys(enrichment).length > 0 ? enrichment : null;
       }
 
       console.log(`📞 [API] ${registration} ke liye calls:`, {
@@ -1047,8 +1146,32 @@ class FeedImportService {
           enrichment.history = result.data;
           console.log(`✅ [API] History fetched for ${registration}`);
         } else if (result.type === 'valuation') {
-          enrichment.valuation = result.data;
-          console.log(`✅ [API] Valuation fetched for ${registration}: £${result.data.estimatedValue || result.data.privatePrice}`);
+          // Handle different valuation response formats
+          const valuationData = result.data;
+          
+          // Normalize valuation data structure
+          // CRITICAL: API returns estimatedValue as object {retail, trade, private}
+          // We need to normalize it to separate fields
+          const estimatedValueObj = valuationData.estimatedValue;
+          
+          enrichment.valuation = {
+            // Extract single number from estimatedValue object for Car model
+            estimatedValue: estimatedValueObj?.private || 
+                           estimatedValueObj?.retail || 
+                           estimatedValueObj?.trade ||
+                           valuationData.privatePrice || 
+                           valuationData.retail || 
+                           valuationData.private,
+            // Store individual prices
+            privatePrice: estimatedValueObj?.private || valuationData.privatePrice || valuationData.private,
+            dealerPrice: estimatedValueObj?.retail || valuationData.dealerPrice || valuationData.trade,
+            partExchangePrice: estimatedValueObj?.trade || valuationData.partExchangePrice || valuationData.trade,
+            retailPrice: estimatedValueObj?.retail || valuationData.retailPrice || valuationData.retail,
+            confidence: valuationData.confidence || 'medium'
+          };
+          
+          const displayPrice = enrichment.valuation.estimatedValue || enrichment.valuation.privatePrice || 'N/A';
+          console.log(`✅ [API] Valuation fetched for ${registration}: £${displayPrice}`);
         }
       }
 
@@ -1359,11 +1482,12 @@ class FeedImportService {
         // 🔑 CRITICAL: Only add stockId if it's valid - prevents duplicate key errors
         ...(validatedStockId ? { stockId: validatedStockId } : {}),
         
-        // Add enriched data from APIs (if available)
-        ...(apiEnrichment?.specs?.bodyType && { bodyType: apiEnrichment.specs.bodyType }),
-        ...(apiEnrichment?.specs?.doors && { doors: apiEnrichment.specs.doors }),
-        ...(apiEnrichment?.specs?.seats && { seats: apiEnrichment.specs.seats }),
-        ...(apiEnrichment?.specs?.engineSize && { engineSize: apiEnrichment.specs.engineSize }),
+        // CRITICAL FIX: Use CSV data first, then API enrichment as fallback
+        // This ensures bodyType, doors, seats are saved even if Specs API is skipped
+        bodyType: mappedVehicle.body_type || apiEnrichment?.specs?.bodyType,
+        doors: mappedVehicle.doors || apiEnrichment?.specs?.doors,
+        seats: mappedVehicle.seats || apiEnrichment?.specs?.seats,
+        engineSize: mappedVehicle.engine_size || apiEnrichment?.specs?.engineSize,
         
         // MOT History
         ...(apiEnrichment?.motHistory && {
@@ -1385,11 +1509,16 @@ class FeedImportService {
         
         // Valuation
         ...(apiEnrichment?.valuation && {
-          estimatedValue: apiEnrichment.valuation.estimatedValue || apiEnrichment.valuation.dealerPrice,
+          // CRITICAL FIX: estimatedValue from API is an object {retail, trade, private}
+          // We need to extract a single number for the Car model's estimatedValue field
+          estimatedValue: apiEnrichment.valuation.estimatedValue?.private || 
+                         apiEnrichment.valuation.estimatedValue?.retail ||
+                         apiEnrichment.valuation.privatePrice ||
+                         apiEnrichment.valuation.dealerPrice,
           valuationData: {
-            privatePrice: apiEnrichment.valuation.privatePrice,
-            dealerPrice: apiEnrichment.valuation.dealerPrice,
-            partExchangePrice: apiEnrichment.valuation.partExchangePrice,
+            privatePrice: apiEnrichment.valuation.estimatedValue?.private || apiEnrichment.valuation.privatePrice,
+            dealerPrice: apiEnrichment.valuation.estimatedValue?.retail || apiEnrichment.valuation.dealerPrice,
+            partExchangePrice: apiEnrichment.valuation.estimatedValue?.trade || apiEnrichment.valuation.partExchangePrice,
             confidence: apiEnrichment.valuation.confidence,
             valuationDate: new Date()
           }

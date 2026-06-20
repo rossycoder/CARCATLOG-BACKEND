@@ -165,16 +165,26 @@ class FeedImageProcessor {
   convertGoogleDriveUrl(driveUrl) {
     let fileId = null;
 
+    // Extract file ID from various Drive URL formats
     if (driveUrl.includes('/file/d/')) {
       fileId = driveUrl.split('/file/d/')[1].split('/')[0];
     } else if (driveUrl.includes('id=')) {
       fileId = driveUrl.split('id=')[1].split('&')[0];
+    } else if (driveUrl.includes('/d/')) {
+      fileId = driveUrl.split('/d/')[1].split('/')[0];
     }
 
     if (fileId) {
-      return `https://drive.google.com/uc?export=download&id=${fileId}`;
+      // Use export=view for images (more reliable than export=download)
+      // This URL works for public images without authentication
+      const directUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
+      console.log(`🔄 [Drive] Converting viewer link to direct URL`);
+      console.log(`   Original: ${driveUrl.substring(0, 60)}...`);
+      console.log(`   Direct:   ${directUrl}`);
+      return directUrl;
     }
 
+    console.warn(`⚠️  [Drive] Could not extract file ID from: ${driveUrl}`);
     return driveUrl;
   }
 

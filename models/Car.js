@@ -781,9 +781,21 @@ carSchema.pre('save', async function(next) {
 carSchema.pre(['deleteOne', 'findOneAndDelete', 'findByIdAndDelete'], async function() {
   try {
     const car = await this.model.findOne(this.getQuery());
-    if (car && car.historyCheckId) {
+    if (car) {
       const VehicleHistory = require('./VehicleHistory');
-      await VehicleHistory.findByIdAndDelete(car.historyCheckId);
+      
+      // CRITICAL FIX: Delete VehicleHistory by both historyCheckId AND VRM
+      // This ensures cleanup even if historyCheckId is not set
+      const deletedCount = await VehicleHistory.deleteMany({
+        $or: [
+          { _id: car.historyCheckId }, // Delete by ID if available
+          { vrm: car.registrationNumber?.toUpperCase() } // Delete by VRM (more reliable)
+        ]
+      });
+      
+      if (deletedCount.deletedCount > 0) {
+        console.log(`🗑️  [Pre-Delete] Deleted ${deletedCount.deletedCount} VehicleHistory record(s) for ${car.registrationNumber}`);
+      }
     }
   } catch (err) {
     console.error('❌ [Delete] Cleanup error:', err);
@@ -810,9 +822,17 @@ carSchema.statics.deleteCarWithCleanup = async function(carId) {
     if (!car) throw new Error('Car not found');
     
     // Cleanup related VehicleHistory
-    if (car.historyCheckId) {
-      const VehicleHistory = require('./VehicleHistory');
-      await VehicleHistory.findByIdAndDelete(car.historyCheckId);
+    // CRITICAL FIX: Delete by both historyCheckId AND VRM for reliability
+    const VehicleHistory = require('./VehicleHistory');
+    const deletedHistory = await VehicleHistory.deleteMany({
+      $or: [
+        { _id: car.historyCheckId }, // Delete by ID if available
+        { vrm: car.registrationNumber?.toUpperCase() } // Delete by VRM (more reliable)
+      ]
+    });
+    
+    if (deletedHistory.deletedCount > 0) {
+      console.log(`🗑️  [Cleanup] Deleted ${deletedHistory.deletedCount} VehicleHistory record(s) for ${car.registrationNumber}`);
     }
     
     // ═══════════════════════════════════════════════════════════════════════
