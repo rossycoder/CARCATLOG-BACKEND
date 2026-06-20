@@ -475,9 +475,24 @@ class FeedMapper {
           images.push({ url: value.url, order: 0 });
         }
       }
-      // Handle single image string
-      else if (typeof value === 'string' && this.isValidImageUrl(value)) {
-        images.push({ url: value, order: 0 });
+      // Handle single image string OR comma/semicolon-separated images
+      else if (typeof value === 'string') {
+        // Check if it's a delimited list of images (comma or semicolon separated)
+        if (value.includes(',') || value.includes(';')) {
+          // Split by comma or semicolon, trim whitespace
+          const delimiter = value.includes(';') ? ';' : ',';
+          const urlList = value.split(delimiter).map(url => url.trim()).filter(url => url);
+          
+          urlList.forEach((url, index) => {
+            if (this.isValidImageUrl(url)) {
+              images.push({ url, order: index });
+            }
+          });
+        }
+        // Single image URL
+        else if (this.isValidImageUrl(value)) {
+          images.push({ url: value, order: 0 });
+        }
       }
       
       // If we found images, stop looking
