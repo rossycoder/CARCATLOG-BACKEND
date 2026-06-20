@@ -76,13 +76,21 @@ class FeedSyncCron {
         try {
           console.log(`\nSyncing feed ${feed._id} for dealer ${feed.dealerId}...`);
           
-          const result = await feedImportService.importFeed(
+          // ── Check dealer settings for API enrichment ──
+          const TradeDealer = require('../models/TradeDealer');
+          const dealer = await TradeDealer.findById(feed.dealerId).select('settings');
+          const enableAPIForNewCars = dealer?.settings?.enableAPIEnrichment === true;
+          
+          const result = await feedImportService.importFeedEnhanced(
             feed.dealerId,
             feed.feedUrl,
             {
               removeSoldVehicles: feed.removeSoldVehicles,
               importImages: feed.importImages,
-              createCarListings: true
+              createCarListings: true,
+              isFirstImport: false, // Sync mode
+              enableAPIEnrichment: enableAPIForNewCars, // ✅ Smart: only for NEW cars
+              onlyEnrichNewCars: true // 🆕 Only enrich new cars, not existing
             }
           );
 

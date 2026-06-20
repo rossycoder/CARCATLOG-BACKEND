@@ -150,6 +150,12 @@ const carSchema = new mongoose.Schema({
   stockId: { type: String, trim: true, index: true }, // 🔑 Dealer's stock/inventory ID from feed
   isDealerListing: { type: Boolean, default: false },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
+  
+  // ✅ NEW: Vehicle History Reference (for MOT, valuation, previous owners from VehicleHistory collection)
+  vehicleHistory: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleHistory' },
+  hasVehicleHistory: { type: Boolean, default: false },
+  vehicleHistoryVRM: { type: String, trim: true, uppercase: true },
+  
   viewCount: { type: Number, default: 0, min: 0 },
   uniqueViewCount: { type: Number, default: 0, min: 0 },
   lastViewedAt: { type: Date },
@@ -386,7 +392,7 @@ function normalizeMakeModel(doc) {
     }
   }
 
-  // Mercedes-Benz C/E/S/A/B/G/M class
+  // Mercedes-Benz C/E/S/A/B/G/M classa
   if (makeUpper === 'MERCEDES-BENZ' || makeUpper === 'MERCEDES') {
     if (!doc.model.includes('-Class')) {
       const match = (doc.model || '').match(/^([ABCEGMS])\s*(\d{3})/i);
@@ -489,11 +495,15 @@ carSchema.pre('save', async function(next) {
     }
 
     // ── STEP 2: Duplicate active advert check ──────────────────────────────
+    // Allow same dealer to update their own car (feed re-import)
     if (reg && this.advertStatus === 'active') {
       const duplicate = await this.constructor.findOne({
         registrationNumber: reg,
         advertStatus: 'active',
-        _id: { $ne: this._id }
+        _id: { $ne: this._id },
+        // ✅ CRITICAL: Only block if DIFFERENT dealer has active advert
+        // Same dealer can update their own cars via feed import
+        dealerId: { $ne: this.dealerId }
       });
       if (duplicate) {
         const err = new Error(`Active advert already exists for registration ${reg}`);
@@ -798,10 +808,38 @@ carSchema.statics.deleteCarWithCleanup = async function(carId) {
   try {
     const car = await this.findById(carId);
     if (!car) throw new Error('Car not found');
+    
+    // Cleanup related VehicleHistory
     if (car.historyCheckId) {
       const VehicleHistory = require('./VehicleHistory');
       await VehicleHistory.findByIdAndDelete(car.historyCheckId);
     }
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🆕 CASCADE DELETE: Remove FeedVehicle and FeedImage records
+    // When car is deleted from frontend, also delete feed-related data
+    // ═══════════════════════════════════════════════════════════════════════
+    try {
+      const FeedVehicle = require('./FeedVehicle');
+      const FeedImage = require('./FeedImage');
+      
+      // Find FeedVehicle by carId
+      const feedVehicle = await FeedVehicle.findOne({ carId: car._id });
+      
+      if (feedVehicle) {
+        // Delete all associated FeedImages
+        const deletedImages = await FeedImage.deleteMany({ feedVehicleId: feedVehicle._id });
+        console.log(`🗑️  [CASCADE] Deleted ${deletedImages.deletedCount} FeedImages for car ${carId}`);
+        
+        // Delete FeedVehicle
+        await FeedVehicle.findByIdAndDelete(feedVehicle._id);
+        console.log(`🗑️  [CASCADE] Deleted FeedVehicle ${feedVehicle._id} for car ${carId}`);
+      }
+    } catch (cascadeError) {
+      console.error('⚠️  [CASCADE DELETE] Error cleaning feed data:', cascadeError.message);
+      // Don't fail the car deletion if cascade delete fails
+    }
+    
     await this.findByIdAndDelete(carId);
     return { success: true, message: 'Car and associated data deleted successfully' };
   } catch (err) {

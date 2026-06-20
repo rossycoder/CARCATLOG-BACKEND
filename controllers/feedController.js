@@ -380,13 +380,32 @@ exports.syncFeed = async (req, res) => {
     // ✅ Same enhanced logic as "Import Stock" — subscription limits,
     // robust image handling, proper per-vehicle error tracking.
     // 🔄 SYNC MODE: Process sold vehicles to update their status (isFirstImport: false)
+    
+    // ── Check dealer settings for API enrichment ──
+    // 🆕 SMART SYNC: Call APIs only for NEW cars (not existing ones)
+    const TradeDealer = require('../models/TradeDealer');
+    const dealer = await TradeDealer.findById(dealerId).select('settings');
+    const dealerHasAPIEnabled = dealer?.settings?.enableAPIEnrichment === true;
+    
+    // ✅ Enable API enrichment for NEW cars during sync (if dealer has it enabled)
+    const enableAPIEnrichmentForSync = dealerHasAPIEnabled;
+    
+    if (enableAPIEnrichmentForSync) {
+      console.log('✅ [Sync Now] API Enrichment ENABLED for NEW cars only');
+      console.log('   💡 Existing cars: price/status update only (no API)');
+      console.log('   💡 New cars: full API enrichment (specs, MOT, history)');
+    } else {
+      console.log('⏭️  [Sync Now] API Enrichment DISABLED - no API calls');
+    }
+    
     const result = await feedImportService.importFeedEnhanced(dealerId, feed.feedUrl, {
       removeSoldVehicles: feed.removeSoldVehicles !== false,
       importImages: feed.importImages !== false,
       useUnsplashFallback: feed.useUnsplashFallback === true,
       createCarListings: true,
       isFirstImport: false, // 🔄 SYNC mode: update status of existing sold cars, don't skip them
-      enableAPIEnrichment: false // 🔒 SYNC NOW: No API calls - cost control
+      enableAPIEnrichment: enableAPIEnrichmentForSync, // ✅ Smart: only for NEW cars
+      onlyEnrichNewCars: true // 🆕 Flag to only enrich new imports, not existing
     });
 
     const imported = result.stats.vehicles_imported || 0;

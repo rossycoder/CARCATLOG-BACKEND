@@ -462,52 +462,76 @@ class FeedImportService {
       console.log('✅ [processVehicleEnhanced] Valid stockId confirmed before FeedVehicle creation:', feedVehicleData.stockId);
 
       // ═══════════════════════════════════════════════════════════════════════
-      // 🔧 FIX: Use separate queries to avoid race condition
-      // First check if exists, then create/update accordingly
+      // 🔧 FIX: Use upsert with retry logic to avoid race condition
+      // This prevents "concurrent modification" errors when same car is processed multiple times
       // ═══════════════════════════════════════════════════════════════════════
-      let feedVehicle = await FeedVehicle.findOne({ 
-        dealerId, 
-        feedId, 
-        stockId: mappedVehicle.stock_id 
-      });
+      const maxRetries = 3;
+      let retryCount = 0;
+      let feedVehicle = null;
       
-      if (feedVehicle) {
-        // Already exists - update it
-        Object.assign(feedVehicle, feedVehicleData);
-        await feedVehicle.save();
-        console.log(`🔄 [processVehicleEnhanced] Updated FeedVehicle: ${feedVehicle._id}`);
-      } else {
-        // Doesn't exist - create new
+      while (retryCount < maxRetries && !feedVehicle) {
         try {
-          feedVehicle = await FeedVehicle.create(feedVehicleData);
-          console.log(`➕ [processVehicleEnhanced] Created FeedVehicle: ${feedVehicle._id}`);
-        } catch (createError) {
-          // If creation fails with duplicate key, try to find it again
-          if (createError.code === 11000) {
-            console.log(`⚠️  [processVehicleEnhanced] Duplicate detected, fetching existing...`);
-            feedVehicle = await FeedVehicle.findOne({ 
+          // Use findOneAndUpdate with upsert to atomically create/update
+          feedVehicle = await FeedVehicle.findOneAndUpdate(
+            { 
               dealerId, 
               feedId, 
               stockId: mappedVehicle.stock_id 
-            });
+            },
+            {
+              $set: feedVehicleData,
+              $setOnInsert: { createdAt: new Date() }
+            },
+            { 
+              upsert: true,  // Create if doesn't exist
+              new: true,     // Return updated document
+              runValidators: true
+            }
+          );
+          
+          if (feedVehicle) {
+            console.log(`✅ [processVehicleEnhanced] Upserted FeedVehicle: ${feedVehicle._id}`);
+            break; // Success - exit loop
+          }
+        } catch (upsertError) {
+          retryCount++;
+          
+          if (upsertError.code === 11000) {
+            // Duplicate key - wait and retry
+            console.log(`⚠️  [processVehicleEnhanced] Retry ${retryCount}/${maxRetries} - duplicate detected for stockId: ${mappedVehicle.stock_id}`);
+            console.log(`   Duplicate key error:`, upsertError.message);
             
-            if (feedVehicle) {
-              // Found it - update instead
-              Object.assign(feedVehicle, feedVehicleData);
-              await feedVehicle.save();
-              console.log(`🔄 [processVehicleEnhanced] Updated existing FeedVehicle: ${feedVehicle._id}`);
+            // On final retry, try to find existing FeedVehicle
+            if (retryCount >= maxRetries) {
+              console.log(`⚠️  [processVehicleEnhanced] Max retries reached, attempting to find existing FeedVehicle...`);
+              feedVehicle = await FeedVehicle.findOne({ 
+                dealerId, 
+                feedId, 
+                stockId: mappedVehicle.stock_id 
+              });
+              if (feedVehicle) {
+                console.log(`✅ [processVehicleEnhanced] Found existing FeedVehicle: ${feedVehicle._id}`);
+                break; // Exit retry loop with existing FeedVehicle
+              }
             } else {
-              // Still not found - something's wrong
-              throw new Error('Failed to create/update FeedVehicle - concurrent modification issue');
+              await new Promise(resolve => setTimeout(resolve, 100 * retryCount)); // Exponential backoff
             }
           } else {
-            throw createError;
+            // Other error - throw immediately
+            console.error(`❌ [processVehicleEnhanced] Non-duplicate error:`, upsertError.message);
+            throw upsertError;
           }
         }
       }
       
       if (!feedVehicle) {
-        throw new Error('FeedVehicle is null after create/update');
+        // WORKAROUND: Skip this vehicle instead of failing entire import
+        console.error(`⚠️  [processVehicleEnhanced] Skipping vehicle after ${maxRetries} retries: ${mappedVehicle.stock_id}`);
+        return { 
+          action: 'skipped', 
+          reason: 'Failed to create FeedVehicle - possible duplicate or race condition',
+          car: null 
+        };
       }
       
       // ═══════════════════════════════════════════════════════════════════════
@@ -917,9 +941,9 @@ class FeedImportService {
       // History: sirf tab call ho jab cache nahi hai ya expire ho gaya (£1.82 — mehenga!)
       const needsHistory = !cachedData.hasHistory;
       
-      // Valuation: sirf tab call ho jab price missing ya 0 hai
+      // Valuation: ALWAYS call for market value comparison (£0.02 - cheap!)
+      // Even if price exists in feed, we need market valuation for price indicator
       const needsValuation = (
-        (!mappedVehicle.price || mappedVehicle.price === 0) && 
         !cachedData.hasValuation &&
         !!mappedVehicle.mileage // mileage zaroori hai valuation ke liye
       );
@@ -1210,18 +1234,28 @@ class FeedImportService {
 
       // ── API Enrichment: Fetch missing data ──────────────────────────────────
       // ⚠️ COST CONTROL: Only enabled if dealer opts in
-      const apiEnrichment = await this.enrichVehicleDataFromAPIs(
-        mappedVehicle, 
-        options,
-        feedVehicle.dealerId // Pass dealer ID for settings check
-      );
+      // 🆕 SMART SYNC: Only enrich NEW cars (not existing ones during sync)
+      let apiEnrichment = null;
       
-      if (apiEnrichment) {
-        console.log(`🔄 [createOrUpdateCarListing] Enriched data from APIs for ${mappedVehicle.registration}:`, {
-          hasValuation: !!apiEnrichment.valuation,
-          hasMOTHistory: !!apiEnrichment.motHistory,
-          hasSpecs: !!apiEnrichment.specs
-        });
+      const isNewCar = !car; // New car if no existing car found
+      const shouldEnrich = options.onlyEnrichNewCars ? isNewCar : true;
+      
+      if (shouldEnrich) {
+        apiEnrichment = await this.enrichVehicleDataFromAPIs(
+          mappedVehicle, 
+          options,
+          feedVehicle.dealerId // Pass dealer ID for settings check
+        );
+        
+        if (apiEnrichment) {
+          console.log(`🔄 [createOrUpdateCarListing] Enriched ${isNewCar ? 'NEW' : 'existing'} car from APIs for ${mappedVehicle.registration}:`, {
+            hasValuation: !!apiEnrichment.valuation,
+            hasMOTHistory: !!apiEnrichment.motHistory,
+            hasSpecs: !!apiEnrichment.specs
+          });
+        }
+      } else {
+        console.log(`⏭️  [createOrUpdateCarListing] Skipping API enrichment for existing car: ${mappedVehicle.registration}`);
       }
 
       let dealerPostcode = 'SW1A 1AA';

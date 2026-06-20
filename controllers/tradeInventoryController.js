@@ -638,7 +638,15 @@ exports.deleteVehicle = async (req, res) => {
       });
     }
 
-    await vehicle.deleteOne();
+    // ✅ Use deleteCarWithCleanup to cascade delete FeedVehicle and FeedImage
+    const deleteResult = await Car.deleteCarWithCleanup(vehicle._id);
+    
+    if (!deleteResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: deleteResult.error || 'Failed to delete vehicle'
+      });
+    }
 
     // Decrement subscription usage if was active
     if (vehicle.advertStatus === 'active') {

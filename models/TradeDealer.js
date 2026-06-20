@@ -123,7 +123,7 @@ const tradeDealerSchema = new mongoose.Schema({
     // API Enrichment Control
     enableAPIEnrichment: {
       type: Boolean,
-      default: false // ⚠️ DEFAULT: DISABLED to control costs
+      default: true // ✅ DEFAULT: ENABLED - fetches missing vehicle data automatically
     },
     maxAPIEnrichmentCost: {
       type: Number,
