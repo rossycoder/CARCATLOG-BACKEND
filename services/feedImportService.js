@@ -1082,31 +1082,48 @@ class FeedImportService {
   async checkCachedVehicleData(registration) {
     try {
       const VehicleHistory = require('../models/VehicleHistory');
+      const Car = require('../models/Car');
       
-      const cached = await VehicleHistory.findOne({ 
-        vrm: registration.toUpperCase() 
-      }).sort({ checkDate: -1 });
+      // ✅ Check both VehicleHistory (for history) AND Car (for specs/MOT)
+      const [cachedHistory, existingCar] = await Promise.all([
+        VehicleHistory.findOne({ 
+          vrm: registration.toUpperCase() 
+        }).sort({ checkDate: -1 }),
+        Car.findOne({ 
+          registrationNumber: registration.toUpperCase() 
+        }).select('bodyType doors motHistory motStatus motExpiry estimatedValue valuation historyCheckDate')
+      ]);
 
-      if (!cached) {
-        return {
-          hasSpecs: false,
-          hasMOT: false,
-          hasHistory: false,
-          hasValuation: false,
-          summary: 'No cache'
-        };
+      // Check VehicleHistory cache validity (30 days)
+      const historyValid = cachedHistory && 
+        (Date.now() - cachedHistory.checkDate.getTime()) / (1000 * 60 * 60 * 24) <= 30;
+
+      // Check existing Car data
+      const carHasSpecs = existingCar && (!!existingCar.bodyType || !!existingCar.doors);
+      const carHasMOT = existingCar && existingCar.motHistory && existingCar.motHistory.length > 0;
+      const carHasValuation = existingCar && (!!existingCar.estimatedValue || !!existingCar.valuation);
+
+      // History check: only from VehicleHistory (30 day cache)
+      const hasHistory = historyValid;
+
+      // Build summary
+      let summary = [];
+      if (carHasSpecs) summary.push('specs in DB');
+      if (carHasMOT) summary.push('MOT in DB');
+      if (hasHistory) {
+        const daysSinceCheck = Math.floor((Date.now() - cachedHistory.checkDate.getTime()) / (1000 * 60 * 60 * 24));
+        summary.push(`history cached (${daysSinceCheck}d)`);
       }
-
-      // Check if cache is still valid (30 days)
-      const daysSinceCheck = (Date.now() - cached.checkDate.getTime()) / (1000 * 60 * 60 * 24);
-      const isValid = daysSinceCheck <= 30;
+      if (carHasValuation) summary.push('valuation in DB');
+      
+      const finalSummary = summary.length > 0 ? summary.join(', ') : 'No cache';
 
       return {
-        hasSpecs: isValid && (!!cached.bodyType || !!cached.doors),
-        hasMOT: isValid && cached.motHistory && cached.motHistory.length > 0,
-        hasHistory: isValid,
-        hasValuation: isValid && !!cached.valuation,
-        summary: isValid ? `Cached (${Math.floor(daysSinceCheck)} days old)` : 'Cache expired'
+        hasSpecs: carHasSpecs,
+        hasMOT: carHasMOT,
+        hasHistory: hasHistory,
+        hasValuation: carHasValuation,
+        summary: finalSummary
       };
 
     } catch (error) {
@@ -1132,12 +1149,12 @@ class FeedImportService {
       const dealer = await TradeDealer.findById(dealerId).select('settings');
       
       return {
-        enabled: dealer?.settings?.enableAPIEnrichment || false, // Default: DISABLED
+        enabled: dealer?.settings?.enableAPIEnrichment !== false, // ✅ Default: ENABLED
         maxCostPerCar: dealer?.settings?.maxAPIEnrichmentCost || 2.00 // Max £2 per car
       };
     } catch (error) {
       console.error('Error fetching dealer settings:', error.message);
-      return { enabled: false, maxCostPerCar: 2.00 };
+      return { enabled: true, maxCostPerCar: 2.00 }; // ✅ Default: ENABLED
     }
   }
 

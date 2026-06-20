@@ -85,12 +85,14 @@ exports.importFeed = async (req, res) => {
     // ── Get dealer settings to check if API enrichment is enabled ──
     const TradeDealer = require('../models/TradeDealer');
     const dealer = await TradeDealer.findById(dealerId).select('settings');
-    const enableAPIEnrichment = dealer?.settings?.enableAPIEnrichment === true;
+    
+    // ✅ DEFAULT TO ENABLED - only disable if explicitly set to false
+    const enableAPIEnrichment = dealer?.settings?.enableAPIEnrichment !== false;
     
     if (enableAPIEnrichment) {
-      console.log('✅ API Enrichment ENABLED for this dealer');
+      console.log('✅ API Enrichment ENABLED for this dealer (default)');
     } else {
-      console.log('⏭️  API Enrichment DISABLED for this dealer (default)');
+      console.log('⏭️  API Enrichment DISABLED (explicitly disabled by dealer)');
     }
 
     // ALWAYS use enhanced import with Cloudinary upload
@@ -103,7 +105,9 @@ exports.importFeed = async (req, res) => {
       selectionMode: selectionMode || 'first',
       uploadToCloudinary: true, // ✅ Always upload to Cloudinary
       createCarListings: true,
-      enableAPIEnrichment: enableAPIEnrichment // 🆕 Smart API enrichment with cost control
+      enableAPIEnrichment: enableAPIEnrichment, // 🆕 Smart API enrichment with cost control
+      onlyEnrichNewCars: false, // ✅ First import: enrich ALL cars
+      isFirstImport: true // ✅ Flag for first import
     });
     
     console.log('\n' + '─'.repeat(80));
@@ -385,17 +389,19 @@ exports.syncFeed = async (req, res) => {
     // 🆕 SMART SYNC: Call APIs only for NEW cars (not existing ones)
     const TradeDealer = require('../models/TradeDealer');
     const dealer = await TradeDealer.findById(dealerId).select('settings');
-    const dealerHasAPIEnabled = dealer?.settings?.enableAPIEnrichment === true;
+    
+    // ✅ DEFAULT TO ENABLED - only disable if explicitly set to false
+    const dealerHasAPIEnabled = dealer?.settings?.enableAPIEnrichment !== false;
     
     // ✅ Enable API enrichment for NEW cars during sync (if dealer has it enabled)
     const enableAPIEnrichmentForSync = dealerHasAPIEnabled;
     
     if (enableAPIEnrichmentForSync) {
-      console.log('✅ [Sync Now] API Enrichment ENABLED for NEW cars only');
+      console.log('✅ [Sync Now] API Enrichment ENABLED for NEW cars (default)');
       console.log('   💡 Existing cars: price/status update only (no API)');
       console.log('   💡 New cars: full API enrichment (specs, MOT, history)');
     } else {
-      console.log('⏭️  [Sync Now] API Enrichment DISABLED - no API calls');
+      console.log('⏭️  [Sync Now] API Enrichment DISABLED (explicitly disabled by dealer)');
     }
     
     const result = await feedImportService.importFeedEnhanced(dealerId, feed.feedUrl, {
