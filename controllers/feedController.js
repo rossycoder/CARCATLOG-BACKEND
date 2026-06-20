@@ -357,10 +357,17 @@ exports.getFeedLogs = async (req, res) => {
  * Manually trigger feed sync
  */
 exports.syncFeed = async (req, res) => {
+  console.log('\n' + '═'.repeat(80));
+  console.log('📥 [syncFeed] REQUEST RECEIVED');
+  console.log('═'.repeat(80));
+  console.log('⏰ Timestamp:', new Date().toISOString());
+  console.log('═'.repeat(80) + '\n');
+  
   try {
     const dealerId = req.dealerId || req.dealer?.id;
     
     if (!dealerId) {
+      console.log('❌ [syncFeed] No dealer ID found\n');
       return res.status(401).json({
         success: false,
         message: 'Unauthorized: Dealer authentication required'
@@ -368,6 +375,7 @@ exports.syncFeed = async (req, res) => {
     }
     
     const { feedId } = req.params;
+    console.log(`✅ [syncFeed] Processing sync for feedId: ${feedId}, dealerId: ${dealerId}`);
 
     const feed = await DealerFeed.findOne({
       _id: feedId,
@@ -404,6 +412,13 @@ exports.syncFeed = async (req, res) => {
       console.log('⏭️  [Sync Now] API Enrichment DISABLED (explicitly disabled by dealer)');
     }
     
+    console.log(`\n🔄 [syncFeed] Starting feed import with options:`, {
+      dealerHasAPIEnabled,
+      enableAPIEnrichmentForSync,
+      removeSoldVehicles: feed.removeSoldVehicles !== false,
+      importImages: feed.importImages !== false
+    });
+    
     const result = await feedImportService.importFeedEnhanced(dealerId, feed.feedUrl, {
       removeSoldVehicles: feed.removeSoldVehicles !== false,
       importImages: feed.importImages !== false,
@@ -413,13 +428,16 @@ exports.syncFeed = async (req, res) => {
       enableAPIEnrichment: enableAPIEnrichmentForSync, // ✅ Smart: only for NEW cars
       onlyEnrichNewCars: true // 🆕 Flag to only enrich new imports, not existing
     });
+    
+    console.log(`\n✅ [syncFeed] Import completed successfully`);
+    console.log(`   Stats:`, JSON.stringify(result.stats, null, 2));
 
     const imported = result.stats.vehicles_imported || 0;
     const updated = result.stats.vehicles_updated || 0;
     const errors = result.stats.errors || [];
     const hasSucceeded = imported > 0 || updated > 0;
 
-    res.json({
+    const responseData = {
       success: hasSucceeded || errors.length === 0,
       message: hasSucceeded
         ? `Synced: ${imported} imported, ${updated} updated${errors.length > 0 ? `, ${errors.length} errors` : ''}`
@@ -427,7 +445,15 @@ exports.syncFeed = async (req, res) => {
           ? `Sync completed with ${errors.length} errors — nothing was imported or updated`
           : 'No changes — feed already up to date',
       stats: result.stats
-    });
+    };
+
+    console.log('\n' + '═'.repeat(80));
+    console.log('📤 SENDING RESPONSE TO FRONTEND');
+    console.log('═'.repeat(80));
+    console.log(JSON.stringify(responseData, null, 2));
+    console.log('═'.repeat(80) + '\n');
+
+    res.json(responseData);
 
   } catch (error) {
     console.error('Error syncing feed:', error);
