@@ -241,19 +241,20 @@ class FeedImportService {
       for (const mappedVehicle of mappedVehicles) {
         try {
           // ═══════════════════════════════════════════════════════════════════
-          // 🔄 SOLD VEHICLE HANDLING - Hook-bypass approach for reliable status updates
+          // 🔄 SOLD VEHICLE HANDLING
           // ═══════════════════════════════════════════════════════════════════
           const vehicleStatus = this.normalizeAdvertStatus(mappedVehicle.status);
           const isSold = vehicleStatus === 'sold';
           
           if (isSold) {
             if (isFirstImport) {
+              // ✅ First import: SKIP sold cars (don't add to database)
               console.log(`⏭️  [SKIP] Sold on first import: ${mappedVehicle.make} ${mappedVehicle.model}`);
               stats.vehicles_skipped++;
-              continue;
+              continue; // Skip sold car
             }
             
-            // Sync mode — directly mark as sold, hooks bypass
+            // Sync mode: UPDATE existing car to sold status
             try {
               const orQuery = [];
               if (mappedVehicle.stock_id) orQuery.push({ stockId: String(mappedVehicle.stock_id) });
@@ -265,27 +266,7 @@ class FeedImportService {
                 continue;
               }
               
-              console.log(`🔍 [SOLD] Looking for car:`, { dealerId, orQuery });
-              
-              // DEBUG: Check what cars exist for this dealer (enable if NOT FOUND issues occur)
-              const DEBUG_MODE = true; // Set to false after issue is resolved
-              if (DEBUG_MODE) {
-                const existingCars = await Car.find({ 
-                  dealerId, 
-                  advertStatus: { $ne: 'sold' } 
-                }).select('stockId registrationNumber make model advertStatus').limit(5);
-                
-                console.log(`🔍 [DEBUG] Sample cars in DB:`, existingCars.map(c => ({
-                  stockId: c.stockId,
-                  stockIdType: typeof c.stockId,
-                  registration: c.registrationNumber,
-                  make: c.make,
-                  status: c.advertStatus
-                })));
-                
-                console.log(`🔍 [DEBUG] Looking for stockId: "${mappedVehicle.stock_id}" (type: ${typeof mappedVehicle.stock_id})`);
-                console.log(`🔍 [DEBUG] Looking for registration: "${mappedVehicle.registration}"`);
-              }
+              console.log(`🔍 [SOLD] Looking for car to mark as sold:`, { dealerId, orQuery });
               
               const soldCar = await Car.findOneAndUpdate(
                 { dealerId, $or: orQuery, advertStatus: { $ne: 'sold' } },
@@ -311,7 +292,7 @@ class FeedImportService {
               stats.errors.push({ stockId: mappedVehicle.stock_id, error: soldError.message });
             }
             
-            continue;
+            continue; // Skip normal processing (already handled)
           }
           // ═══════════════════════════════════════════════════════════════════
           
@@ -924,21 +905,33 @@ class FeedImportService {
       });
 
       // ── Step 2: Decide kya kya missing hai ────────────────────────────────────
-      // SMART SPECS LOGIC: Call API if ANY critical spec field is missing from CSV
+      // 🆕 SMART MISSING FIELD DETECTION: Call API if ANY important field is missing
       // This ensures high-quality, complete listings that build user trust
+      
+      // Critical fields that should ALWAYS be present for quality listings
       const criticalSpecFields = [
+        'variant',        // 🆕 Variant/derivative/trim (most important!)
         'body_type',      // Body type (Saloon, Hatchback, etc.)
         'fuel_type',      // Fuel type (Petrol, Diesel, etc.)
         'transmission',   // Transmission (Automatic, Manual)
+        'colour',         // Vehicle colour
         'doors',          // Number of doors
         'seats',          // Number of seats
         'engine_size'     // Engine size in liters
       ];
       
-      // Check which critical fields are missing from CSV
+      // Check which critical fields are missing from feed
       const missingFields = criticalSpecFields.filter(field => {
-        const value = mappedVehicle[field];
-        return !value || value === 'null' || value === 'undefined' || value === '';
+        const value = mappedVehicle[field] || mappedVehicle[field === 'colour' ? 'color' : field];
+        const isEmpty = !value || value === 'null' || value === 'undefined' || value === '';
+        
+        if (isEmpty && field === 'variant') {
+          // Special check for variant - also check derivative
+          const derivative = mappedVehicle.derivative;
+          return !derivative || derivative === 'null' || derivative === 'undefined' || derivative === '';
+        }
+        
+        return isEmpty;
       });
       
       // Also check if running costs data is missing (CO2, MPG, Tax, Insurance)
@@ -963,11 +956,11 @@ class FeedImportService {
       }
       
       // Call Specs API if:
-      // 1. Any critical field is missing from CSV, OR
+      // 1. Any critical field is missing from feed (CSV/XML/JSON), OR
       // 2. Running costs are missing, OR
       // 3. No cached specs data exists
       const needsSpecs = (
-        missingFields.length > 0 ||   // CSV incomplete
+        missingFields.length > 0 ||   // Feed data incomplete
         needsRunningCosts ||           // Running costs missing
         !cachedData.hasSpecs           // No cache available
       );
@@ -975,7 +968,7 @@ class FeedImportService {
       if (needsSpecs) {
         const reasons = [];
         if (missingFields.length > 0) {
-          reasons.push(`Missing ${missingFields.length} spec(s): ${missingFields.join(', ')}`);
+          reasons.push(`Missing ${missingFields.length} field(s): ${missingFields.join(', ')}`);
         }
         if (needsRunningCosts) {
           reasons.push('Running costs missing (CO2, MPG, Tax)');
@@ -984,7 +977,7 @@ class FeedImportService {
           reasons.push('No cached specs');
         }
         console.log(`   🔍 ${reasons.join(' | ')}`);
-        console.log(`   📞 Calling Specs API to complete data...`);
+        console.log(`   📞 Calling Specs API to fill missing data...`);
       }
       
       // MOT: sirf tab call ho jab MOT history feed mein nahi hai
@@ -1479,6 +1472,38 @@ class FeedImportService {
         skipNormalization: true,
         images: imageUrls,
         
+        // 🆕 Features (from feed)
+        ...(mappedVehicle.features && mappedVehicle.features.length > 0 ? {
+          features: mappedVehicle.features
+        } : {}),
+        
+        // 🆕 Seller Contact Information (from feed)
+        ...(mappedVehicle.seller_name || mappedVehicle.seller_contact || mappedVehicle.seller_email || mappedVehicle.seller_location ? {
+          sellerContact: {
+            type: 'dealer',
+            name: mappedVehicle.seller_name || null,
+            phone: mappedVehicle.seller_contact || null,
+            email: mappedVehicle.seller_email || null,
+            location: mappedVehicle.seller_location || null,
+            allowEmailContact: !!mappedVehicle.seller_email,
+            allowPhoneContact: !!mappedVehicle.seller_contact
+          }
+        } : {}),
+        
+        // 🔍 DEBUG: Log seller fields
+        ...(() => {
+          console.log(`\n🔍 [createOrUpdateCarListing] Seller Fields for ${mappedVehicle.registration}:`);
+          console.log(`   seller_name: "${mappedVehicle.seller_name || 'NULL'}"`);
+          console.log(`   seller_contact: "${mappedVehicle.seller_contact || 'NULL'}"`);
+          console.log(`   seller_email: "${mappedVehicle.seller_email || 'NULL'}"`);
+          console.log(`   seller_location: "${mappedVehicle.seller_location || 'NULL'}"`);
+          console.log(`   features count: ${mappedVehicle.features?.length || 0}`);
+          if (mappedVehicle.features) {
+            console.log(`   features: ${JSON.stringify(mappedVehicle.features)}`);
+          }
+          return {};
+        })(),
+        
         // 🔑 CRITICAL: Only add stockId if it's valid - prevents duplicate key errors
         ...(validatedStockId ? { stockId: validatedStockId } : {}),
         
@@ -1488,6 +1513,40 @@ class FeedImportService {
         doors: mappedVehicle.doors || apiEnrichment?.specs?.doors,
         seats: mappedVehicle.seats || apiEnrichment?.specs?.seats,
         engineSize: mappedVehicle.engine_size || apiEnrichment?.specs?.engineSize,
+        
+        // 🔍 DEBUG: Log running costs from API
+        ...(() => {
+          if (apiEnrichment?.specs) {
+            console.log(`\n🔍 [DEBUG] Running Costs from API for ${mappedVehicle.registration}:`);
+            console.log(`   - urbanMpg: ${apiEnrichment.specs.urbanMpg}`);
+            console.log(`   - extraUrbanMpg: ${apiEnrichment.specs.extraUrbanMpg}`);
+            console.log(`   - combinedMpg: ${apiEnrichment.specs.combinedMpg}`);
+            console.log(`   - co2Emissions: ${apiEnrichment.specs.co2Emissions}`);
+            console.log(`   - insuranceGroup: ${apiEnrichment.specs.insuranceGroup}`);
+            console.log(`   - annualTax: ${apiEnrichment.specs.annualTax}`);
+          }
+          return {};
+        })(),
+        
+        // CRITICAL: Running Costs from Specs API
+        ...(apiEnrichment?.specs && {
+          co2Emissions: apiEnrichment.specs.co2Emissions,
+          fuelEconomyUrban: apiEnrichment.specs.urbanMpg,
+          fuelEconomyExtraUrban: apiEnrichment.specs.extraUrbanMpg,
+          fuelEconomyCombined: apiEnrichment.specs.combinedMpg,
+          insuranceGroup: apiEnrichment.specs.insuranceGroup,
+          annualTax: apiEnrichment.specs.annualTax,
+          runningCosts: {
+            fuelEconomy: {
+              urban: apiEnrichment.specs.urbanMpg,
+              extraUrban: apiEnrichment.specs.extraUrbanMpg,
+              combined: apiEnrichment.specs.combinedMpg
+            },
+            co2Emissions: apiEnrichment.specs.co2Emissions,
+            insuranceGroup: apiEnrichment.specs.insuranceGroup,
+            annualTax: apiEnrichment.specs.annualTax
+          }
+        }),
         
         // MOT History
         ...(apiEnrichment?.motHistory && {

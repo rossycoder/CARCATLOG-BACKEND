@@ -29,7 +29,10 @@ build/
 
 # Apple private key
 *.p8
-# Test and Fix Files - Don't commit to git
+
+# ═══════════════════════════════════════════════════════════════════════
+# 🧪 Test, Debug, and Fix Scripts (Development Only)
+# ═══════════════════════════════════════════════════════════════════════
 test-*.js
 check-*.js
 fix-*.js
@@ -38,9 +41,105 @@ generate-*.js
 update-*.js
 seed-*.js
 setup-*.js
+verify-*.js
+diagnose-*.js
+trace-*.js
+enable-*.js
+disable-*.js
+force-*.js
+manual-*.js
+manually-*.js
+comprehensive-*.js
+emergency-*.js
+simple-*.js
+find-*.js
+show-*.js
+list-*.js
+link-*.js
 
-# Development utilities
-*test*.js
-*check*.js
-*fix*.js
-*debug*.js
+# ═══════════════════════════════════════════════════════════════════════
+# 🗄️ Backup and Restore Scripts (Keep backups/ folder only)
+# ═══════════════════════════════════════════════════════════════════════
+backup-*.js
+restore-*.js
+import-*.js
+export-*.js
+migrate-*.js
+cleanup-*.js
+delete-*.js
+rebuild-*.js
+activate-*.js
+add-*.js
+advanced-*.js
+*-backup-*.js
+*-restore-*.js
+BACKUP-*.bat
+EXPORT-*.bat
+*-AUTO-RESTORE-*.js
+*-FIX-DELETE-*.js
+PERMANENT-FIX-*.js
+CRITICAL-FIX-*.js
+FINAL-*.js
+
+# Keep backups folder but ignore its contents
+backups/*.json
+!backups/.gitkeep
+
+# ═══════════════════════════════════════════════════════════════════════
+# 📄 Test Data Files
+# ═══════════════════════════════════════════════════════════════════════
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!.eslintrc.json
+# Keep model files
+!models/**/*.json
+!config/**/*.json
+
+# Test XML/CSV files
+test-*.xml
+test-*.csv
+fresh-*.json
+temp-*.json
+sample-*.json
+
+# ═══════════════════════════════════════════════════════════════════════
+# 📝 Debug and Guide Documentation (Keep main docs only)
+# ═══════════════════════════════════════════════════════════════════════
+*_FIX.md
+*_FIX_*.md
+*_GUIDE.md
+*_FIXED.md
+*_COMPLETE.md
+*_ERROR.md
+*_SUMMARY.md
+*_DEBUG*.md
+*_IMPLEMENTATION*.md
+*_TESTING*.md
+*_INSTRUCTIONS.md
+*_SOLUTION.md
+DEBUG_*.md
+DEALER_*.md
+IMAGE_*.md
+BACKUP_*.md
+CARS-*.md
+CRITICAL-*.md
+FINAL-*.md
+PERMANENT-*.md
+EMERGENCY-*.md
+COMPREHENSIVE_*.md
+
+# ═══════════════════════════════════════════════════════════════════════
+# 🎭 Fake DMS (Keep main files, ignore test data)
+# ═══════════════════════════════════════════════════════════════════════
+fake-dms/**/*.json
+fake-dms/**/*.xml
+fake-dms/**/*.csv
+!fake-dms/package.json
+
+# ═══════════════════════════════════════════════════════════════════════
+# 🔧 Batch Files (Development helpers)
+# ═══════════════════════════════════════════════════════════════════════
+*.bat
+!fake-dms/start.bat

@@ -231,7 +231,8 @@ class FeedMapper {
         ]),
         
         derivative: this.extractField(rawVehicle, [
-          'derivative', 'variant', 'trim', 'version', 'description', 'variant_name'
+          'derivative', 'variant', 'trim', 'version', 'variant_name'
+          // ❌ REMOVED 'description' - description should NOT be used as variant!
         ]),
         
         year: parseInt(this.extractField(rawVehicle, [
@@ -279,6 +280,26 @@ class FeedMapper {
         ]) || this.extractFromFeatures(rawVehicle, 'description') || this.extractFromFeatures(rawVehicle, 'notes'),
         
         images: this.extractImages(rawVehicle),
+        
+        // ── Seller contact information (for dealer feeds) ────────────────────
+        seller_name: this.extractField(rawVehicle, [
+          'seller_name', 'sellername', 'dealer_name', 'dealername', 'business_name'
+        ]),
+        
+        seller_contact: this.extractField(rawVehicle, [
+          'seller_contact', 'sellercontact', 'contact', 'phone', 'telephone', 'mobile'
+        ]),
+        
+        seller_email: this.extractField(rawVehicle, [
+          'seller_email', 'selleremail', 'email', 'contact_email'
+        ]),
+        
+        seller_location: this.extractField(rawVehicle, [
+          'seller_location', 'sellerlocation', 'location', 'address', 'city'
+        ]),
+        
+        // ── Features (comma-separated string or array) ───────────────────────
+        features: this.extractFeatures(rawVehicle),
         
         raw_data: rawVehicle
       };
@@ -531,6 +552,41 @@ class FeedMapper {
 
     // Return null instead of empty array if no images found
     return images.length > 0 ? images : null;
+  }
+
+  /**
+   * Extract features from vehicle
+   */
+  extractFeatures(vehicle) {
+    // Try common feature field names
+    const possibleFeatureFields = [
+      'features', 'feature', 'equipment', 'options', 'extras', 'specifications'
+    ];
+
+    for (const field of possibleFeatureFields) {
+      const value = this.getNestedProperty(vehicle, field);
+      
+      if (!value) continue;
+
+      // Handle array of features
+      if (Array.isArray(value)) {
+        return value.filter(f => f && typeof f === 'string' && f.trim() !== '');
+      }
+      
+      // Handle comma-separated string
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) continue;
+        
+        // Split by comma and clean up
+        return trimmed
+          .split(',')
+          .map(f => f.trim())
+          .filter(f => f !== '');
+      }
+    }
+
+    return null;
   }
 
   /**

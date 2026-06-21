@@ -27,11 +27,8 @@ exports.getInventory = async (req, res) => {
     // Filter by status
     if (status) {
       query.advertStatus = status;
-    } else {
-      // By default, exclude sold cars from inventory view
-      // Sold cars are tracked in stats but not shown in main inventory list
-      query.advertStatus = { $ne: 'sold' };
     }
+    // No status filter = show all (active, sold, draft)
 
     if (search) {
       query.$or = [
