@@ -55,7 +55,19 @@ class FeedMapper {
         return data;
       }
       
-      // ── Step 2: Known wrapper keys try karo ───────────────────────────────
+      // ── Step 2: Single object that looks like a vehicle — wrap it ────────
+      // If the root is an object with vehicle-like fields (make, model, etc.)
+      if (!Array.isArray(data) && typeof data === 'object' && data !== null) {
+        const vehicleKeys = ['make', 'model', 'registration', 'reg', 'vrm', 'stock_id', 'stockid', 'price'];
+        const dataKeys = Object.keys(data).map(k => k.toLowerCase());
+        const looksLikeVehicle = vehicleKeys.filter(k => dataKeys.includes(k)).length >= 2;
+        if (looksLikeVehicle) {
+          console.log('✅ [JSON] Root object looks like a single vehicle — wrapping in array');
+          return [data];
+        }
+      }
+
+      // ── Step 3: Known wrapper keys try karo ───────────────────────────────
       const knownKeys = [
         'vehicles', 'vehicle', 'testData', 'stock', 'cars', 'car',
         'items', 'item', 'listings', 'listing', 'inventory',

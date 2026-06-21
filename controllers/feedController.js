@@ -33,6 +33,10 @@ exports.testFeed = async (req, res) => {
  * Import stock from feed
  */
 exports.importFeed = async (req, res) => {
+  // Declare outside try so catch block can reference them for logging
+  let feedUrl;
+  let dealerId;
+  let result;
   try {
     // ═══════════════════════════════════════════════════════════════════════
     // 🔍 DIAGNOSTIC LOGGING - Track frontend requests
@@ -46,7 +50,7 @@ exports.importFeed = async (req, res) => {
     console.log('═'.repeat(80) + '\n');
     
     // Get dealerId from authenticated session
-    const dealerId = req.dealerId || req.dealer?.id;
+    dealerId = req.dealerId || req.dealer?.id;
     
     if (!dealerId) {
       console.error('❌ No dealer ID found in request\n');
@@ -56,14 +60,15 @@ exports.importFeed = async (req, res) => {
       });
     }
     
-    const { 
+    let removeSoldVehicles, importImages, useUnsplashFallback, limitVehicles, selectionMode;
+    ({ 
       feedUrl, 
       removeSoldVehicles, 
       importImages, 
       useUnsplashFallback, 
       limitVehicles, 
       selectionMode 
-    } = req.body;
+    } = req.body);
 
     if (!feedUrl) {
       console.error('❌ No feed URL provided\n');
