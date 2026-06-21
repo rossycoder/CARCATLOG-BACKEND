@@ -767,6 +767,12 @@ class FeedImportService {
       const normalizedFuelType = this.normalizeFuelType(mappedVehicle.fuel_type);
       const normalizedAdvertStatus = this.normalizeAdvertStatus(mappedVehicle.status);
 
+      const feedColor = (mappedVehicle.colour && mappedVehicle.colour !== 'Not Specified')
+        ? mappedVehicle.colour
+        : (mappedVehicle.color && mappedVehicle.color !== 'Not Specified')
+        ? mappedVehicle.color
+        : null;
+
       const carData = {
         dealerId,
         isDealerListing: true,
@@ -775,12 +781,12 @@ class FeedImportService {
         registrationNumber: mappedVehicle.registration,
         make: mappedVehicle.make,
         model: mappedVehicle.model,
-        variant: mappedVehicle.derivative,
+        variant: mappedVehicle.derivative || null,
         year: mappedVehicle.year || new Date().getFullYear(),
         mileage: mappedVehicle.mileage || 0,
         fuelType: normalizedFuelType || 'Petrol',
-        transmission: normalizedTransmission || 'manual',
-        color: mappedVehicle.colour || 'Not Specified',
+        transmission: normalizedTransmission || 'Manual',
+        color: feedColor || null,
         price: mappedVehicle.price,
         description: mappedVehicle.description || `${mappedVehicle.make} ${mappedVehicle.model}`,
         postcode: dealerPostcode,
@@ -1127,8 +1133,20 @@ class FeedImportService {
         if (!result.data) continue;
         
         if (result.type === 'specs') {
-          enrichment.specs = result.data;
-          console.log(`✅ [API] Specs fetched for ${registration}`);
+          const rawSpecs = result.data;
+          // Apply normalizeModelVariant — same as universalAutoCompleteService does
+          // This fixes cases where model/variant are swapped in the API response
+          if (rawSpecs.model && rawSpecs.make) {
+            const { normalizeModelVariant } = require('../utils/modelVariantNormalizer');
+            const { model: nm, variant: nv } = normalizeModelVariant(rawSpecs.model, rawSpecs.variant, rawSpecs.make);
+            rawSpecs.model = nm;
+            rawSpecs.variant = nv;
+          }
+          // Treat 'Unknown' fuel/transmission as null so downstream fallbacks work
+          if (rawSpecs.fuelType === 'Unknown') rawSpecs.fuelType = null;
+          if (rawSpecs.transmission === 'Unknown') rawSpecs.transmission = null;
+          enrichment.specs = rawSpecs;
+          console.log(`✅ [API] Specs fetched for ${registration}: variant="${rawSpecs.variant}", fuelType="${rawSpecs.fuelType}", color="${rawSpecs.color}", seats=${rawSpecs.seats}`);
         } else if (result.type === 'mot') {
           enrichment.motHistory = result.data.motTests || result.data.motHistory || [];
           enrichment.motStatus  = result.data.motStatus;
@@ -1451,22 +1469,52 @@ class FeedImportService {
       }
       
       // Merge feed data with API enrichment
+      // ── Extract and normalize API specs ──────────────────────────────────────
+      const specs = apiEnrichment?.specs || {};
+
+      // Color: API returns "BLUE" → normalize to "Blue"
+      const apiColor = specs.color
+        ? specs.color.charAt(0).toUpperCase() + specs.color.slice(1).toLowerCase()
+        : null;
+
+      // FuelType: API may say "Petrol" for PHEVs (530e, 545e, xe, etc.) — detect from variant
+      let apiFuelType = (specs.fuelType && specs.fuelType !== 'Unknown') ? specs.fuelType : null;
+      if (apiFuelType === 'Petrol' && specs.variant) {
+        const isPHEV = /\b(530e|545e|me\b|xe|45e|50e|phev|plug.?in|hybrid)\b/i.test(specs.variant);
+        if (isPHEV) apiFuelType = 'Petrol Plug-in Hybrid';
+      }
+
+      // Transmission: normalize API value
+      const apiTransmission = (specs.transmission && specs.transmission !== 'Unknown')
+        ? this.normalizeTransmission(specs.transmission)
+        : null;
+
       const carData = {
         dealerId: feedVehicle.dealerId,
         isDealerListing: true,
         registrationNumber: mappedVehicle.registration || `TBD${Date.now()}`,
-        make: mappedVehicle.make || apiEnrichment?.specs?.make || 'Unknown',
-        model: mappedVehicle.model || apiEnrichment?.specs?.model || 'Unknown',
-        variant: mappedVehicle.derivative || apiEnrichment?.specs?.variant || null,
-        year: mappedVehicle.year || apiEnrichment?.specs?.year || new Date().getFullYear(),
+        make: mappedVehicle.make || specs.make || 'Unknown',
+        model: mappedVehicle.model || specs.model || 'Unknown',
+        variant: mappedVehicle.derivative || specs.variant || null,
+        year: mappedVehicle.year || specs.year || new Date().getFullYear(),
         mileage: mappedVehicle.mileage || 0,
-        fuelType: this.normalizeFuelType(mappedVehicle.fuel_type) || apiEnrichment?.specs?.fuelType || 'Petrol',
-        transmission: this.normalizeTransmission(mappedVehicle.transmission) || apiEnrichment?.specs?.transmission || 'manual',
-        color: mappedVehicle.colour || mappedVehicle.color || apiEnrichment?.specs?.color || 'Not Specified',
+        // fuelType: feed wins, then PHEV-corrected API value, then default
+        fuelType: (mappedVehicle.fuel_type
+          ? this.normalizeFuelType(mappedVehicle.fuel_type)
+          : null) || apiFuelType || 'Petrol',
+        transmission: (mappedVehicle.transmission
+          ? this.normalizeTransmission(mappedVehicle.transmission)
+          : null) || apiTransmission || 'Manual',
+        // color: feed wins if real value; API value capitalized as fallback
+        color: (mappedVehicle.colour && mappedVehicle.colour !== 'Not Specified'
+          ? mappedVehicle.colour
+          : mappedVehicle.color && mappedVehicle.color !== 'Not Specified'
+          ? mappedVehicle.color
+          : null) || apiColor || null,
         price: mappedVehicle.price || 0,
         description: mappedVehicle.description || `${mappedVehicle.make || 'Unknown'} ${mappedVehicle.model || 'Unknown'}`,
         postcode: dealerPostcode,
-        advertStatus: this.normalizeAdvertStatus(mappedVehicle.status) || 'active', // ✅ Map feed status to advertStatus
+        advertStatus: this.normalizeAdvertStatus(mappedVehicle.status) || 'active',
         dataSource: 'manual',
         condition: 'used',
         skipNormalization: true,
@@ -1509,42 +1557,42 @@ class FeedImportService {
         
         // CRITICAL FIX: Use CSV data first, then API enrichment as fallback
         // This ensures bodyType, doors, seats are saved even if Specs API is skipped
-        bodyType: mappedVehicle.body_type || apiEnrichment?.specs?.bodyType,
-        doors: mappedVehicle.doors || apiEnrichment?.specs?.doors,
-        seats: mappedVehicle.seats || apiEnrichment?.specs?.seats,
-        engineSize: mappedVehicle.engine_size || apiEnrichment?.specs?.engineSize,
+        bodyType: mappedVehicle.body_type || specs.bodyType,
+        doors: mappedVehicle.doors || specs.doors,
+        seats: mappedVehicle.seats || specs.seats,
+        engineSize: mappedVehicle.engine_size || specs.engineSize,
         
         // 🔍 DEBUG: Log running costs from API
         ...(() => {
-          if (apiEnrichment?.specs) {
+          if (specs.combinedMpg || specs.co2Emissions) {
             console.log(`\n🔍 [DEBUG] Running Costs from API for ${mappedVehicle.registration}:`);
-            console.log(`   - urbanMpg: ${apiEnrichment.specs.urbanMpg}`);
-            console.log(`   - extraUrbanMpg: ${apiEnrichment.specs.extraUrbanMpg}`);
-            console.log(`   - combinedMpg: ${apiEnrichment.specs.combinedMpg}`);
-            console.log(`   - co2Emissions: ${apiEnrichment.specs.co2Emissions}`);
-            console.log(`   - insuranceGroup: ${apiEnrichment.specs.insuranceGroup}`);
-            console.log(`   - annualTax: ${apiEnrichment.specs.annualTax}`);
+            console.log(`   - urbanMpg: ${specs.urbanMpg}`);
+            console.log(`   - extraUrbanMpg: ${specs.extraUrbanMpg}`);
+            console.log(`   - combinedMpg: ${specs.combinedMpg}`);
+            console.log(`   - co2Emissions: ${specs.co2Emissions}`);
+            console.log(`   - insuranceGroup: ${specs.insuranceGroup}`);
+            console.log(`   - annualTax: ${specs.annualTax}`);
           }
           return {};
         })(),
         
         // CRITICAL: Running Costs from Specs API
-        ...(apiEnrichment?.specs && {
-          co2Emissions: apiEnrichment.specs.co2Emissions,
-          fuelEconomyUrban: apiEnrichment.specs.urbanMpg,
-          fuelEconomyExtraUrban: apiEnrichment.specs.extraUrbanMpg,
-          fuelEconomyCombined: apiEnrichment.specs.combinedMpg,
-          insuranceGroup: apiEnrichment.specs.insuranceGroup,
-          annualTax: apiEnrichment.specs.annualTax,
+        ...(Object.keys(specs).length > 0 && {
+          co2Emissions: specs.co2Emissions,
+          fuelEconomyUrban: specs.urbanMpg,
+          fuelEconomyExtraUrban: specs.extraUrbanMpg,
+          fuelEconomyCombined: specs.combinedMpg,
+          insuranceGroup: specs.insuranceGroup,
+          annualTax: specs.annualTax,
           runningCosts: {
             fuelEconomy: {
-              urban: apiEnrichment.specs.urbanMpg,
-              extraUrban: apiEnrichment.specs.extraUrbanMpg,
-              combined: apiEnrichment.specs.combinedMpg
+              urban: specs.urbanMpg,
+              extraUrban: specs.extraUrbanMpg,
+              combined: specs.combinedMpg
             },
-            co2Emissions: apiEnrichment.specs.co2Emissions,
-            insuranceGroup: apiEnrichment.specs.insuranceGroup,
-            annualTax: apiEnrichment.specs.annualTax
+            co2Emissions: specs.co2Emissions,
+            insuranceGroup: specs.insuranceGroup,
+            annualTax: specs.annualTax
           }
         }),
         
@@ -1683,7 +1731,7 @@ class FeedImportService {
    * Normalize transmission value to enum
    */
   normalizeTransmission(value) {
-    if (!value) return 'manual';
+    if (!value) return null;
     const t = value.toLowerCase();
     if (t.includes('auto')) return 'automatic';
     if (t.includes('semi')) return 'semi-automatic';
@@ -1694,7 +1742,7 @@ class FeedImportService {
    * Normalize fuel type value to enum
    */
   normalizeFuelType(value) {
-    if (!value) return 'Petrol';
+    if (!value) return null;
     const fuelMap = {
       'petrol': 'Petrol',
       'diesel': 'Diesel',
