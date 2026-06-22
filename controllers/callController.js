@@ -53,7 +53,7 @@ exports.createSession = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Listing not found' });
     }
 
-    const sellerRealNumber = listing.sellerContact?.phoneNumber;
+    const sellerRealNumber = listing.sellerContact?.phoneNumber || listing.sellerContact?.phone;
     if (!sellerRealNumber) {
       return res.status(400).json({ success: false, message: 'Seller has no phone number on file' });
     }

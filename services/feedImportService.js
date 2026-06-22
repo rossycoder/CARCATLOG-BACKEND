@@ -785,7 +785,7 @@ class FeedImportService {
         year: mappedVehicle.year || new Date().getFullYear(),
         mileage: mappedVehicle.mileage || 0,
         fuelType: normalizedFuelType || 'Petrol',
-        transmission: normalizedTransmission || 'Manual',
+        transmission: normalizedTransmission || 'manual',
         color: feedColor || null,
         price: mappedVehicle.price,
         description: mappedVehicle.description || `${mappedVehicle.make} ${mappedVehicle.model}`,
@@ -1142,9 +1142,11 @@ class FeedImportService {
             rawSpecs.model = nm;
             rawSpecs.variant = nv;
           }
-          // Treat 'Unknown' fuel/transmission as null so downstream fallbacks work
-          if (rawSpecs.fuelType === 'Unknown') rawSpecs.fuelType = null;
-          if (rawSpecs.transmission === 'Unknown') rawSpecs.transmission = null;
+          // Treat 'Unknown'/'undefined' fuel/transmission as null so downstream fallbacks work
+          if (!rawSpecs.fuelType || rawSpecs.fuelType === 'Unknown' || rawSpecs.fuelType === 'undefined') rawSpecs.fuelType = null;
+          if (!rawSpecs.transmission || rawSpecs.transmission === 'Unknown' || rawSpecs.transmission === 'undefined') rawSpecs.transmission = null;
+          if (!rawSpecs.variant || rawSpecs.variant === 'undefined' || rawSpecs.variant === 'null') rawSpecs.variant = null;
+          if (!rawSpecs.color || rawSpecs.color === 'undefined' || rawSpecs.color === 'null') rawSpecs.color = null;
           enrichment.specs = rawSpecs;
           console.log(`✅ [API] Specs fetched for ${registration}: variant="${rawSpecs.variant}", fuelType="${rawSpecs.fuelType}", color="${rawSpecs.color}", seats=${rawSpecs.seats}`);
         } else if (result.type === 'mot') {
@@ -1478,11 +1480,28 @@ class FeedImportService {
         : null;
 
       // FuelType: API may say "Petrol" for PHEVs (530e, 545e, xe, etc.) — detect from variant
-      let apiFuelType = (specs.fuelType && specs.fuelType !== 'Unknown') ? specs.fuelType : null;
+      // Priority: specs fuelType → history fuelType (carhistorycheck is more accurate for fuel)
+      // Also check VehicleHistory DB cache if history API wasn't called this time
+      let historyFuelType = apiEnrichment?.history?.fuelType || null;
+      if (!historyFuelType && mappedVehicle.registration) {
+        try {
+          const VehicleHistory = require('../models/VehicleHistory');
+          const cached = await VehicleHistory.findOne({ vrm: mappedVehicle.registration.toUpperCase() })
+            .select('fuelType').lean();
+          if (cached?.fuelType) historyFuelType = cached.fuelType;
+        } catch (e) { /* ignore */ }
+      }
+      let apiFuelType = (specs.fuelType && specs.fuelType !== 'Unknown') ? specs.fuelType : historyFuelType;
       if (apiFuelType === 'Petrol' && specs.variant) {
         const isPHEV = /\b(530e|545e|me\b|xe|45e|50e|phev|plug.?in|hybrid)\b/i.test(specs.variant);
         if (isPHEV) apiFuelType = 'Petrol Plug-in Hybrid';
       }
+      // Extra check: if specs says "Petrol" but history says "Diesel", trust history
+      if (apiFuelType === 'Petrol' && historyFuelType === 'Diesel') {
+        apiFuelType = 'Diesel';
+        console.log(`🔧 [fuelType] Corrected: specs="Petrol" overridden by history="Diesel"`);
+      }
+      console.log(`🔧 [fuelType] specs="${specs.fuelType}", history="${historyFuelType}", final="${apiFuelType}"`);
 
       // Transmission: normalize API value
       const apiTransmission = (specs.transmission && specs.transmission !== 'Unknown')
@@ -1504,7 +1523,7 @@ class FeedImportService {
           : null) || apiFuelType || 'Petrol',
         transmission: (mappedVehicle.transmission
           ? this.normalizeTransmission(mappedVehicle.transmission)
-          : null) || apiTransmission || 'Manual',
+          : null) || apiTransmission || 'manual',
         // color: feed wins if real value; API value capitalized as fallback
         color: (mappedVehicle.colour && mappedVehicle.colour !== 'Not Specified'
           ? mappedVehicle.colour

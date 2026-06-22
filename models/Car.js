@@ -25,7 +25,7 @@ const carSchema = new mongoose.Schema({
   },
   price: {
     type: Number,
-    required: function() { return this.dataSource !== 'DVLA'; },
+    required: function() { return this.dataSource !== 'DVLA' && this.dataSource !== 'feed'; },
     min: [0, 'Price must be positive']
   },
   estimatedValue: { type: Number, min: [0, 'Estimated value must be positive'] },
@@ -51,12 +51,23 @@ const carSchema = new mongoose.Schema({
   driveType: { type: String, trim: true, enum: ['FWD', 'RWD', 'AWD', '4WD', null] },
   fuelType: {
     type: String,
-    required: [true, 'Fuel type is required'],
-    enum: ['Petrol', 'Diesel', 'Electric', 'Hybrid', 'Petrol Hybrid', 'Diesel Hybrid', 'Plug-in Hybrid', 'Petrol Plug-in Hybrid', 'Diesel Plug-in Hybrid']
+    required: function() { return this.dataSource !== 'DVLA' && this.dataSource !== 'feed'; },
+    enum: {
+      values: ['Petrol', 'Diesel', 'Electric', 'Hybrid', 'Petrol Hybrid', 'Diesel Hybrid', 'Plug-in Hybrid', 'Petrol Plug-in Hybrid', 'Diesel Plug-in Hybrid'],
+      message: '`{VALUE}` is not a valid fuel type'
+    },
+    validate: {
+      validator: function(v) {
+        // Allow null/undefined for feed imports
+        if (!v && (this.dataSource === 'feed' || this.dataSource === 'DVLA')) return true;
+        return ['Petrol', 'Diesel', 'Electric', 'Hybrid', 'Petrol Hybrid', 'Diesel Hybrid', 'Plug-in Hybrid', 'Petrol Plug-in Hybrid', 'Diesel Plug-in Hybrid'].includes(v);
+      },
+      message: '`{VALUE}` is not a valid fuel type'
+    }
   },
   description: {
     type: String,
-    required: function() { return this.dataSource !== 'DVLA'; },
+    required: function() { return this.dataSource !== 'DVLA' && this.dataSource !== 'feed'; },
     trim: true
   },
   images: {
@@ -68,7 +79,7 @@ const carSchema = new mongoose.Schema({
   },
   postcode: {
     type: String,
-    required: function() { return this.dataSource !== 'DVLA'; },
+    required: function() { return this.dataSource !== 'DVLA' && this.dataSource !== 'feed'; },
     trim: true,
     uppercase: true
   },
@@ -93,7 +104,7 @@ const carSchema = new mongoose.Schema({
   engineSize: { type: Number, min: 0 },
   registrationNumber: { type: String, trim: true, uppercase: true },
   displayTitle: { type: String, trim: true },
-  dataSource: { type: String, enum: ['DVLA', 'manual'], default: 'manual' },
+  dataSource: { type: String, enum: ['DVLA', 'manual', 'feed', 'trade-inventory'], default: 'manual' },
   co2Emissions: { type: Number, min: 0 },
   emissionClass: { type: String, trim: true },
   taxStatus: { type: String, trim: true },
