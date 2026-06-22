@@ -791,7 +791,7 @@ class FeedImportService {
         description: mappedVehicle.description || `${mappedVehicle.make} ${mappedVehicle.model}`,
         postcode: dealerPostcode,
         advertStatus: normalizedAdvertStatus, // Use normalized status from feed
-        dataSource: 'manual',
+        dataSource: 'feed',
         condition: 'used',
         skipNormalization: true
       };
@@ -1515,7 +1515,7 @@ class FeedImportService {
         description: mappedVehicle.description || `${mappedVehicle.make || 'Unknown'} ${mappedVehicle.model || 'Unknown'}`,
         postcode: dealerPostcode,
         advertStatus: this.normalizeAdvertStatus(mappedVehicle.status) || 'active',
-        dataSource: 'manual',
+        dataSource: 'feed',
         condition: 'used',
         skipNormalization: true,
         images: imageUrls,
@@ -1654,10 +1654,13 @@ class FeedImportService {
         
         car.$locals = skipAPIFetchFlag;
         Object.keys(carData).forEach(key => {
-          // Don't overwrite existing car fields with null/undefined — keep the DB value
-          if (carData[key] !== null && carData[key] !== undefined) {
-            car[key] = carData[key];
-          }
+          const newVal = carData[key];
+          const oldVal = car[key];
+          // Skip null/undefined
+          if (newVal === null || newVal === undefined) return;
+          // Don't overwrite a real existing value with a generic fallback
+          if (newVal === 'Not Specified' && oldVal && oldVal !== 'Not Specified') return;
+          car[key] = newVal;
         });
         await car.save();
         console.log('✅ [createOrUpdateCarListing] Updated car:', car._id);
