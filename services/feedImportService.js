@@ -1510,7 +1510,7 @@ class FeedImportService {
           ? mappedVehicle.colour
           : mappedVehicle.color && mappedVehicle.color !== 'Not Specified'
           ? mappedVehicle.color
-          : null) || apiColor || null,
+          : null) || apiColor || 'Not Specified',
         price: mappedVehicle.price || 0,
         description: mappedVehicle.description || `${mappedVehicle.make || 'Unknown'} ${mappedVehicle.model || 'Unknown'}`,
         postcode: dealerPostcode,
@@ -1654,7 +1654,10 @@ class FeedImportService {
         
         car.$locals = skipAPIFetchFlag;
         Object.keys(carData).forEach(key => {
-          car[key] = carData[key];
+          // Don't overwrite existing car fields with null/undefined — keep the DB value
+          if (carData[key] !== null && carData[key] !== undefined) {
+            car[key] = carData[key];
+          }
         });
         await car.save();
         console.log('✅ [createOrUpdateCarListing] Updated car:', car._id);
@@ -1678,7 +1681,10 @@ class FeedImportService {
               // Found it - update instead
               car.$locals = skipAPIFetchFlag;
               Object.keys(carData).forEach(key => {
-                car[key] = carData[key];
+                // Don't overwrite existing car fields with null/undefined
+                if (carData[key] !== null && carData[key] !== undefined) {
+                  car[key] = carData[key];
+                }
               });
               await car.save();
               console.log('✅ [createOrUpdateCarListing] Updated existing car:', car._id);
