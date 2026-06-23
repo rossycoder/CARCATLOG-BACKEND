@@ -242,9 +242,9 @@ function parseCheckCarDetailsResponse(data) {
       electricMotorTorque: extractNumber(electricDetails.MotorDetailsList[0]?.MaxTorqueNm),
     } : {}),
     
-    // Vehicle Type (BEV, PHEV, etc.)
+    // Powertrain Type (BEV, PHEV, MHEV, etc.) - NOT vehicleType (car/bike/van)
     ...(electricDetails.VehicleType ? {
-      vehicleType: electricDetails.VehicleType,
+      powertrainType: electricDetails.VehicleType,
     } : {}),
   };
 }

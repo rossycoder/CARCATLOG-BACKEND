@@ -1709,7 +1709,7 @@ class FeedImportService {
         ...(mappedVehicle.fast_charging_capability || specs.fastChargingCapability ? { 
           fastChargingCapability: mappedVehicle.fast_charging_capability || specs.fastChargingCapability 
         } : {}),
-        ...(specs.vehicleType ? { vehicleType: specs.vehicleType } : {}),
+        ...(specs.powertrainType ? { powertrainType: specs.powertrainType } : {}),
         
         // 🔍 DEBUG: Log running costs from API
         ...(() => {

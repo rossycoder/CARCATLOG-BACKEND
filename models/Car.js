@@ -92,6 +92,18 @@ const carSchema = new mongoose.Schema({
   },
   condition: { type: String, enum: ['new', 'used'], default: 'used' },
   vehicleType: { type: String, enum: ['car', 'bike', 'van'], default: 'car' },
+  
+  // 🔋 Electric Vehicle: Powertrain Type (BEV, PHEV, MHEV, etc.)
+  powertrainType: { 
+    type: String, 
+    enum: ['BEV', 'PHEV', 'MHEV', 'HEV', 'ICE', 'FCEV'],
+    // BEV = Battery Electric Vehicle (fully electric)
+    // PHEV = Plug-in Hybrid Electric Vehicle
+    // MHEV = Mild Hybrid Electric Vehicle  
+    // HEV = Hybrid Electric Vehicle
+    // ICE = Internal Combustion Engine (petrol/diesel)
+    // FCEV = Fuel Cell Electric Vehicle (hydrogen)
+  },
   engineCC: { type: Number, min: 0 },
   bikeType: {
     type: String,
