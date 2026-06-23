@@ -92,18 +92,6 @@ const carSchema = new mongoose.Schema({
   },
   condition: { type: String, enum: ['new', 'used'], default: 'used' },
   vehicleType: { type: String, enum: ['car', 'bike', 'van'], default: 'car' },
-  
-  // 🔋 Electric Vehicle: Powertrain Type (BEV, PHEV, MHEV, etc.)
-  powertrainType: { 
-    type: String, 
-    enum: ['BEV', 'PHEV', 'MHEV', 'HEV', 'ICE', 'FCEV'],
-    // BEV = Battery Electric Vehicle (fully electric)
-    // PHEV = Plug-in Hybrid Electric Vehicle
-    // MHEV = Mild Hybrid Electric Vehicle  
-    // HEV = Hybrid Electric Vehicle
-    // ICE = Internal Combustion Engine (petrol/diesel)
-    // FCEV = Fuel Cell Electric Vehicle (hydrogen)
-  },
   engineCC: { type: Number, min: 0 },
   bikeType: {
     type: String,
@@ -227,6 +215,20 @@ const carSchema = new mongoose.Schema({
   electricMotorTorque: { type: Number, default: null },
   chargingPortType: { type: String, default: null },
   fastChargingCapability: { type: String, default: null },
+  
+  // 🔋 Powertrain Type (BEV, PHEV, MHEV, etc.) - OPTIONAL field
+  powertrainType: { 
+    type: String, 
+    enum: ['BEV', 'PHEV', 'MHEV', 'HEV', 'ICE', 'FCEV'],
+    default: null
+    // BEV = Battery Electric Vehicle (fully electric)
+    // PHEV = Plug-in Hybrid Electric Vehicle
+    // MHEV = Mild Hybrid Electric Vehicle  
+    // HEV = Hybrid Electric Vehicle
+    // ICE = Internal Combustion Engine (petrol/diesel)
+    // FCEV = Fuel Cell Electric Vehicle (hydrogen)
+  },
+  
   performance: {
     power: { type: Number, default: null },
     torque: { type: Number, default: null },
