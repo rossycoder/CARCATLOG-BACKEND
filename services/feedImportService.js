@@ -794,7 +794,18 @@ class FeedImportService {
         advertStatus: normalizedAdvertStatus, // Use normalized status from feed
         dataSource: 'feed',
         condition: 'used',
-        skipNormalization: true
+        skipNormalization: true,
+        // ── Electric Vehicle Fields ─────────────────────────────────────────
+        ...(mappedVehicle.electric_range && { electricRange: mappedVehicle.electric_range }),
+        ...(mappedVehicle.battery_capacity && { batteryCapacity: mappedVehicle.battery_capacity }),
+        ...(mappedVehicle.charging_time && { chargingTime: mappedVehicle.charging_time }),
+        ...(mappedVehicle.home_charging_speed && { homeChargingSpeed: mappedVehicle.home_charging_speed }),
+        ...(mappedVehicle.rapid_charging_speed && { rapidChargingSpeed: mappedVehicle.rapid_charging_speed }),
+        ...(mappedVehicle.charging_time_10_to_80 && { chargingTime10to80: mappedVehicle.charging_time_10_to_80 }),
+        ...(mappedVehicle.electric_motor_power && { electricMotorPower: mappedVehicle.electric_motor_power }),
+        ...(mappedVehicle.electric_motor_torque && { electricMotorTorque: mappedVehicle.electric_motor_torque }),
+        ...(mappedVehicle.charging_port_type && { chargingPortType: mappedVehicle.charging_port_type }),
+        ...(mappedVehicle.fast_charging_capability && { fastChargingCapability: mappedVehicle.fast_charging_capability })
       };
 
       const skipAPIFetchFlag = { skipAPIFetch: true, skipNormalization: true };
@@ -1564,8 +1575,8 @@ class FeedImportService {
         dealerId: feedVehicle.dealerId,
         isDealerListing: true,
         registrationNumber: mappedVehicle.registration || `TBD${Date.now()}`,
-        make: mappedVehicle.make || specs.make || 'Unknown',
-        model: mappedVehicle.model || specs.model || 'Unknown',
+        make: mappedVehicle.make || specs.make || null,  // ✅ null instead of 'Unknown'
+        model: mappedVehicle.model || specs.model || null,  // ✅ null instead of 'Unknown'
         variant: mappedVehicle.derivative || (() => {
           // ⚠️  Only use API variant if API make matches feed make (prevents wrong vehicle data)
           if (!specs.variant) return null;
@@ -1607,7 +1618,7 @@ class FeedImportService {
           ? mappedVehicle.color
           : null) || apiColor || 'Not Specified',
         price: mappedVehicle.price || 0,
-        description: mappedVehicle.description || `${mappedVehicle.make || 'Unknown'} ${mappedVehicle.model || 'Unknown'}`,
+        description: mappedVehicle.description || `${mappedVehicle.make || ''} ${mappedVehicle.model || ''}`.trim() || 'Car listing',  // ✅ Better default
         postcode: dealerPostcode,
         advertStatus: this.normalizeAdvertStatus(mappedVehicle.status) || 'active',
         dataSource: 'feed',
@@ -1665,6 +1676,18 @@ class FeedImportService {
         doors: mappedVehicle.doors || specs.doors,
         seats: mappedVehicle.seats || specs.seats,
         engineSize: mappedVehicle.engine_size || specs.engineSize,
+        
+        // ── Electric Vehicle Fields ─────────────────────────────────────────
+        ...(mappedVehicle.electric_range && { electricRange: mappedVehicle.electric_range }),
+        ...(mappedVehicle.battery_capacity && { batteryCapacity: mappedVehicle.battery_capacity }),
+        ...(mappedVehicle.charging_time && { chargingTime: mappedVehicle.charging_time }),
+        ...(mappedVehicle.home_charging_speed && { homeChargingSpeed: mappedVehicle.home_charging_speed }),
+        ...(mappedVehicle.rapid_charging_speed && { rapidChargingSpeed: mappedVehicle.rapid_charging_speed }),
+        ...(mappedVehicle.charging_time_10_to_80 && { chargingTime10to80: mappedVehicle.charging_time_10_to_80 }),
+        ...(mappedVehicle.electric_motor_power && { electricMotorPower: mappedVehicle.electric_motor_power }),
+        ...(mappedVehicle.electric_motor_torque && { electricMotorTorque: mappedVehicle.electric_motor_torque }),
+        ...(mappedVehicle.charging_port_type && { chargingPortType: mappedVehicle.charging_port_type }),
+        ...(mappedVehicle.fast_charging_capability && { fastChargingCapability: mappedVehicle.fast_charging_capability }),
         
         // 🔍 DEBUG: Log running costs from API
         ...(() => {
@@ -1764,6 +1787,11 @@ class FeedImportService {
           if (newVal === null || newVal === undefined) return;
           // Don't overwrite a real existing value with a generic fallback
           if (newVal === 'Not Specified' && oldVal && oldVal !== 'Not Specified') return;
+          // 🆕 FIX: Don't overwrite good data with "Unknown" during sync
+          if (newVal === 'Unknown' && oldVal && oldVal !== 'Unknown') {
+            console.log(`⏭️  [Sync Protection] Keeping existing "${key}": "${oldVal}" (not overwriting with "Unknown")`);
+            return;
+          }
           car[key] = newVal;
         });
         await car.save();

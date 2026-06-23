@@ -297,6 +297,58 @@ class FeedMapper {
           'engine_size', 'enginesize', 'engine_capacity', 'cc', 'capacity'
         ])) || null,
         
+        // ── Electric Vehicle Fields ─────────────────────────────────────────
+        electric_range: parseFloat(this.extractField(rawVehicle, [
+          'electric_range', 'electricrange', 'range', 'ev_range', 'evrange',
+          'battery_range', 'batteryrange', 'wltp_range', 'wltprange'
+        ])) || null,
+        
+        battery_capacity: parseFloat(this.extractField(rawVehicle, [
+          'battery_capacity', 'batterycapacity', 'battery_size', 'batterysize',
+          'battery', 'kwh', 'battery_kwh'
+        ])) || null,
+        
+        charging_time: parseFloat(this.extractField(rawVehicle, [
+          'charging_time', 'chargingtime', 'charge_time', 'chargetime',
+          'home_charging_time', 'homechargingtime'
+        ])) || null,
+        
+        home_charging_speed: parseFloat(this.extractField(rawVehicle, [
+          'home_charging_speed', 'homechargingspeed', 'home_charge_speed',
+          'ac_charging', 'accharging', 'slow_charging'
+        ])) || null,
+        
+        rapid_charging_speed: parseFloat(this.extractField(rawVehicle, [
+          'rapid_charging_speed', 'rapidchargingspeed', 'rapid_charge_speed',
+          'dc_charging', 'dccharging', 'fast_charging', 'fastcharging',
+          'quick_charge', 'quickcharge'
+        ])) || null,
+        
+        charging_time_10_to_80: parseFloat(this.extractField(rawVehicle, [
+          'charging_time_10_to_80', 'chargingtime10to80', 'rapid_charge_time',
+          'fast_charge_time', 'dc_charge_time', '10_80_charge_time'
+        ])) || null,
+        
+        electric_motor_power: parseFloat(this.extractField(rawVehicle, [
+          'electric_motor_power', 'electricmotorpower', 'motor_power', 'motorpower',
+          'ev_power', 'evpower', 'electric_power'
+        ])) || null,
+        
+        electric_motor_torque: parseFloat(this.extractField(rawVehicle, [
+          'electric_motor_torque', 'electricmotortorque', 'motor_torque', 'motortorque',
+          'ev_torque', 'evtorque', 'electric_torque'
+        ])) || null,
+        
+        charging_port_type: this.extractField(rawVehicle, [
+          'charging_port_type', 'chargingporttype', 'charge_port', 'chargeport',
+          'connector_type', 'connectortype', 'plug_type', 'plugtype'
+        ]),
+        
+        fast_charging_capability: this.extractField(rawVehicle, [
+          'fast_charging_capability', 'fastchargingcapability', 'fast_charge_capable',
+          'dc_fast_charge', 'rapid_charge_capable'
+        ]),
+        
         price: parseFloat(this.extractField(rawVehicle, [
           'price', 'asking_price', 'askingprice', 'retail_price', 'retailprice', 'price_eur'
         ])) || null,
