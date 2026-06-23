@@ -215,7 +215,23 @@ class FeedMapper {
       
       // Extract raw fuel type - check both direct and features
       const rawFuelType = this.extractField(rawVehicle, [
-        'fuel_type', 'fueltype', 'fuel', 'engine_type'
+        'fuel_type',        // fuel_type (underscore)
+        'fueltype',         // fueltype (no separator)
+        'fuel type',        // fuel type (space)
+        'fuel',             // fuel
+        'fuelType',         // fuelType (camelCase)
+        'FuelType',         // FuelType (PascalCase)
+        'Fuel Type',        // Fuel Type
+        'Fuel_Type',        // Fuel_Type
+        'FUEL_TYPE',        // FUEL_TYPE (uppercase)
+        'FUEL TYPE',        // FUEL TYPE
+        'FUELTYPE',         // FUELTYPE
+        'engine_type',      // engine_type
+        'enginetype',       // enginetype
+        'engine type',      // engine type
+        'propulsion',       // propulsion
+        'fuel_description', // fuel_description
+        'energy_type'       // energy_type
       ]) || this.extractFromFeatures(rawVehicle, 'fuelType') || this.extractFromFeatures(rawVehicle, 'fuel_type');
       
       // Normalize fuel type to match Car model enum
@@ -392,32 +408,111 @@ class FeedMapper {
    * Normalize fuel type to match Car model enum
    */
   normalizeFuelType(rawFuelType) {
-    if (!rawFuelType) return 'Petrol'; // Default
-    
-    const fuel = String(rawFuelType).toLowerCase().trim();
-    
-    // Map common variants to Car model enum values
+    if (!rawFuelType) return null; // Let API fill missing fuel type
+
+    const fuel = String(rawFuelType).toLowerCase().trim()
+      .replace(/[\s_-]+/g, ' '); // normalize spaces/underscores/hyphens
+
     const fuelTypeMap = {
+      // ── Petrol ──────────────────────────────────
       'petrol': 'Petrol',
       'gasoline': 'Petrol',
       'gas': 'Petrol',
+      'unleaded': 'Petrol',
+      'unl': 'Petrol',
+
+      // ── Diesel ──────────────────────────────────
       'diesel': 'Diesel',
+      'derv': 'Diesel',
+
+      // ── Electric ────────────────────────────────
       'electric': 'Electric',
       'ev': 'Electric',
+      'bev': 'Electric',
+      'battery electric': 'Electric',
+      'battery electric vehicle': 'Electric',
+      'pure electric': 'Electric',
+      'fully electric': 'Electric',
+      'all electric': 'Electric',
+      'zero emission': 'Electric',
+      'zero emissions': 'Electric',
+      'electric vehicle': 'Electric',
+      'electricity': 'Electric',         // ✅ DVLA value
+
+      // ── Hybrid ──────────────────────────────────
       'hybrid': 'Hybrid',
+      'full hybrid': 'Hybrid',
+      'self charging hybrid': 'Hybrid',
+      'hybrid electric': 'Petrol Hybrid', // ✅ DVLA value
+      'electric hybrid': 'Petrol Hybrid',
+
+      // ── Petrol Hybrid ───────────────────────────
       'petrol hybrid': 'Petrol Hybrid',
       'gasoline hybrid': 'Petrol Hybrid',
+      'petrol/electric': 'Petrol Hybrid',
+      'petrol electric': 'Petrol Hybrid',
+      'mhev petrol': 'Petrol Hybrid',
+      'petrol mhev': 'Petrol Hybrid',
+      'mild hybrid petrol': 'Petrol Hybrid',
+
+      // ── Diesel Hybrid ───────────────────────────
       'diesel hybrid': 'Diesel Hybrid',
-      'plug-in hybrid': 'Plug-in Hybrid',
+      'diesel/electric': 'Diesel Hybrid',
+      'diesel electric': 'Diesel Hybrid',
+      'mhev diesel': 'Diesel Hybrid',
+      'diesel mhev': 'Diesel Hybrid',
+      'mild hybrid diesel': 'Diesel Hybrid',
+
+      // ── Plug-in Hybrid ──────────────────────────
+      'plug in hybrid': 'Plug-in Hybrid',
       'plugin hybrid': 'Plug-in Hybrid',
+      'plug-in hybrid': 'Plug-in Hybrid',
       'phev': 'Plug-in Hybrid',
-      'petrol plug-in hybrid': 'Petrol Plug-in Hybrid',
+
+      // ── Petrol Plug-in Hybrid ───────────────────
+      'petrol plug in hybrid': 'Petrol Plug-in Hybrid',
       'petrol plugin hybrid': 'Petrol Plug-in Hybrid',
+      'petrol plug-in hybrid': 'Petrol Plug-in Hybrid',
+      'petrol phev': 'Petrol Plug-in Hybrid',
+      'plug in hybrid petrol': 'Petrol Plug-in Hybrid',
+      'phev petrol': 'Petrol Plug-in Hybrid',
+      'petrol/electric plug in': 'Petrol Plug-in Hybrid',
+
+      // ── Diesel Plug-in Hybrid ───────────────────
+      'diesel plug in hybrid': 'Diesel Plug-in Hybrid',
+      'diesel plugin hybrid': 'Diesel Plug-in Hybrid',
       'diesel plug-in hybrid': 'Diesel Plug-in Hybrid',
-      'diesel plugin hybrid': 'Diesel Plug-in Hybrid'
+      'diesel phev': 'Diesel Plug-in Hybrid',
+      'plug in hybrid diesel': 'Diesel Plug-in Hybrid',
+      'phev diesel': 'Diesel Plug-in Hybrid',
+      'diesel/electric plug in': 'Diesel Plug-in Hybrid',
+
+      // ── Hydrogen ────────────────────────────────
+      'hydrogen': 'Hydrogen',
+      'fuel cell': 'Hydrogen',
+      'fcev': 'Hydrogen',
     };
-    
-    return fuelTypeMap[fuel] || 'Petrol'; // Default to Petrol if not found
+
+    // Direct map match
+    if (fuelTypeMap[fuel]) return fuelTypeMap[fuel];
+
+    // Partial match — covers edge cases like "Petrol (Mild Hybrid)" etc.
+    if (fuel.includes('electric') && fuel.includes('diesel')) return 'Diesel Plug-in Hybrid';
+    if (fuel.includes('electric') && fuel.includes('petrol')) return 'Petrol Plug-in Hybrid';
+    if (fuel.includes('electric') || fuel.includes('electricity')) return 'Electric';
+    if (fuel.includes('phev') && fuel.includes('diesel')) return 'Diesel Plug-in Hybrid';
+    if (fuel.includes('phev') && fuel.includes('petrol')) return 'Petrol Plug-in Hybrid';
+    if (fuel.includes('phev')) return 'Plug-in Hybrid';
+    if (fuel.includes('hybrid') && fuel.includes('diesel')) return 'Diesel Hybrid';
+    if (fuel.includes('hybrid') && fuel.includes('petrol')) return 'Petrol Hybrid';
+    if (fuel.includes('hybrid')) return 'Hybrid';
+    if (fuel.includes('diesel')) return 'Diesel';
+    if (fuel.includes('petrol') || fuel.includes('gasoline')) return 'Petrol';
+    if (fuel.includes('hydrogen') || fuel.includes('fuel cell')) return 'Hydrogen';
+
+    // 🚫 REMOVED DEFAULT "Petrol" - if fuel type is unknown, return null instead
+    console.log(`⚠️  [normalizeFuelType] Unknown fuel type: "${rawFuelType}" — returning null (no default)`);
+    return null;
   }
 
   /**
@@ -441,9 +536,18 @@ class FeedMapper {
 
     const keys = Object.keys(obj);
     const lowerPath = path.toLowerCase();
+    // Normalize: remove spaces and underscores for flexible matching
+    const normalizedPath = lowerPath.replace(/[\s_]/g, '');
 
     for (const key of keys) {
+      // ✅ Exact match (case insensitive)
       if (key.toLowerCase() === lowerPath) {
+        return obj[key];
+      }
+      // ✅ Match ignoring spaces and underscores
+      // "fuel type" → "fueltype", "fuel_type" → "fueltype", "FuelType" → "fueltype"
+      const normalizedKey = key.toLowerCase().replace(/[\s_]/g, '');
+      if (normalizedKey === normalizedPath) {
         return obj[key];
       }
     }

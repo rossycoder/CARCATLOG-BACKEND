@@ -34,46 +34,63 @@ function extractNumber(value) {
  */
 function normalizeFuelType(fuelType) {
   if (!fuelType || typeof fuelType !== 'string') {
-    return 'Unknown';
+    return null;  // ✅ Return null instead of 'Unknown' (matches Car schema validation)
   }
-  
-  const normalized = fuelType.toLowerCase().trim();
-  
-  // Check for plug-in hybrids first
-  if (normalized.includes('plug-in') && normalized.includes('hybrid')) {
-    // Check for specific plug-in hybrid types
-    if (normalized.includes('petrol')) {
-      return 'Petrol Plug-in Hybrid';
-    }
-    if (normalized.includes('diesel')) {
-      return 'Diesel Plug-in Hybrid';
-    }
-    return 'Plug-in Hybrid';
-  }
-  
-  // Check for regular hybrids
-  if (normalized.includes('hybrid')) {
-    // Check for specific hybrid types
-    if (normalized.includes('petrol') || normalized.includes('gasoline')) {
-      return 'Petrol Hybrid';
-    }
-    if (normalized.includes('diesel')) {
-      return 'Diesel Hybrid';
-    }
-    // Generic hybrid (when subtype not specified)
-    return 'Hybrid';
-  }
-  
-  if (normalized.includes('petrol') || normalized.includes('gasoline')) {
-    return 'Petrol';
-  }
-  if (normalized.includes('diesel')) {
-    return 'Diesel';
-  }
-  if (normalized.includes('electric') || normalized.includes('ev')) {
+
+  const normalized = fuelType.toLowerCase().trim()
+    .replace(/[\s_-]+/g, ' '); // normalize separators
+
+  // ── Electric (check BEFORE petrol/diesel) ────────────────
+  if (normalized === 'electricity' || normalized === 'electric' ||
+      normalized === 'ev' || normalized === 'bev' ||
+      normalized === 'electric vehicle' || normalized === 'zero emission' ||
+      normalized === 'zero emissions' || normalized === 'pure electric' ||
+      normalized === 'fully electric' || normalized === 'battery electric') {
     return 'Electric';
   }
-  
+
+  // ── DVLA "HYBRID ELECTRIC" ────────────────────────────────
+  if (normalized === 'hybrid electric' || normalized === 'electric hybrid') {
+    return 'Petrol Hybrid';
+  }
+
+  // ── "Petrol/Electric" (CheckCarDetails format) ───────────
+  // Must check BEFORE plain "petrol" check
+  if (normalized === 'petrol/electric' || normalized === 'petrol electric') {
+    return 'Petrol Hybrid';
+  }
+  if (normalized === 'diesel/electric' || normalized === 'diesel electric') {
+    return 'Diesel Hybrid';
+  }
+
+  // ── Plug-in Hybrids ───────────────────────────────────────
+  if (normalized.includes('plug') && normalized.includes('hybrid')) {
+    if (normalized.includes('petrol') || normalized.includes('gasoline')) return 'Petrol Plug-in Hybrid';
+    if (normalized.includes('diesel')) return 'Diesel Plug-in Hybrid';
+    return 'Plug-in Hybrid';
+  }
+  if (normalized.includes('phev')) {
+    if (normalized.includes('petrol') || normalized.includes('gasoline')) return 'Petrol Plug-in Hybrid';
+    if (normalized.includes('diesel')) return 'Diesel Plug-in Hybrid';
+    return 'Plug-in Hybrid';
+  }
+
+  // ── Regular Hybrids ──────────────────────────────────────
+  if (normalized.includes('hybrid')) {
+    if (normalized.includes('petrol') || normalized.includes('gasoline')) return 'Petrol Hybrid';
+    if (normalized.includes('diesel')) return 'Diesel Hybrid';
+    return 'Hybrid';
+  }
+
+  // ── Pure Electric (partial match) ────────────────────────
+  if (normalized.includes('electric') || normalized.includes('electricity')) {
+    return 'Electric';
+  }
+
+  // ── Standard fuels ───────────────────────────────────────
+  if (normalized.includes('petrol') || normalized.includes('gasoline')) return 'Petrol';
+  if (normalized.includes('diesel')) return 'Diesel';
+
   // Return capitalized version if no match
   return fuelType.charAt(0).toUpperCase() + fuelType.slice(1).toLowerCase();
 }

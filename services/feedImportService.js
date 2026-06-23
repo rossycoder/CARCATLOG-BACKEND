@@ -7,6 +7,7 @@ const FeedVehicle = require('../models/FeedVehicle');
 const FeedLog = require('../models/FeedLog');
 const FeedImage = require('../models/FeedImage');
 const Car = require('../models/Car');
+const VehicleHistory = require('../models/VehicleHistory');
 
 class FeedImportService {
 
@@ -764,7 +765,7 @@ class FeedImportService {
       } catch (err) {}
 
       const normalizedTransmission = this.normalizeTransmission(mappedVehicle.transmission);
-      const normalizedFuelType = this.normalizeFuelType(mappedVehicle.fuel_type);
+      const normalizedFuelType = mappedVehicle.fuel_type ? this.normalizeFuelType(mappedVehicle.fuel_type) : null;
       const normalizedAdvertStatus = this.normalizeAdvertStatus(mappedVehicle.status);
 
       const feedColor = (mappedVehicle.colour && mappedVehicle.colour !== 'Not Specified')
@@ -796,7 +797,7 @@ class FeedImportService {
         skipNormalization: true
       };
 
-      const skipAPIFetchFlag = { skipAPIFetch: true };
+      const skipAPIFetchFlag = { skipAPIFetch: true, skipNormalization: true };
 
       if (car) {
         car.$locals = skipAPIFetchFlag;
@@ -848,6 +849,7 @@ class FeedImportService {
 
   /**
    * Archive vehicles no longer in feed
+   * DELETES cars that are removed from CSV/XML/JSON feed
    */
   async archiveMissingVehicles(dealerId, feedId, currentStockIds) {
     const missingVehicles = await FeedVehicle.find({
@@ -857,13 +859,37 @@ class FeedImportService {
       status: 'active'
     });
 
+    console.log(`🗑️  [ARCHIVE] Found ${missingVehicles.length} cars to delete (not in feed)`);
+
     let count = 0;
     for (const vehicle of missingVehicles) {
-      await FeedVehicle.findByIdAndUpdate(vehicle._id, { status: 'sold' });
-      if (vehicle.carId) {
-        await Car.findByIdAndUpdate(vehicle.carId, { advertStatus: 'sold' });
+      try {
+        // Delete FeedVehicle
+        await FeedVehicle.findByIdAndDelete(vehicle._id);
+        console.log(`✅ [ARCHIVE] Deleted FeedVehicle: ${vehicle.stockId}`);
+        
+        // Delete associated Car from database
+        if (vehicle.carId) {
+          const deletedCar = await Car.findByIdAndDelete(vehicle.carId);
+          if (deletedCar) {
+            console.log(`✅ [ARCHIVE] Deleted Car: ${deletedCar.make} ${deletedCar.model} (${deletedCar.registrationNumber})`);
+            
+            // Also delete associated VehicleHistory if exists
+            if (deletedCar.vehicleHistory) {
+              await VehicleHistory.findByIdAndDelete(deletedCar.vehicleHistory);
+              console.log(`✅ [ARCHIVE] Deleted VehicleHistory for: ${deletedCar.registrationNumber}`);
+            }
+          }
+        }
+        
+        count++;
+      } catch (error) {
+        console.error(`❌ [ARCHIVE] Error deleting ${vehicle.stockId}:`, error.message);
       }
-      count++;
+    }
+
+    if (count > 0) {
+      console.log(`🎯 [ARCHIVE] Successfully deleted ${count} cars that were removed from feed`);
     }
 
     return count;
@@ -1080,6 +1106,9 @@ class FeedImportService {
         );
       }
 
+      // ⚠️  TEMPORARILY DISABLED - MOT API calls (£0.02 each)
+      // Uncomment when ready to test MOT data
+      /*
       if (needsMOT) {
         const MOTHistoryService = require('./motHistoryService');
         const motService = new MOTHistoryService();
@@ -1092,7 +1121,12 @@ class FeedImportService {
             })
         );
       }
+      */
+      console.log(`🚫 [API] MOT API call disabled - testing fuel type only`);
 
+      // ⚠️  TEMPORARILY DISABLED - History API calls (£1.82 each - EXPENSIVE!)
+      // Uncomment when ready to test vehicle history
+      /*
       if (needsHistory) {
         const HistoryService = require('./historyService');
         const historyService = new HistoryService();
@@ -1106,6 +1140,8 @@ class FeedImportService {
             })
         );
       }
+      */
+      console.log(`🚫 [API] History API call disabled - testing fuel type only`);
 
       if (needsValuation) {
         const ValuationAPIClient = require('../clients/ValuationAPIClient');
@@ -1142,8 +1178,8 @@ class FeedImportService {
             rawSpecs.model = nm;
             rawSpecs.variant = nv;
           }
-          // Treat 'Unknown'/'undefined' fuel/transmission as null so downstream fallbacks work
-          if (!rawSpecs.fuelType || rawSpecs.fuelType === 'Unknown' || rawSpecs.fuelType === 'undefined') rawSpecs.fuelType = null;
+          // Treat 'Unknown'/'undefined'/'null' fuel/transmission as null so downstream fallbacks work
+          if (!rawSpecs.fuelType || rawSpecs.fuelType === 'Unknown' || rawSpecs.fuelType === 'undefined' || rawSpecs.fuelType === 'null') rawSpecs.fuelType = null;
           if (!rawSpecs.transmission || rawSpecs.transmission === 'Unknown' || rawSpecs.transmission === 'undefined') rawSpecs.transmission = null;
           if (!rawSpecs.variant || rawSpecs.variant === 'undefined' || rawSpecs.variant === 'null') rawSpecs.variant = null;
           if (!rawSpecs.color || rawSpecs.color === 'undefined' || rawSpecs.color === 'null') rawSpecs.color = null;
@@ -1491,7 +1527,23 @@ class FeedImportService {
           if (cached?.fuelType) historyFuelType = cached.fuelType;
         } catch (e) { /* ignore */ }
       }
-      let apiFuelType = (specs.fuelType && specs.fuelType !== 'Unknown') ? specs.fuelType : historyFuelType;
+      let apiFuelType = (specs.fuelType && specs.fuelType !== 'Unknown' && specs.fuelType !== 'null') ? specs.fuelType : historyFuelType;
+      // ✅ Also normalize apiFuelType — API may return raw DVLA values like "ELECTRICITY" or "HYBRID ELECTRIC"
+      // ⚠️  Filter out string "null" and invalid values
+      if (apiFuelType && apiFuelType !== 'null') {
+        apiFuelType = this.normalizeFuelType(apiFuelType) || apiFuelType;
+      } else {
+        apiFuelType = null; // Convert string "null" to actual null
+      }
+      // ⚠️  Reject API fuelType if API make clearly doesn't match feed make (wrong vehicle data)
+      if (apiFuelType && specs.make && mappedVehicle.make) {
+        const feedMake = mappedVehicle.make.toLowerCase().trim();
+        const apiMake = specs.make.toLowerCase().trim();
+        if (feedMake && apiMake && !apiMake.includes(feedMake) && !feedMake.includes(apiMake)) {
+          console.log(`⚠️  [fuelType] API make "${specs.make}" ≠ feed make "${mappedVehicle.make}" → rejecting API fuelType "${apiFuelType}"`);
+          apiFuelType = null;
+        }
+      }
       if (apiFuelType === 'Petrol' && specs.variant) {
         const isPHEV = /\b(530e|545e|me\b|xe|45e|50e|phev|plug.?in|hybrid)\b/i.test(specs.variant);
         if (isPHEV) apiFuelType = 'Petrol Plug-in Hybrid';
@@ -1514,13 +1566,37 @@ class FeedImportService {
         registrationNumber: mappedVehicle.registration || `TBD${Date.now()}`,
         make: mappedVehicle.make || specs.make || 'Unknown',
         model: mappedVehicle.model || specs.model || 'Unknown',
-        variant: mappedVehicle.derivative || specs.variant || null,
+        variant: mappedVehicle.derivative || (() => {
+          // ⚠️  Only use API variant if API make matches feed make (prevents wrong vehicle data)
+          if (!specs.variant) return null;
+          const feedMake = (mappedVehicle.make || '').toLowerCase().trim();
+          const apiMake = (specs.make || '').toLowerCase().trim();
+          // If both makes are present and they don't match → reject API variant
+          if (feedMake && apiMake && !apiMake.includes(feedMake) && !feedMake.includes(apiMake)) {
+            console.log(`⚠️  [variant] API make "${specs.make}" ≠ feed make "${mappedVehicle.make}" → rejecting API variant "${specs.variant}"`);
+            return null;
+          }
+          return specs.variant;
+        })() || null,
         year: mappedVehicle.year || specs.year || new Date().getFullYear(),
         mileage: mappedVehicle.mileage || 0,
-        // fuelType: feed wins, then PHEV-corrected API value, then default
-        fuelType: (mappedVehicle.fuel_type
-          ? this.normalizeFuelType(mappedVehicle.fuel_type)
-          : null) || apiFuelType || 'Petrol',
+        // fuelType: feed wins (if meaningful), then PHEV-corrected API value, then null (no default)
+        fuelType: (() => {
+          // Clean up API fuelType - treat "null" string as actual null
+          const cleanApiFuelType = (apiFuelType && apiFuelType !== 'null' && apiFuelType !== 'undefined') ? apiFuelType : null;
+          
+          // If feed has fuel_type, normalize it
+          const feedFuelType = mappedVehicle.fuel_type ? this.normalizeFuelType(mappedVehicle.fuel_type) : null;
+          
+          // CRITICAL FIX: If feed normalization resulted in default "Petrol" AND API has a valid different value, prefer API
+          // This prevents "Unknown" or "Not Specified" in feed from overriding correct API data
+          if (feedFuelType === 'Petrol' && cleanApiFuelType && cleanApiFuelType !== 'Petrol') {
+            console.log(`🔧 [fuelType] Feed normalized to "Petrol" but API says "${cleanApiFuelType}" → using API value`);
+            return cleanApiFuelType;
+          }
+          // 🚫 REMOVED DEFAULT "Petrol" - if both feed and API are null, keep it null
+          return feedFuelType || cleanApiFuelType || null;
+        })(),
         transmission: (mappedVehicle.transmission
           ? this.normalizeTransmission(mappedVehicle.transmission)
           : null) || apiTransmission || 'manual',
@@ -1575,8 +1651,17 @@ class FeedImportService {
         ...(validatedStockId ? { stockId: validatedStockId } : {}),
         
         // CRITICAL FIX: Use CSV data first, then API enrichment as fallback
-        // This ensures bodyType, doors, seats are saved even if Specs API is skipped
-        bodyType: mappedVehicle.body_type || specs.bodyType,
+        // Only use API bodyType if API make matches feed make (prevents wrong vehicle data)
+        bodyType: mappedVehicle.body_type || (() => {
+          if (!specs.bodyType) return undefined;
+          const feedMake = (mappedVehicle.make || '').toLowerCase().trim();
+          const apiMake = (specs.make || '').toLowerCase().trim();
+          if (feedMake && apiMake && !apiMake.includes(feedMake) && !feedMake.includes(apiMake)) {
+            console.log(`⚠️  [bodyType] API make "${specs.make}" ≠ feed make "${mappedVehicle.make}" → rejecting API bodyType "${specs.bodyType}"`);
+            return undefined;
+          }
+          return specs.bodyType;
+        })(),
         doors: mappedVehicle.doors || specs.doors,
         seats: mappedVehicle.seats || specs.seats,
         engineSize: mappedVehicle.engine_size || specs.engineSize,
@@ -1651,7 +1736,7 @@ class FeedImportService {
         })
       };
 
-      const skipAPIFetchFlag = { skipAPIFetch: true };
+      const skipAPIFetchFlag = { skipAPIFetch: true, skipNormalization: true };
       let action = 'updated';
 
       // ═══════════════════════════════════════════════════════════════════════
@@ -1686,11 +1771,23 @@ class FeedImportService {
       } else {
         // Car doesn't exist - create new
         try {
+          console.log(`🔍 [DEBUG carData.fuelType] ${mappedVehicle.registration}: "${carData.fuelType}" (apiFuelType was "${apiFuelType}")`);
           car = new Car(carData);
           car.$locals = skipAPIFetchFlag;
           await car.save();
           action = 'imported';
-          console.log('✅ [createOrUpdateCarListing] Created car:', car._id);
+          console.log('✅ [createOrUpdateCarListing] Created car:', car._id, '| saved fuelType:', car.fuelType);
+          
+          // ── POST-SAVE FUELTYPE CORRECTION ──────────────────────────────────
+          // If the pre-save hook changed fuelType (e.g. from 'Electric' to 'Petrol'),
+          // correct it via updateOne which bypasses the pre-save hook entirely
+          const desiredFuelType = carData.fuelType;
+          if (desiredFuelType && car.fuelType !== desiredFuelType) {
+            console.log(`🔧 [fuelType CORRECTION] Pre-save changed "${desiredFuelType}" → "${car.fuelType}", correcting...`);
+            await Car.updateOne({ _id: car._id }, { $set: { fuelType: desiredFuelType } });
+            car.fuelType = desiredFuelType;
+            console.log(`✅ [fuelType CORRECTION] Fixed: fuelType="${desiredFuelType}"`);
+          }
         } catch (carCreateError) {
           // If creation fails with duplicate key, try to find and update
           if (carCreateError.code === 11000) {
@@ -1771,17 +1868,96 @@ class FeedImportService {
    */
   normalizeFuelType(value) {
     if (!value) return null;
+
+    const fuel = String(value).toLowerCase().trim()
+      .replace(/[\s_-]+/g, ' '); // normalize spaces/underscores/hyphens
+
     const fuelMap = {
+      // ── Petrol ──────────────────────────────────
       'petrol': 'Petrol',
+      'gasoline': 'Petrol',
+      'gas': 'Petrol',
+      'unleaded': 'Petrol',
+      'unl': 'Petrol',
+      // ── Diesel ──────────────────────────────────
       'diesel': 'Diesel',
+      'derv': 'Diesel',
+      // ── Electric ────────────────────────────────
       'electric': 'Electric',
+      'ev': 'Electric',
+      'bev': 'Electric',
+      'battery electric': 'Electric',
+      'battery electric vehicle': 'Electric',
+      'pure electric': 'Electric',
+      'fully electric': 'Electric',
+      'all electric': 'Electric',
+      'zero emission': 'Electric',
+      'zero emissions': 'Electric',
+      'electric vehicle': 'Electric',
+      'electricity': 'Electric',         // ✅ DVLA value
+      // ── Hybrid ──────────────────────────────────
       'hybrid': 'Hybrid',
+      'full hybrid': 'Hybrid',
+      'self charging hybrid': 'Hybrid',
+      'hybrid electric': 'Petrol Hybrid', // ✅ DVLA value
+      'electric hybrid': 'Petrol Hybrid',
+      // ── Petrol Hybrid ───────────────────────────
       'petrol hybrid': 'Petrol Hybrid',
+      'gasoline hybrid': 'Petrol Hybrid',
+      'petrol/electric': 'Petrol Hybrid',
+      'petrol electric': 'Petrol Hybrid',
+      'mhev petrol': 'Petrol Hybrid',
+      'petrol mhev': 'Petrol Hybrid',
+      'mild hybrid petrol': 'Petrol Hybrid',
+      // ── Diesel Hybrid ───────────────────────────
       'diesel hybrid': 'Diesel Hybrid',
+      'diesel/electric': 'Diesel Hybrid',
+      'diesel electric': 'Diesel Hybrid',
+      'mhev diesel': 'Diesel Hybrid',
+      'diesel mhev': 'Diesel Hybrid',
+      'mild hybrid diesel': 'Diesel Hybrid',
+      // ── Plug-in Hybrid ──────────────────────────
+      'plug in hybrid': 'Plug-in Hybrid',
+      'plugin hybrid': 'Plug-in Hybrid',
       'plug-in hybrid': 'Plug-in Hybrid',
-      'phev': 'Plug-in Hybrid'
+      'phev': 'Plug-in Hybrid',
+      // ── Petrol Plug-in Hybrid ───────────────────
+      'petrol plug in hybrid': 'Petrol Plug-in Hybrid',
+      'petrol plugin hybrid': 'Petrol Plug-in Hybrid',
+      'petrol plug-in hybrid': 'Petrol Plug-in Hybrid',
+      'petrol phev': 'Petrol Plug-in Hybrid',
+      'plug in hybrid petrol': 'Petrol Plug-in Hybrid',
+      'phev petrol': 'Petrol Plug-in Hybrid',
+      // ── Diesel Plug-in Hybrid ───────────────────
+      'diesel plug in hybrid': 'Diesel Plug-in Hybrid',
+      'diesel plugin hybrid': 'Diesel Plug-in Hybrid',
+      'diesel plug-in hybrid': 'Diesel Plug-in Hybrid',
+      'diesel phev': 'Diesel Plug-in Hybrid',
+      'plug in hybrid diesel': 'Diesel Plug-in Hybrid',
+      'phev diesel': 'Diesel Plug-in Hybrid',
+      // ── Hydrogen ────────────────────────────────
+      'hydrogen': 'Hydrogen',
+      'fuel cell': 'Hydrogen',
+      'fcev': 'Hydrogen',
     };
-    return fuelMap[value.toLowerCase()] || value;
+
+    if (fuelMap[fuel]) return fuelMap[fuel];
+
+    // Partial match fallback — covers edge cases like "Petrol (Mild Hybrid)"
+    if (fuel.includes('electric') && fuel.includes('diesel')) return 'Diesel Plug-in Hybrid';
+    if (fuel.includes('electric') && fuel.includes('petrol')) return 'Petrol Plug-in Hybrid';
+    if (fuel.includes('electric') || fuel.includes('electricity')) return 'Electric';
+    if (fuel.includes('phev') && fuel.includes('diesel')) return 'Diesel Plug-in Hybrid';
+    if (fuel.includes('phev') && fuel.includes('petrol')) return 'Petrol Plug-in Hybrid';
+    if (fuel.includes('phev')) return 'Plug-in Hybrid';
+    if (fuel.includes('hybrid') && fuel.includes('diesel')) return 'Diesel Hybrid';
+    if (fuel.includes('hybrid') && fuel.includes('petrol')) return 'Petrol Hybrid';
+    if (fuel.includes('hybrid')) return 'Hybrid';
+    if (fuel.includes('diesel')) return 'Diesel';
+    if (fuel.includes('petrol') || fuel.includes('gasoline')) return 'Petrol';
+    if (fuel.includes('hydrogen') || fuel.includes('fuel cell')) return 'Hydrogen';
+
+    return value; // Return as-is if no match
   }
 
   /**

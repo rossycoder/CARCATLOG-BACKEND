@@ -479,8 +479,9 @@ function clearEVFieldsIfNeeded(doc) {
 carSchema.pre('save', async function(next) {
 
   // ── SKIP NORMALIZATION GUARD ─────────────────────────────────────────────
-  // If skipNormalization flag is set, skip all normalization logic
-  if (this.skipNormalization) {
+  // If skipNormalization flag is set (via $locals), skip all normalization logic
+  // NOTE: this.skipNormalization is stripped by Mongoose strict mode — use $locals instead
+  if (this.$locals?.skipNormalization || this.skipNormalization) {
     console.log(`Skipping normalization for ${this.registrationNumber} (flag set)`);
     return next();
   }
