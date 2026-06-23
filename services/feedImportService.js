@@ -1678,16 +1678,38 @@ class FeedImportService {
         engineSize: mappedVehicle.engine_size || specs.engineSize,
         
         // ── Electric Vehicle Fields ─────────────────────────────────────────
-        ...(mappedVehicle.electric_range && { electricRange: mappedVehicle.electric_range }),
-        ...(mappedVehicle.battery_capacity && { batteryCapacity: mappedVehicle.battery_capacity }),
-        ...(mappedVehicle.charging_time && { chargingTime: mappedVehicle.charging_time }),
-        ...(mappedVehicle.home_charging_speed && { homeChargingSpeed: mappedVehicle.home_charging_speed }),
-        ...(mappedVehicle.rapid_charging_speed && { rapidChargingSpeed: mappedVehicle.rapid_charging_speed }),
-        ...(mappedVehicle.charging_time_10_to_80 && { chargingTime10to80: mappedVehicle.charging_time_10_to_80 }),
-        ...(mappedVehicle.electric_motor_power && { electricMotorPower: mappedVehicle.electric_motor_power }),
-        ...(mappedVehicle.electric_motor_torque && { electricMotorTorque: mappedVehicle.electric_motor_torque }),
-        ...(mappedVehicle.charging_port_type && { chargingPortType: mappedVehicle.charging_port_type }),
-        ...(mappedVehicle.fast_charging_capability && { fastChargingCapability: mappedVehicle.fast_charging_capability }),
+        // Priority: Feed data → API enrichment data
+        ...(mappedVehicle.electric_range || specs.electricRange ? { 
+          electricRange: mappedVehicle.electric_range || specs.electricRange 
+        } : {}),
+        ...(mappedVehicle.battery_capacity || specs.batteryCapacity ? { 
+          batteryCapacity: mappedVehicle.battery_capacity || specs.batteryCapacity 
+        } : {}),
+        ...(mappedVehicle.charging_time || specs.chargingTime ? { 
+          chargingTime: mappedVehicle.charging_time || specs.chargingTime 
+        } : {}),
+        ...(mappedVehicle.home_charging_speed || specs.homeChargingSpeed ? { 
+          homeChargingSpeed: mappedVehicle.home_charging_speed || specs.homeChargingSpeed 
+        } : {}),
+        ...(mappedVehicle.rapid_charging_speed || specs.rapidChargingSpeed ? { 
+          rapidChargingSpeed: mappedVehicle.rapid_charging_speed || specs.rapidChargingSpeed 
+        } : {}),
+        ...(mappedVehicle.charging_time_10_to_80 || specs.chargingTime10to80 ? { 
+          chargingTime10to80: mappedVehicle.charging_time_10_to_80 || specs.chargingTime10to80 
+        } : {}),
+        ...(mappedVehicle.electric_motor_power || specs.electricMotorPower ? { 
+          electricMotorPower: mappedVehicle.electric_motor_power || specs.electricMotorPower 
+        } : {}),
+        ...(mappedVehicle.electric_motor_torque || specs.electricMotorTorque ? { 
+          electricMotorTorque: mappedVehicle.electric_motor_torque || specs.electricMotorTorque 
+        } : {}),
+        ...(mappedVehicle.charging_port_type || specs.chargingPortType ? { 
+          chargingPortType: mappedVehicle.charging_port_type || specs.chargingPortType 
+        } : {}),
+        ...(mappedVehicle.fast_charging_capability || specs.fastChargingCapability ? { 
+          fastChargingCapability: mappedVehicle.fast_charging_capability || specs.fastChargingCapability 
+        } : {}),
+        ...(specs.vehicleType ? { vehicleType: specs.vehicleType } : {}),
         
         // 🔍 DEBUG: Log running costs from API
         ...(() => {

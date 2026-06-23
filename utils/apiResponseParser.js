@@ -146,6 +146,10 @@ function parseCheckCarDetailsResponse(data) {
   const emissions = dataItems.Emissions || {};
   const smmtDetails = dataItems.SmmtDetails || {};
   
+  // 🔋 Electric Vehicle Data
+  const powerSource = dataItems.PowerSource || {};
+  const electricDetails = powerSource.ElectricDetails || {};
+  
 
   
 
@@ -195,6 +199,53 @@ function parseCheckCarDetailsResponse(data) {
     torque: extractNumber(performance.Torque && performance.Torque.Nm ? performance.Torque.Nm : (smmtDetails.TorqueNm || null)),
     acceleration: extractNumber(performance.Statistics && performance.Statistics.ZeroToOneHundredKph ? performance.Statistics.ZeroToOneHundredKph : null),
     topSpeed: extractNumber(performance.Statistics && performance.Statistics.MaxSpeedMph ? performance.Statistics.MaxSpeedMph : (smmtDetails.MaxSpeedMph || null)),
+    
+    // 🔋 Electric Vehicle Data (from PowerSource.ElectricDetails)
+    ...(electricDetails.BatteryDetailsList && electricDetails.BatteryDetailsList.length > 0 ? {
+      batteryCapacity: extractNumber(electricDetails.BatteryDetailsList[0]?.CapacityKwh),
+    } : {}),
+    
+    ...(electricDetails.RangeFigures?.RealRangeMiles ? {
+      electricRange: extractNumber(electricDetails.RangeFigures.RealRangeMiles),
+    } : {}),
+    
+    // Charging Port Details (extract Type 2 and CCS charging info)
+    ...(electricDetails.ChargePortDetailsList && electricDetails.ChargePortDetailsList.length > 0 ? {
+      // Type 2 Standard (home charging)
+      homeChargingSpeed: (() => {
+        const type2Port = electricDetails.ChargePortDetailsList.find(p => p.PortType && p.PortType.includes('Type 2'));
+        return type2Port ? extractNumber(type2Port.MaxChargePowerKw) : null;
+      })(),
+      
+      // CCS (rapid charging)
+      rapidChargingSpeed: (() => {
+        const ccsPort = electricDetails.ChargePortDetailsList.find(p => p.PortType && p.PortType.includes('CCS'));
+        return ccsPort ? extractNumber(ccsPort.MaxChargePowerKw) : null;
+      })(),
+      
+      // Charging time 10-80% (Type 2 Standard)
+      chargingTime10to80: (() => {
+        const type2Port = electricDetails.ChargePortDetailsList.find(p => p.PortType && p.PortType.includes('Type 2'));
+        const chargeTimes = type2Port?.ChargeTimes?.AverageChargeTimes10To80Percent;
+        // Get the charging time for the maximum power available
+        if (chargeTimes && chargeTimes.length > 0) {
+          const maxPowerCharge = chargeTimes[chargeTimes.length - 1]; // Last entry usually has highest power
+          return extractNumber(maxPowerCharge?.TimeInMinutes);
+        }
+        return null;
+      })(),
+    } : {}),
+    
+    // Motor Details
+    ...(electricDetails.MotorDetailsList && electricDetails.MotorDetailsList.length > 0 ? {
+      electricMotorPower: extractNumber(electricDetails.MotorDetailsList[0]?.PowerKw),
+      electricMotorTorque: extractNumber(electricDetails.MotorDetailsList[0]?.MaxTorqueNm),
+    } : {}),
+    
+    // Vehicle Type (BEV, PHEV, etc.)
+    ...(electricDetails.VehicleType ? {
+      vehicleType: electricDetails.VehicleType,
+    } : {}),
   };
 }
 
