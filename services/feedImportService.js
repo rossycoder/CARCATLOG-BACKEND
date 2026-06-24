@@ -1820,7 +1820,11 @@ class FeedImportService {
             console.log(`⏭️  [Sync Protection] Keeping existing "${key}": "${oldVal}" (not overwriting with "Unknown")`);
             return;
           }
-          car[key] = newVal;
+          // ✅ ALWAYS update these fields during sync (even if existing car)
+          const alwaysUpdateFields = ['price', 'advertStatus', 'mileage', 'postcode', 'description'];
+          if (alwaysUpdateFields.includes(key) || !oldVal || oldVal === 'Not Specified' || oldVal === 'Unknown') {
+            car[key] = newVal;
+          }
         });
         await car.save();
         console.log('✅ [createOrUpdateCarListing] Updated car:', car._id);
