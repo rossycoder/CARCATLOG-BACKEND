@@ -1632,6 +1632,15 @@ class FeedImportService {
         skipNormalization: true,
         images: imageUrls,
         
+        // 🔍 DEBUG: Log vehiclePostcode calculation
+        ...(() => {
+          console.log(`\n🔍 [POSTCODE DEBUG] ${mappedVehicle.registration}:`);
+          console.log(`   mappedVehicle.postcode: "${mappedVehicle.postcode || 'NULL'}"`);
+          console.log(`   dealerPostcode: "${dealerPostcode}"`);
+          console.log(`   vehiclePostcode (final): "${vehiclePostcode}"`);
+          return {};
+        })(),
+        
         // 🆕 Features (from feed)
         ...(mappedVehicle.features && mappedVehicle.features.length > 0 ? {
           features: mappedVehicle.features
@@ -1808,11 +1817,33 @@ class FeedImportService {
         });
         
         car.$locals = skipAPIFetchFlag;
+        
+        // 🔍 DEBUG: Log postcode before sync
+        console.log(`🔍 [SYNC DEBUG] Postcode info:`);
+        console.log(`   carData.postcode: "${carData.postcode}"`);
+        console.log(`   car.postcode (before): "${car.postcode}"`);
+        
         Object.keys(carData).forEach(key => {
           const newVal = carData[key];
           const oldVal = car[key];
+          
+          // 🔍 DEBUG: Log postcode field specifically
+          if (key === 'postcode') {
+            console.log(`🔍 [SYNC POSTCODE] Processing postcode field:`);
+            console.log(`   oldVal: "${oldVal}"`);
+            console.log(`   newVal: "${newVal}"`);
+            console.log(`   newVal === null: ${newVal === null}`);
+            console.log(`   newVal === undefined: ${newVal === undefined}`);
+          }
+          
           // Skip null/undefined
-          if (newVal === null || newVal === undefined) return;
+          if (newVal === null || newVal === undefined) {
+            if (key === 'postcode') {
+              console.log(`   ❌ SKIPPED - newVal is null/undefined`);
+            }
+            return;
+          }
+          
           // Don't overwrite a real existing value with a generic fallback
           if (newVal === 'Not Specified' && oldVal && oldVal !== 'Not Specified') return;
           // 🆕 FIX: Don't overwrite good data with "Unknown" during sync
@@ -1823,10 +1854,45 @@ class FeedImportService {
           // ✅ ALWAYS update these fields during sync (even if existing car)
           const alwaysUpdateFields = ['price', 'advertStatus', 'mileage', 'postcode', 'description'];
           if (alwaysUpdateFields.includes(key) || !oldVal || oldVal === 'Not Specified' || oldVal === 'Unknown') {
+            if (key === 'postcode') {
+              console.log(`   ✅ UPDATING postcode: "${oldVal}" → "${newVal}"`);
+            }
             car[key] = newVal;
+          } else {
+            if (key === 'postcode') {
+              console.log(`   ⏭️  SKIPPED - condition not met`);
+            }
           }
         });
+        
+        // 🔍 DEBUG: Log postcode after sync
+        console.log(`🔍 [SYNC DEBUG] Postcode after update: "${car.postcode}"`);
         await car.save();
+        
+        // 🆕 CRITICAL FIX: Update locationName if postcode changed
+        if (car.isModified('postcode') && car.postcode) {
+          console.log(`📍 [SYNC] Postcode changed, updating locationName...`);
+          try {
+            const postcodeService = require('../services/postcodeService');
+            const postcodeData = await postcodeService.lookupPostcode(car.postcode);
+            if (postcodeData) {
+              car.coordinates = {
+                latitude: postcodeData.latitude,
+                longitude: postcodeData.longitude
+              };
+              car.locationName = postcodeData.locationName;
+              await car.save();
+              console.log(`✅ [SYNC] Updated location: "${postcodeData.locationName}" (from postcode "${car.postcode}")`);
+            } else {
+              console.log(`⚠️  [SYNC] Postcode lookup returned no data for "${car.postcode}"`);
+            }
+          } catch (err) {
+            console.error(`❌ [SYNC] Postcode lookup failed: ${err.message}`);
+          }
+        } else {
+          console.log(`⏭️  [SYNC] Postcode not modified, skipping locationName update`);
+        }
+        
         console.log('✅ [createOrUpdateCarListing] Updated car:', car._id);
       } else {
         // Car doesn't exist - create new
