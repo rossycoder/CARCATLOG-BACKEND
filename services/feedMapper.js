@@ -378,6 +378,11 @@ class FeedMapper {
           'seller_location', 'sellerlocation', 'location', 'address', 'city'
         ]),
         
+        // ── Vehicle location / postcode (for search/filtering) ───────────────
+        postcode: this.extractField(rawVehicle, [
+          'postcode', 'post_code', 'postal_code', 'postalcode', 'zip', 'location'
+        ]),
+        
         // ── Features (comma-separated string or array) ───────────────────────
         features: this.extractFeatures(rawVehicle),
         

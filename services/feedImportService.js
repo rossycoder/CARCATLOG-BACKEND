@@ -763,6 +763,9 @@ class FeedImportService {
         const dealer = await TradeDealer.findById(dealerId).select('businessAddress');
         if (dealer?.businessAddress?.postcode) dealerPostcode = dealer.businessAddress.postcode;
       } catch (err) {}
+      
+      // ✅ Priority: Feed postcode → Dealer postcode → Default
+      const vehiclePostcode = mappedVehicle.postcode || dealerPostcode;
 
       const normalizedTransmission = this.normalizeTransmission(mappedVehicle.transmission);
       const normalizedFuelType = mappedVehicle.fuel_type ? this.normalizeFuelType(mappedVehicle.fuel_type) : null;
@@ -790,7 +793,7 @@ class FeedImportService {
         color: feedColor || null,
         price: mappedVehicle.price,
         description: mappedVehicle.description || `${mappedVehicle.make} ${mappedVehicle.model}`,
-        postcode: dealerPostcode,
+        postcode: vehiclePostcode,
         advertStatus: normalizedAdvertStatus, // Use normalized status from feed
         dataSource: 'feed',
         condition: 'used',
@@ -1464,6 +1467,9 @@ class FeedImportService {
         const dealer = await TradeDealer.findById(feedVehicle.dealerId).select('businessAddress');
         if (dealer?.businessAddress?.postcode) dealerPostcode = dealer.businessAddress.postcode;
       } catch (err) {}
+      
+      // ✅ Priority: Feed postcode → Dealer postcode → Default
+      const vehiclePostcode = mappedVehicle.postcode || dealerPostcode;
 
       // Get image URLs — prefer already-processed Cloudinary URLs
       let imageUrls = [];
@@ -1619,7 +1625,7 @@ class FeedImportService {
           : null) || apiColor || 'Not Specified',
         price: mappedVehicle.price || 0,
         description: mappedVehicle.description || `${mappedVehicle.make || ''} ${mappedVehicle.model || ''}`.trim() || 'Car listing',  // ✅ Better default
-        postcode: dealerPostcode,
+        postcode: vehiclePostcode,
         advertStatus: this.normalizeAdvertStatus(mappedVehicle.status) || 'active',
         dataSource: 'feed',
         condition: 'used',
