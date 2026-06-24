@@ -402,6 +402,8 @@ class FeedMapper {
         transmission: mapped.transmission,
         colour: mapped.colour,
         body_type: mapped.body_type,
+        postcode: mapped.postcode, // 🆕 LOG POSTCODE
+        seller_location: mapped.seller_location, // 🆕 LOG LOCATION
         rawStatus: rawStatus,
         normalizedStatus: mapped.status,
         rawVehicleKeys: Object.keys(rawVehicle),
