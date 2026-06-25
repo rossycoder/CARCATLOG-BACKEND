@@ -14,6 +14,9 @@ const createAdvert = async (req, res) => {
     
     const { vehicleData } = req.body;
     
+    console.log('🔍 [createAdvert] Request received');
+    console.log('   Vehicle Data:', JSON.stringify(vehicleData, null, 2));
+    
     if (!vehicleData) {
       return res.status(400).json({
         success: false,
@@ -23,22 +26,63 @@ const createAdvert = async (req, res) => {
     
     const advertId = uuidv4();
 
-    // CRITICAL: Check for existing car with same registration
+    // CRITICAL: Check for existing car with same registration to avoid duplicate API calls
+    // Check ALL statuses (active, pending_payment, draft) - not just active
     const registration = vehicleData.registration || vehicleData.registrationNumber;
+    console.log('🔍 [createAdvert] Checking for existing car with registration:', registration);
+    
     if (registration) {
       const cleanReg = registration.toUpperCase().replace(/\s/g, '');
-      const existing = await Car.findOne({ registrationNumber: cleanReg });
+      console.log('   Cleaned registration:', cleanReg);
+      
+      // Find ANY existing car with this registration (any status)
+      const existing = await Car.findOne({ 
+        registrationNumber: cleanReg 
+      }).sort({ createdAt: -1 }); // Get most recent one
+      
       if (existing) {
+        console.log(`✅ [createAdvert] Car ${cleanReg} already exists in database (Status: ${existing.advertStatus})`);
+        console.log(`   Returning existing car data - SKIPPING API calls to save costs`);
+        console.log(`   Existing Car ID: ${existing._id}, Advert ID: ${existing.advertId}`);
+        
+        // Return existing car data to frontend
         return res.status(200).json({
           success: true,
           data: {
             id: existing.advertId,
-            vehicleData: { ...vehicleData, estimatedValue: existing.price },
-            advertData: { price: existing.price, description: existing.description || '', photos: existing.images || [] },
+            advertId: existing.advertId,
+            vehicleData: { 
+              ...vehicleData, 
+              estimatedValue: existing.price,
+              make: existing.make,
+              model: existing.model,
+              year: existing.year,
+              color: existing.color,
+              mileage: existing.mileage,
+              fuelType: existing.fuelType,
+              transmission: existing.transmission,
+              engineSize: existing.engineSize,
+              bodyType: existing.bodyType,
+              doors: existing.doors,
+              seats: existing.seats,
+              registrationNumber: existing.registrationNumber
+            },
+            advertData: { 
+              price: existing.price, 
+              description: existing.description || '', 
+              photos: existing.images?.map(url => ({ url })) || [],
+              features: existing.features || [],
+              videoUrl: existing.videoUrl || ''
+            },
             status: existing.advertStatus,
-            createdAt: existing.createdAt
+            createdAt: existing.createdAt,
+            _existingCar: true, // Flag to indicate this is existing data
+            _message: 'Car already exists in database - using cached data'
           }
         });
+      } else {
+        console.log(`❌ [createAdvert] No existing car found for registration: ${cleanReg}`);
+        console.log('   Creating new car...');
       }
     }
     
@@ -600,6 +644,11 @@ const updateAdvert = async (req, res) => {
           }
           if (advertData.hasOwnProperty('serviceHistory')) {
             updateObj.serviceHistory = advertData.serviceHistory;
+          }
+          
+          // CRITICAL: Save running costs if provided
+          if (advertData.runningCosts) {
+            updateObj.runningCosts = advertData.runningCosts;
           }
           
           // CRITICAL: Save business info even when contactDetails is not provided

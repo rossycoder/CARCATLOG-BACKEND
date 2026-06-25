@@ -187,7 +187,14 @@ class FeedImportService {
         throw new Error(`Failed to fetch feed: ${fetchResult.error}`);
       }
 
-      const format = feedFetcher.detectFormat(fetchResult.data, fetchResult.contentType);
+      let format;
+      try {
+        format = feedFetcher.detectFormat(fetchResult.data, fetchResult.contentType);
+      } catch (formatError) {
+        // detectFormat throws error for invalid JSON
+        throw formatError;
+      }
+      
       if (format === 'unknown') {
         throw new Error('Could not detect feed format. Expected XML, CSV, or JSON.');
       }
@@ -765,6 +772,7 @@ class FeedImportService {
       } catch (err) {}
       
       // ✅ Priority: Feed postcode → Dealer postcode → Default
+      // Use the exact postcode from feed if available (dealer-specific location)
       const vehiclePostcode = mappedVehicle.postcode || dealerPostcode;
 
       const normalizedTransmission = this.normalizeTransmission(mappedVehicle.transmission);
@@ -1120,9 +1128,7 @@ class FeedImportService {
         );
       }
 
-      // ⚠️  TEMPORARILY DISABLED - MOT API calls (£0.02 each)
-      // Uncomment when ready to test MOT data
-      /*
+      // ✅ MOT API calls (£0.02 each)
       if (needsMOT) {
         const MOTHistoryService = require('./motHistoryService');
         const motService = new MOTHistoryService();
@@ -1135,12 +1141,8 @@ class FeedImportService {
             })
         );
       }
-      */
-      console.log(`🚫 [API] MOT API call disabled - testing fuel type only`);
 
-      // ⚠️  TEMPORARILY DISABLED - History API calls (£1.82 each - EXPENSIVE!)
-      // Uncomment when ready to test vehicle history
-      /*
+      // ✅ History API calls (£1.82 each - EXPENSIVE!)
       if (needsHistory) {
         const HistoryService = require('./historyService');
         const historyService = new HistoryService();
@@ -1154,8 +1156,6 @@ class FeedImportService {
             })
         );
       }
-      */
-      console.log(`🚫 [API] History API call disabled - testing fuel type only`);
 
       if (needsValuation) {
         const ValuationAPIClient = require('../clients/ValuationAPIClient');
@@ -1469,6 +1469,7 @@ class FeedImportService {
       } catch (err) {}
       
       // ✅ Priority: Feed postcode → Dealer postcode → Default
+      // Use the exact postcode from feed if available (dealer-specific location)
       const vehiclePostcode = mappedVehicle.postcode || dealerPostcode;
 
       // Get image URLs — prefer already-processed Cloudinary URLs
@@ -1577,7 +1578,26 @@ class FeedImportService {
         ? this.normalizeTransmission(specs.transmission)
         : null;
 
-      const carData = {
+      // 📍 Lookup location name from postcode before creating car
+      let locationData = {};
+      if (vehiclePostcode) {
+        try {
+          const postcodeService = require('./postcodeService');
+          const postcodeData = await postcodeService.lookupPostcode(vehiclePostcode);
+          if (postcodeData && postcodeData.locationName) {
+            locationData = {
+              locationName: postcodeData.locationName,
+              latitude: postcodeData.latitude,
+              longitude: postcodeData.longitude
+            };
+            console.log(`📍 [Location] Resolved postcode ${vehiclePostcode} → ${postcodeData.locationName}`);
+          }
+        } catch (err) {
+          console.warn(`⚠️  [Location] Failed to lookup postcode ${vehiclePostcode}:`, err.message);
+        }
+      }
+
+      let carData = {
         dealerId: feedVehicle.dealerId,
         isDealerListing: true,
         registrationNumber: mappedVehicle.registration || `TBD${Date.now()}`,
@@ -1626,6 +1646,7 @@ class FeedImportService {
         price: mappedVehicle.price || 0,
         description: mappedVehicle.description || `${mappedVehicle.make || ''} ${mappedVehicle.model || ''}`.trim() || 'Car listing',  // ✅ Better default
         postcode: vehiclePostcode,
+        ...locationData, // Add locationName, latitude, longitude if lookup succeeded
         advertStatus: this.normalizeAdvertStatus(mappedVehicle.status) || 'active',
         dataSource: 'feed',
         condition: 'used',
@@ -1646,18 +1667,31 @@ class FeedImportService {
           features: mappedVehicle.features
         } : {}),
         
-        // 🆕 Seller Contact Information (from feed)
-        ...(mappedVehicle.seller_name || mappedVehicle.seller_contact || mappedVehicle.seller_email || mappedVehicle.seller_location ? {
-          sellerContact: {
+        // 🆕 Seller Contact Information (from feed + dealer postcode)
+        sellerContact: (() => {
+          const contact = {
             type: 'dealer',
-            name: mappedVehicle.seller_name || null,
-            phone: mappedVehicle.seller_contact || null,
-            email: mappedVehicle.seller_email || null,
-            location: mappedVehicle.seller_location || null,
-            allowEmailContact: !!mappedVehicle.seller_email,
-            allowPhoneContact: !!mappedVehicle.seller_contact
+            allowEmailContact: false,
+            allowPhoneContact: false,
+            // ✅ ALWAYS add dealer's registered postcode to sellerContact
+            // This is for displaying seller's business location in contact section
+            postcode: dealerPostcode
+          };
+          
+          // Add feed seller info if available
+          if (mappedVehicle.seller_name) contact.name = mappedVehicle.seller_name;
+          if (mappedVehicle.seller_contact) {
+            contact.phone = mappedVehicle.seller_contact;
+            contact.allowPhoneContact = true;
           }
-        } : {}),
+          if (mappedVehicle.seller_email) {
+            contact.email = mappedVehicle.seller_email;
+            contact.allowEmailContact = true;
+          }
+          if (mappedVehicle.seller_location) contact.location = mappedVehicle.seller_location;
+          
+          return contact;
+        })(),
         
         // 🔍 DEBUG: Log seller fields
         ...(() => {
@@ -1688,7 +1722,15 @@ class FeedImportService {
           }
           return specs.bodyType;
         })(),
-        doors: mappedVehicle.doors || specs.doors,
+        doors: (() => {
+          const feedDoors = mappedVehicle.doors;
+          const apiDoors = specs.doors;
+          console.log(`🔍 [DOORS DEBUG] ${mappedVehicle.registration}:`);
+          console.log(`   mappedVehicle.doors: ${feedDoors} (type: ${typeof feedDoors})`);
+          console.log(`   specs.doors: ${apiDoors} (type: ${typeof apiDoors})`);
+          console.log(`   final value: ${feedDoors || apiDoors}`);
+          return feedDoors || apiDoors;
+        })(),
         seats: mappedVehicle.seats || specs.seats,
         engineSize: mappedVehicle.engine_size || specs.engineSize,
         
@@ -1823,64 +1865,93 @@ class FeedImportService {
         console.log(`   carData.postcode: "${carData.postcode}"`);
         console.log(`   car.postcode (before): "${car.postcode}"`);
         
+        // ── Auto-populate missing data for Electric/Hybrid vehicles ────────
+        const AutoDataPopulationService = require('./autoDataPopulationService');
+        carData = AutoDataPopulationService.populateMissingData(carData);
+        
+        // 🔄 SYNC MODE: Update ALL fields from feed (comprehensive sync)
+        // This ensures any changes in JSON/CSV/XML feed are reflected in database
         Object.keys(carData).forEach(key => {
           const newVal = carData[key];
           const oldVal = car[key];
           
-          // 🔍 DEBUG: Log postcode field specifically
-          if (key === 'postcode') {
-            console.log(`🔍 [SYNC POSTCODE] Processing postcode field:`);
-            console.log(`   oldVal: "${oldVal}"`);
-            console.log(`   newVal: "${newVal}"`);
-            console.log(`   newVal === null: ${newVal === null}`);
-            console.log(`   newVal === undefined: ${newVal === undefined}`);
+          // Skip undefined/null values
+          if (newVal === undefined || newVal === null) {
+            return;
           }
           
-          // Skip null/undefined
-          if (newVal === null || newVal === undefined) {
-            if (key === 'postcode') {
-              console.log(`   ❌ SKIPPED - newVal is null/undefined`);
+          // Skip internal fields and IDs
+          const skipFields = ['_id', 'dealerId', 'isDealerListing', 'dataSource', 'skipNormalization', 'skipAPIFetch', '$locals'];
+          if (skipFields.includes(key)) {
+            return;
+          }
+          
+          // ── Fields jo HAMESHA update honge (feed se latest data) ──
+          const alwaysUpdateFields = [
+            'price', 'advertStatus', 'mileage', 'postcode', 'description',
+            'make', 'model', 'variant', 'year', 'fuelType', 'transmission',
+            'color', 'bodyType', 'doors', 'seats', 'engineSize', 'images',
+            'features', 'sellerContact', 'stockId', 'registrationNumber'
+          ];
+          
+          // ── Fields jo sirf tab update honge jab existing value empty/bad ho ──
+          const updateIfEmptyFields = [
+            'co2Emissions', 'fuelEconomyUrban', 'fuelEconomyExtraUrban', 
+            'fuelEconomyCombined', 'insuranceGroup', 'annualTax', 'runningCosts',
+            'motHistory', 'motStatus', 'motExpiry', 'estimatedValue', 'valuationData',
+            'electricRange', 'batteryCapacity', 'chargingTime', 'homeChargingSpeed',
+            'rapidChargingSpeed', 'chargingPortType'
+          ];
+          
+          if (alwaysUpdateFields.includes(key)) {
+            // Feed se aaya data hamesha update karo
+            // Sirf ek exception: 'Unknown' se real value overwrite nahi karni
+            if (newVal === 'Unknown' && oldVal && oldVal !== 'Unknown') {
+              console.log(`⏭️  [Sync Protection] Keeping existing "${key}": "${oldVal}" (not overwriting with "Unknown")`);
+              return;
             }
-            return;
-          }
-          
-          // Don't overwrite a real existing value with a generic fallback
-          if (newVal === 'Not Specified' && oldVal && oldVal !== 'Not Specified') return;
-          // 🆕 FIX: Don't overwrite good data with "Unknown" during sync
-          if (newVal === 'Unknown' && oldVal && oldVal !== 'Unknown') {
-            console.log(`⏭️  [Sync Protection] Keeping existing "${key}": "${oldVal}" (not overwriting with "Unknown")`);
-            return;
-          }
-          // ✅ ALWAYS update these fields during sync (even if existing car)
-          const alwaysUpdateFields = ['price', 'advertStatus', 'mileage', 'postcode', 'description'];
-          if (alwaysUpdateFields.includes(key) || !oldVal || oldVal === 'Not Specified' || oldVal === 'Unknown') {
-            if (key === 'postcode') {
-              console.log(`   ✅ UPDATING postcode: "${oldVal}" → "${newVal}"`);
+            if (newVal === 'Not Specified' && oldVal && oldVal !== 'Not Specified') {
+              console.log(`⏭️  [Sync Protection] Keeping existing "${key}": "${oldVal}" (not overwriting with "Not Specified")`);
+              return;
+            }
+            
+            if (['postcode', 'doors', 'seats', 'color', 'transmission', 'bodyType', 'fuelType', 'year', 'make', 'model', 'variant'].includes(key)) {
+              console.log(`   🔄 [SYNC] Updating "${key}": "${oldVal}" → "${newVal}"`);
             }
             car[key] = newVal;
-          } else {
-            if (key === 'postcode') {
-              console.log(`   ⏭️  SKIPPED - condition not met`);
+          } else if (updateIfEmptyFields.includes(key)) {
+            // Ye fields sirf tab update karo jab already empty ho
+            const isEmpty = !oldVal || oldVal === 'Not Specified' || oldVal === 'Unknown';
+            if (isEmpty) {
+              console.log(`   📝 [SYNC] Filling empty "${key}": "${newVal}"`);
+              car[key] = newVal;
             }
           }
+          // baqi fields (userId, historyCheckId etc.) touch nahi karte
         });
         
         // 🔍 DEBUG: Log postcode after sync
         console.log(`🔍 [SYNC DEBUG] Postcode after update: "${car.postcode}"`);
+        
+        // 🆕 CRITICAL FIX: Check if postcode was updated BEFORE saving
+        const postcodeWasModified = car.isModified('postcode');
+        
         await car.save();
         
-        // 🆕 CRITICAL FIX: Update locationName if postcode changed
-        if (car.isModified('postcode') && car.postcode) {
-          console.log(`📍 [SYNC] Postcode changed, updating locationName...`);
+        // 🆕 Update locationName if postcode changed
+        if (postcodeWasModified && car.postcode) {
+          console.log(`📍 [SYNC] Postcode changed to "${car.postcode}", updating locationName...`);
           try {
             const postcodeService = require('../services/postcodeService');
             const postcodeData = await postcodeService.lookupPostcode(car.postcode);
             if (postcodeData) {
-              car.coordinates = {
-                latitude: postcodeData.latitude,
-                longitude: postcodeData.longitude
-              };
+              car.latitude = postcodeData.latitude;
+              car.longitude = postcodeData.longitude;
               car.locationName = postcodeData.locationName;
+              car.location = {
+                type: 'Point',
+                coordinates: [postcodeData.longitude, postcodeData.latitude]
+              };
               await car.save();
               console.log(`✅ [SYNC] Updated location: "${postcodeData.locationName}" (from postcode "${car.postcode}")`);
             } else {
@@ -1898,6 +1969,11 @@ class FeedImportService {
         // Car doesn't exist - create new
         try {
           console.log(`🔍 [DEBUG carData.fuelType] ${mappedVehicle.registration}: "${carData.fuelType}" (apiFuelType was "${apiFuelType}")`);
+          
+          // ── Auto-populate missing data for Electric/Hybrid vehicles ────────
+          const AutoDataPopulationService = require('./autoDataPopulationService');
+          carData = AutoDataPopulationService.populateMissingData(carData);
+          
           car = new Car(carData);
           car.$locals = skipAPIFetchFlag;
           await car.save();

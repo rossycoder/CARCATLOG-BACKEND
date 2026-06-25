@@ -206,6 +206,30 @@ async function downloadImage(originalUrl) {
  * Actually download bytes from a URL with retries
  */
 async function downloadFromUrl(url, sourceType, retries = 3) {
+  // ═══════════════════════════════════════════════════════════════════════
+  // 🚫 VALIDATE URL - Skip fake/placeholder domains
+  // ═══════════════════════════════════════════════════════════════════════
+  try {
+    const urlObj = new URL(url);
+    const fakeDomains = [
+      'dealer.co.uk',
+      'example.com',
+      'test.com',
+      'placeholder.com',
+      'your-domain.com',
+      'yourdomain.com'
+    ];
+    
+    if (fakeDomains.includes(urlObj.hostname)) {
+      throw new Error(`Invalid/placeholder domain: ${urlObj.hostname}. This URL does not exist.`);
+    }
+  } catch (urlError) {
+    if (urlError.message.includes('Invalid URL')) {
+      throw new Error(`Malformed URL: ${url}`);
+    }
+    throw urlError; // Re-throw if it's our validation error
+  }
+  
   const headers = {
     'User-Agent': 'Mozilla/5.0 (compatible; CarCatalog FeedBot/1.0)',
     'Accept': 'image/webp,image/jpeg,image/png,image/*,*/*;q=0.8'

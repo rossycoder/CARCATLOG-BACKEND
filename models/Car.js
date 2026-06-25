@@ -509,6 +509,16 @@ carSchema.pre('save', async function(next) {
   // Set the guard immediately — before ANY await
   this.$locals.inPreSaveHook = true;
 
+  // ── STEP 0: Normalize registration number (remove spaces, uppercase) ────
+  if (this.registrationNumber) {
+    const originalReg = this.registrationNumber;
+    this.registrationNumber = this.registrationNumber.toUpperCase().replace(/\s/g, '');
+    
+    if (originalReg !== this.registrationNumber) {
+      console.log(`📝 [Pre-Save] Normalized registration: "${originalReg}" → "${this.registrationNumber}"`);
+    }
+  }
+
   const reg = this.registrationNumber;
 
   try {

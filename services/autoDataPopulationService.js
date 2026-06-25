@@ -259,13 +259,169 @@ class AutoDataPopulationService {
   }
 
   /**
+   * Get default values for hybrid vehicles based on make and model
+   * @param {string} make - Car make
+   * @param {string} model - Car model
+   * @param {string} fuelType - Fuel type (to determine hybrid type)
+   * @returns {Object} Default hybrid vehicle data
+   */
+  static getHybridVehicleDefaults(make, model, fuelType) {
+    const makeLower = (make || '').toLowerCase();
+    const modelLower = (model || '').toLowerCase();
+    const isPlugInHybrid = fuelType && fuelType.toLowerCase().includes('plug-in');
+    
+    // Plug-in hybrids have larger batteries and electric range
+    // Regular hybrids (self-charging) have smaller batteries and minimal electric range
+    let defaults = {};
+    
+    if (isPlugInHybrid) {
+      // ── Plug-in Hybrid Defaults ──────────────────────────────────────────
+      defaults = {
+        electricRange: 30, // Typical PHEV electric range (25-40 miles)
+        batteryCapacity: 13.5, // Typical PHEV battery (10-18 kWh)
+        chargingTime: 4, // Full charge on home charger
+        homeChargingSpeed: 3.6, // Standard UK home charging
+        publicChargingSpeed: 7.4, // Public AC charging
+        rapidChargingSpeed: 0, // Most PHEVs don't support rapid charging
+        chargingTime10to80: 0, // Not applicable for PHEVs
+        electricMotorPower: 80, // Typical PHEV electric motor
+        electricMotorTorque: 250, // Typical PHEV torque
+        chargingPortType: 'Type 2',
+        fastChargingCapability: 'AC Charging Only (Type 2)'
+      };
+      
+      // BMW PHEV specific (330e, 530e, X5 xDrive45e)
+      if (makeLower.includes('bmw')) {
+        defaults.electricRange = 37;
+        defaults.batteryCapacity = 12;
+        defaults.chargingTime = 3.5;
+        defaults.homeChargingSpeed = 3.7;
+        defaults.electricMotorPower = 83;
+        defaults.electricMotorTorque = 265;
+      }
+      
+      // Mercedes PHEV specific (C300e, E300e, GLC300e)
+      else if (makeLower.includes('mercedes')) {
+        defaults.electricRange = 34;
+        defaults.batteryCapacity = 13.5;
+        defaults.chargingTime = 3.5;
+        defaults.homeChargingSpeed = 3.7;
+        defaults.electricMotorPower = 90;
+        defaults.electricMotorTorque = 440;
+      }
+      
+      // Audi PHEV specific (A3 e-tron, Q5 TFSI e)
+      else if (makeLower.includes('audi')) {
+        defaults.electricRange = 26;
+        defaults.batteryCapacity = 14.1;
+        defaults.chargingTime = 4;
+        defaults.homeChargingSpeed = 3.6;
+        defaults.electricMotorPower = 85;
+        defaults.electricMotorTorque = 330;
+      }
+      
+      // Volvo PHEV specific (XC60 T8, XC90 T8)
+      else if (makeLower.includes('volvo')) {
+        defaults.electricRange = 28;
+        defaults.batteryCapacity = 11.6;
+        defaults.chargingTime = 3;
+        defaults.homeChargingSpeed = 3.7;
+        defaults.electricMotorPower = 87;
+        defaults.electricMotorTorque = 240;
+      }
+      
+      // Toyota PHEV specific (Prius Plug-in, RAV4 PHEV)
+      else if (makeLower.includes('toyota') && modelLower.includes('rav4')) {
+        defaults.electricRange = 46;
+        defaults.batteryCapacity = 18.1;
+        defaults.chargingTime = 5.5;
+        defaults.homeChargingSpeed = 3.3;
+        defaults.electricMotorPower = 134;
+        defaults.electricMotorTorque = 270;
+      }
+      else if (makeLower.includes('toyota')) {
+        defaults.electricRange = 39;
+        defaults.batteryCapacity = 13.6;
+        defaults.chargingTime = 4.5;
+        defaults.homeChargingSpeed = 3.3;
+        defaults.electricMotorPower = 72;
+        defaults.electricMotorTorque = 207;
+      }
+      
+      // Mitsubishi Outlander PHEV
+      else if (makeLower.includes('mitsubishi') && modelLower.includes('outlander')) {
+        defaults.electricRange = 28;
+        defaults.batteryCapacity = 13.8;
+        defaults.chargingTime = 4.5;
+        defaults.homeChargingSpeed = 3.6;
+        defaults.electricMotorPower = 60;
+        defaults.electricMotorTorque = 195;
+      }
+    } else {
+      // ── Regular Hybrid (Self-Charging) Defaults ──────────────────────────
+      // These typically have very small batteries and no plug-in capability
+      defaults = {
+        electricRange: 2, // Self-charging hybrids have minimal electric-only range
+        batteryCapacity: 1.5, // Small battery (1-2 kWh typical)
+        chargingTime: 0, // No external charging
+        homeChargingSpeed: 0,
+        publicChargingSpeed: 0,
+        rapidChargingSpeed: 0,
+        chargingTime10to80: 0,
+        electricMotorPower: 50, // Smaller electric motor
+        electricMotorTorque: 163,
+        chargingPortType: 'N/A (Self-Charging)',
+        fastChargingCapability: 'Not Applicable (Self-Charging Hybrid)'
+      };
+      
+      // Toyota Hybrid specific (Prius, Corolla, RAV4, Camry)
+      if (makeLower.includes('toyota')) {
+        defaults.batteryCapacity = 1.3;
+        defaults.electricMotorPower = 72;
+        defaults.electricMotorTorque = 163;
+      }
+      
+      // Honda Hybrid specific (CR-V, Jazz, Civic)
+      else if (makeLower.includes('honda')) {
+        defaults.batteryCapacity = 1.0;
+        defaults.electricMotorPower = 135;
+        defaults.electricMotorTorque = 315;
+      }
+      
+      // Lexus Hybrid specific
+      else if (makeLower.includes('lexus')) {
+        defaults.batteryCapacity = 1.6;
+        defaults.electricMotorPower = 88;
+        defaults.electricMotorTorque = 202;
+      }
+      
+      // Hyundai/Kia Hybrid specific
+      else if (makeLower.includes('hyundai') || makeLower.includes('kia')) {
+        defaults.batteryCapacity = 1.5;
+        defaults.electricMotorPower = 44;
+        defaults.electricMotorTorque = 170;
+      }
+    }
+    
+    return defaults;
+  }
+
+  /**
    * Populate missing vehicle data automatically
    * @param {Object} carData - Car data object
    * @returns {Object} Enhanced car data with populated fields
    */
   static populateMissingData(carData) {
-    // If it's an electric vehicle, add EV-specific data
-    if (carData.fuelType === 'Electric') {
+    const fuelType = carData.fuelType || '';
+    const fuelTypeLower = fuelType.toLowerCase();
+    
+    // Check if it's an electric or hybrid vehicle
+    const isElectric = fuelTypeLower === 'electric';
+    const isHybrid = fuelTypeLower.includes('hybrid');
+    const isPlugInHybrid = fuelTypeLower.includes('plug-in');
+    
+    // ── Handle Electric Vehicles ──────────────────────────────────────────
+    if (isElectric) {
       const evDefaults = this.getElectricVehicleDefaults(carData.make, carData.model, carData.year);
       
       // Populate missing EV fields
@@ -288,6 +444,32 @@ class AutoDataPopulationService {
         carData.runningCosts.co2Emissions = 0;
         carData.runningCosts.annualTax = 0;
       }
+    }
+    
+    // ── Handle Hybrid Vehicles ────────────────────────────────────────────
+    else if (isHybrid) {
+      const hybridDefaults = this.getHybridVehicleDefaults(carData.make, carData.model, fuelType);
+      
+      // Populate missing hybrid fields
+      Object.keys(hybridDefaults).forEach(key => {
+        if (!carData[key] && !carData.runningCosts?.[key]) {
+          carData[key] = hybridDefaults[key];
+          
+          // Also add to runningCosts object
+          if (!carData.runningCosts) {
+            carData.runningCosts = {};
+          }
+          carData.runningCosts[key] = hybridDefaults[key];
+        }
+      });
+      
+      // Hybrids still have some CO2 emissions (unless it's a PHEV in electric mode)
+      // Don't override if already set from API
+      if (!carData.co2Emissions && isPlugInHybrid) {
+        carData.co2Emissions = 30; // Typical PHEV CO2 emissions
+      }
+      
+      console.log(`✅ [AutoDataPopulation] Added hybrid vehicle data for ${carData.make} ${carData.model} (${fuelType})`);
     }
     
     return carData;

@@ -101,6 +101,14 @@ class FeedMapper {
     if (format === 'xml') {
       console.log('🔍 [extractVehiclesArray] XML data structure:', JSON.stringify(data, null, 2).substring(0, 500));
       
+      // Handle dealerInventory wrapper (common in dealer feeds)
+      if (data.dealerinventory?.vehicles?.vehicle) {
+        const vehicles = data.dealerinventory.vehicles.vehicle;
+        const isArray = Array.isArray(vehicles);
+        console.log('✅ Found data.dealerinventory.vehicles.vehicle, count:', isArray ? vehicles.length : 1);
+        return isArray ? vehicles : [vehicles];
+      }
+      
       // Handle nested feed structure: { feed: { vehicles: {...} } }
       if (data.feed && data.feed.vehicles) {
         console.log('✅ Found data.feed.vehicles structure');
@@ -115,8 +123,11 @@ class FeedMapper {
       
       // Try common XML structures
       if (data.vehicles?.vehicle) {
-        console.log('✅ Found data.vehicles.vehicle, count:', Array.isArray(data.vehicles.vehicle) ? data.vehicles.vehicle.length : 1);
-        return data.vehicles.vehicle;
+        const vehicles = data.vehicles.vehicle;
+        const isArray = Array.isArray(vehicles);
+        console.log('✅ Found data.vehicles.vehicle, count:', isArray ? vehicles.length : 1);
+        // If it's a single vehicle object, wrap it in an array
+        return isArray ? vehicles : [vehicles];
       }
       
       // Check for direct vehicles array (your XML structure)
@@ -285,13 +296,30 @@ class FeedMapper {
           'body_type', 'bodytype', 'body_style', 'bodystyle', 'type'
         ]) || this.extractFromFeatures(rawVehicle, 'bodyStyle') || this.extractFromFeatures(rawVehicle, 'body_type'),
         
-        doors: parseInt(this.extractField(rawVehicle, [
-          'doors', 'door_count', 'num_doors', 'number_of_doors'
-        ])) || null,
+        doors: (() => {
+          const doorsValue = this.extractField(rawVehicle, [
+            'doors', 'door_count', 'num_doors', 'number_of_doors'
+          ]);
+          console.log(`🔍 [feedMapper.doors] Raw vehicle doors field:`, {
+            rawValue: rawVehicle.doors,
+            extracted: doorsValue,
+            type: typeof doorsValue,
+            registration: rawVehicle.registration || rawVehicle.reg || 'unknown'
+          });
+          if (doorsValue === null || doorsValue === undefined || doorsValue === '') return null;
+          const parsed = parseInt(doorsValue, 10);
+          console.log(`   → parsed: ${parsed}, isNaN: ${isNaN(parsed)}`);
+          return isNaN(parsed) ? null : parsed;
+        })(),
         
-        seats: parseInt(this.extractField(rawVehicle, [
-          'seats', 'seat_count', 'num_seats', 'number_of_seats', 'seating_capacity'
-        ])) || null,
+        seats: (() => {
+          const seatsValue = this.extractField(rawVehicle, [
+            'seats', 'seat_count', 'num_seats', 'number_of_seats', 'seating_capacity'
+          ]);
+          if (seatsValue === null || seatsValue === undefined || seatsValue === '') return null;
+          const parsed = parseInt(seatsValue, 10);
+          return isNaN(parsed) ? null : parsed;
+        })(),
         
         engine_size: parseFloat(this.extractField(rawVehicle, [
           'engine_size', 'enginesize', 'engine_capacity', 'cc', 'capacity'

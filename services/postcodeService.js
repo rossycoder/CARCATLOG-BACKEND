@@ -38,7 +38,8 @@ async function lookupPostcode(postcode) {
     'SW1A1AA': { latitude: 51.5014, longitude: -0.1419, locationName: 'London Westminster' },
     'E11AA': { latitude: 51.5149, longitude: -0.0550, locationName: 'London East' },
     'W11AA': { latitude: 51.5074, longitude: -0.1901, locationName: 'London West' },
-    'N11AA': { latitude: 51.5290, longitude: -0.1255, locationName: 'London North' }
+    'N11AA': { latitude: 51.5290, longitude: -0.1255, locationName: 'London North' },
+    'LN11AA': { latitude: 53.2307, longitude: -0.5406, locationName: 'Lincoln' }
   };
 
   try {

@@ -63,13 +63,13 @@ async function processPendingImages() {
         }
 
         // Process images for this vehicle
-        const successCount = await feedImageService.processVehicleImages(
+        const result = await feedImageService.processVehicleImages(
           feedVehicleId,
           feedVehicle.carId
         );
 
         totalProcessed += vehicleGroups[feedVehicleId].length;
-        totalSuccessful += successCount;
+        totalSuccessful += result.success; // Use result.success instead of the whole object
 
       } catch (error) {
         console.error(`Error processing vehicle ${feedVehicleId}:`, error.message);

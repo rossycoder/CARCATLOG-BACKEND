@@ -129,9 +129,13 @@ class FeedFetcher {
       
       // Try to convert URL to raw format first
       const rawUrl = this.convertToRawUrl(url);
-      const urlUsed = rawUrl !== url ? rawUrl : url;
+      let urlUsed = rawUrl !== url ? rawUrl : url;
       
-      console.log(`Fetching feed from: ${urlUsed}`);
+      // 🔥 Add cache-busting timestamp parameter
+      const cacheBuster = `_t=${Date.now()}`;
+      urlUsed = urlUsed.includes('?') ? `${urlUsed}&${cacheBuster}` : `${urlUsed}?${cacheBuster}`;
+      
+      console.log(`Fetching feed from: ${urlUsed.split('?')[0]}`); // Log without timestamp
       if (rawUrl !== url) {
         console.log(`  (converted from: ${url})`);
       }
@@ -210,7 +214,9 @@ class FeedFetcher {
         JSON.parse(dataStr);
         return 'json';
       } catch (e) {
-        // Not valid JSON, continue checking
+        // JSON structure detected but invalid - throw descriptive error
+        console.error('❌ JSON parsing failed:', e.message);
+        throw new Error(`Invalid JSON format: ${e.message}. Please check your feed data for syntax errors (missing values, trailing commas, etc.)`);
       }
     }
 
