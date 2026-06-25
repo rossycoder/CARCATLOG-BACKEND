@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const vehicleController = require('../controllers/vehicleController');
 const { validateAndNormalizeVehicle, checkDuplicateRegistration } = require('../middleware/vehicleValidation');
-const { protect, requireEmailVerified, requireEmailVerifiedForAccess } = require('../middleware/authMiddleware');
+const { protect, requireEmailVerified, requireEmailVerifiedForAccess, verifyVehicleOwnership } = require('../middleware/authMiddleware');
 const { enhanceElectricVehicleData, addElectricVehicleInfo } = require('../middleware/electricVehicleEnhancement');
 
 // GET /api/vehicles/count - Get total count of available cars (must be before /:id)
@@ -95,18 +95,20 @@ router.post(
   vehicleController.validateRegistration.bind(vehicleController)
 );
 
-// PATCH /api/vehicles/:id - Partial update of vehicle fields (requires auth)
+// PATCH /api/vehicles/:id - Partial update of vehicle fields (requires auth + ownership)
 router.patch(
   '/:id',
   protect,
+  verifyVehicleOwnership,
   vehicleController.updateVehicle.bind(vehicleController)
 );
 
-// PATCH /api/vehicles/:id/status - Update vehicle status (requires auth)
+// PATCH /api/vehicles/:id/status - Update vehicle status (requires auth + ownership)
 router.patch(
   '/:id/status',
   protect,
   requireEmailVerifiedForAccess,
+  verifyVehicleOwnership,
   vehicleController.updateVehicleStatus.bind(vehicleController)
 );
 
@@ -116,23 +118,27 @@ router.post(
   vehicleController.trackInquiry.bind(vehicleController)
 );
 
-// POST /api/vehicles/:id/relist - Relist a draft/expired vehicle (requires auth)
+// POST /api/vehicles/:id/relist - Relist a draft/expired vehicle (requires auth + ownership)
 router.post(
   '/:id/relist',
   protect,
   requireEmailVerifiedForAccess,
+  verifyVehicleOwnership,
   vehicleController.relistVehicle.bind(vehicleController)
 );
 
-// DELETE /api/vehicles/:id - Delete vehicle (requires auth)
+// DELETE /api/vehicles/:id - Delete vehicle (requires auth + ownership)
 router.delete(
   '/:id',
   protect,
   requireEmailVerifiedForAccess,
+  verifyVehicleOwnership,
   vehicleController.deleteVehicle.bind(vehicleController)
 );
 
 // GET /api/vehicles/:id - Get a single car by ID (must be last)
+// Note: No ownership check here - anyone can view car details
+// Ownership is only required for edit/update/delete operations
 router.get(
   '/:id',
   vehicleController.getCarById.bind(vehicleController)

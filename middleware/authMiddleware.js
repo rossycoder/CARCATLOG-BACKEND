@@ -143,4 +143,65 @@ const optionalAuth = async (req, res, next) => {
   next();
 };
 
-module.exports = { protect, optionalAuth, requireEmailVerified, requireEmailVerifiedForAccess };
+/**
+ * Verify vehicle ownership - ensures user can only edit their own cars
+ * Use after protect middleware
+ */
+const verifyVehicleOwnership = async (req, res, next) => {
+  try {
+    const Car = require('../models/Car');
+    const vehicleId = req.params.id;
+    
+    // Find the vehicle
+    const vehicle = await Car.findById(vehicleId);
+    
+    if (!vehicle) {
+      return res.status(404).json({
+        success: false,
+        message: 'Vehicle not found'
+      });
+    }
+    
+    // Admin can edit any car
+    if (req.user?.isAdmin || req.user?.role === 'admin') {
+      return next();
+    }
+    
+    // For trade dealers - check if vehicle belongs to their dealer account
+    if (req.user?.isTradeDealer || req.user?.role === 'trade') {
+      const vehicleDealerId = vehicle.dealerId?._id?.toString() || vehicle.dealerId?.toString();
+      const currentDealerId = req.dealer?._id?.toString() || req.user?.dealer?._id?.toString();
+      
+      if (vehicleDealerId && currentDealerId && vehicleDealerId === currentDealerId) {
+        return next();
+      }
+      
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to edit this vehicle'
+      });
+    }
+    
+    // For regular users - check if vehicle belongs to them
+    const vehicleUserId = vehicle.userId?._id?.toString() || vehicle.userId?.toString();
+    const currentUserId = req.user?._id?.toString() || req.user?.id?.toString();
+    
+    if (vehicleUserId && currentUserId && vehicleUserId === currentUserId) {
+      return next();
+    }
+    
+    return res.status(403).json({
+      success: false,
+      message: 'You do not have permission to edit this vehicle'
+    });
+    
+  } catch (error) {
+    console.error('❌ Error verifying vehicle ownership:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error verifying vehicle ownership'
+    });
+  }
+};
+
+module.exports = { protect, optionalAuth, requireEmailVerified, requireEmailVerifiedForAccess, verifyVehicleOwnership };

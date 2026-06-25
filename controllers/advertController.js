@@ -42,15 +42,67 @@ const createAdvert = async (req, res) => {
       
       if (existing) {
         console.log(`✅ [createAdvert] Car ${cleanReg} already exists in database (Status: ${existing.advertStatus})`);
+        
+        // 🔒 CRITICAL: Check ownership FIRST before blocking
+        let isOwnedByCurrentUser = false;
+        
+        if (req.user) {
+          const currentUserId = req.user._id?.toString() || req.user.id?.toString();
+          const carUserId = existing.userId?._id?.toString() || existing.userId?.toString();
+          const currentDealerId = req.dealer?._id?.toString() || req.user?.dealer?._id?.toString();
+          const carDealerId = existing.dealerId?._id?.toString() || existing.dealerId?.toString();
+          
+          // Check if car belongs to current user or dealer
+          isOwnedByCurrentUser = (carUserId && currentUserId && carUserId === currentUserId) ||
+                                  (carDealerId && currentDealerId && carDealerId === currentDealerId) ||
+                                  req.user.isAdmin;
+        }
+        
+        console.log(`   🔐 Ownership check: ${isOwnedByCurrentUser ? 'OWNED BY USER' : 'OWNED BY DIFFERENT USER'}`);
+        
+        // ⚠️ ONLY block if this is a DIFFERENT dealer's car (from feed import)
+        if (existing.dealerId && !existing.advertId && !isOwnedByCurrentUser) {
+          console.log(`⚠️ [createAdvert] This car belongs to a DIFFERENT Trade Dealer`);
+          console.log(`   Registration ${cleanReg} is already in use by another dealer.`);
+          
+          return res.status(409).json({
+            success: false,
+            message: `Registration ${registration} is already listed by another dealer. You cannot list the same vehicle.`,
+            error: 'DEALER_CAR_EXISTS'
+          });
+        }
+        
+        console.log(`   Car Status: ${existing.advertStatus}`);
+        console.log(`   Car MongoDB _id: ${existing._id}`);
+        console.log(`   Car advertId (UUID): ${existing.advertId}`);
+        
+        // CRITICAL: If car is ACTIVE and owned by DIFFERENT user, return special response
+        if (existing.advertStatus === 'active' && !isOwnedByCurrentUser) {
+          console.log(`   ⚠️ Active car owned by different user - returning car detail page redirect`);
+          return res.status(200).json({
+            success: true,
+            data: {
+              id: existing._id.toString(),
+              advertId: existing.advertId,
+              status: existing.advertStatus,
+              _existingCar: true,
+              _isOwnedByUser: false,
+              _message: 'This car is already listed by another user. Redirecting to public listing page.'
+            }
+          });
+        }
+        
+        console.log(`   ✅ Same user re-adding their own car - returning for edit page`);
         console.log(`   Returning existing car data - SKIPPING API calls to save costs`);
-        console.log(`   Existing Car ID: ${existing._id}, Advert ID: ${existing.advertId}`);
+        console.log(`   Will use MongoDB _id: ${existing._id.toString()} for routing`);
         
         // Return existing car data to frontend
+        // CRITICAL: Use MongoDB _id (not advertId) for routing to work properly
         return res.status(200).json({
           success: true,
           data: {
-            id: existing.advertId,
-            advertId: existing.advertId,
+            id: existing._id.toString(), // Use MongoDB _id instead of advertId
+            advertId: existing.advertId, // Keep advertId for reference
             vehicleData: { 
               ...vehicleData, 
               estimatedValue: existing.price,
@@ -77,6 +129,7 @@ const createAdvert = async (req, res) => {
             status: existing.advertStatus,
             createdAt: existing.createdAt,
             _existingCar: true, // Flag to indicate this is existing data
+            _isOwnedByUser: isOwnedByCurrentUser, // 🔒 CRITICAL: Ownership flag for frontend
             _message: 'Car already exists in database - using cached data'
           }
         });
