@@ -103,7 +103,7 @@ exports.importFeed = async (req, res) => {
     // ALWAYS use enhanced import with Cloudinary upload
     // Enhanced import properly downloads images from any source and uploads to Cloudinary
     result = await feedImportService.importFeedEnhanced(dealerId, feedUrl, {
-      removeSoldVehicles: removeSoldVehicles !== false,
+      removeSoldVehicles: false, // ← ← ← MOST IMPORTANT — cars DELETE nahi honge, sirf sold mark
       importImages: importImages !== false,
       useUnsplashFallback: useUnsplashFallback === true,
       limitVehicles: limitVehicles === true,
@@ -420,12 +420,12 @@ exports.syncFeed = async (req, res) => {
     console.log(`\n🔄 [syncFeed] Starting feed import with options:`, {
       dealerHasAPIEnabled,
       enableAPIEnrichmentForSync,
-      removeSoldVehicles: feed.removeSoldVehicles !== false,
+      removeSoldVehicles: false, // ← ← ← IMPORTANT: sirf sold mark, delete nahi
       importImages: feed.importImages !== false
     });
     
     const result = await feedImportService.importFeedEnhanced(dealerId, feed.feedUrl, {
-      removeSoldVehicles: feed.removeSoldVehicles !== false,
+      removeSoldVehicles: false, // ← ← ← YE MOST IMPORTANT — cars DELETE nahi honge
       importImages: feed.importImages !== false,
       useUnsplashFallback: feed.useUnsplashFallback === true,
       createCarListings: true,

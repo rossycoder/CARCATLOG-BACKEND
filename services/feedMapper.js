@@ -208,14 +208,87 @@ class FeedMapper {
   }
 
   /**
+   * Parse description field to extract missing data
+   * Format: "left out model b24x, fuel electric, body suv, colour white, cat n"
+   */
+  parseDescriptionForMissingData(description) {
+    if (!description || typeof description !== 'string') return {};
+    
+    const data = {};
+    const text = description.toLowerCase().trim();
+    
+    // Extract model after "model " or "model:"
+    const modelMatch = text.match(/model\s+([a-z0-9\-\s]+?)(?:,|$)/i);
+    if (modelMatch && modelMatch[1]) {
+      data.model = modelMatch[1].trim();
+    }
+    
+    // Extract fuel type after "fuel " or "fuel:"
+    const fuelMatch = text.match(/fuel\s+([a-z\s]+?)(?:,|$)/i);
+    if (fuelMatch && fuelMatch[1]) {
+      data.fuel_type = fuelMatch[1].trim();
+    }
+    
+    // Extract body type after "body " or "body:"
+    const bodyMatch = text.match(/body\s+([a-z\s]+?)(?:,|$)/i);
+    if (bodyMatch && bodyMatch[1]) {
+      data.body_type = bodyMatch[1].trim();
+    }
+    
+    // Extract colour after "colour " or "color " or "colour:" or "color:"
+    const colourMatch = text.match(/colou?r\s+([a-z\s]+?)(?:,|$)/i);
+    if (colourMatch && colourMatch[1]) {
+      data.colour = colourMatch[1].trim();
+    }
+    
+    // Extract gearbox/transmission after "gearbox " or "transmission "
+    const gearboxMatch = text.match(/(?:gearbox|transmission)\s+([a-z\s]+?)(?:,|$)/i);
+    if (gearboxMatch && gearboxMatch[1]) {
+      data.transmission = gearboxMatch[1].trim();
+    }
+    
+    // Extract variant after "varient " or "variant " (note typo in feed)
+    const variantMatch = text.match(/varie?nt\s+([a-z0-9\.\s\-\(\)]+?)(?:,|fuel|gearbox|body|colou?r|cat|$)/i);
+    if (variantMatch && variantMatch[1]) {
+      data.derivative = variantMatch[1].trim();
+    }
+    
+    // ✅ YE ADD KARO — seats aur doors
+    const seatsMatch = text.match(/seats?\s+(\d+)/i);
+    if (seatsMatch) data.seats = seatsMatch[1];
+    
+    const doorsMatch = text.match(/(\d+)\s*doors?/i) || text.match(/doors?\s+(\d+)/i);
+    if (doorsMatch) data.doors = doorsMatch[1];
+    
+    // ✅ MOT date bhi extract karo
+    const motMatch = text.match(/mot\s+(\d{2}\/\d{2}\/\d{2,4})/i);
+    if (motMatch) data.mot_expiry = motMatch[1];
+    
+    // ✅ Category (cat n, cat s, etc.)
+    const catMatch = text.match(/\bcat\s+([a-z])\b/i);
+    if (catMatch) data.category = `Cat ${catMatch[1].toUpperCase()}`;
+    
+    return data;
+  }
+
+  /**
    * Map single vehicle to internal schema
    */
   mapVehicle(rawVehicle, provider, index) {
     try {
-      // ✅ Extract stock_id - vrm bhi try karo
+      // ✅ Parse description for missing data first
+      const descriptionData = this.parseDescriptionForMissingData(
+        this.extractField(rawVehicle, ['description', 'comments', 'notes'])
+      );
+      
+      // ✅ Extract stock_id - vrm bhi try karo (EXTENDED LIST)
       const stockId = this.extractField(rawVehicle, [
         'stock_id', 'stockid', 'stocknumber', 'stock_number',
-        'id', 'vehicle_id', 'vehicleid', 'vin', 'vrm', 'reg'
+        'stock_no', 'stockno', 'stock_ref', 'stockref',
+        'ref', 'reference', 'vehicle_ref',
+        'id', 'vehicle_id', 'vehicleid',
+        'vin', 'vrm', 'reg', 'registration'
+        // ❌ Registration last mein rakho — sirf fallback
       ]);
       
       // ✅ Extract and NORMALIZE status
@@ -266,13 +339,18 @@ class FeedMapper {
         ]),
         
         model: this.extractField(rawVehicle, [
-          'model', 'modelname', 'model_name'
-        ]),
+          'model', 'modelname', 'model_name',
+          'range',          // ← XML feeds mein common (e.g. "bZ4X", "5 Series")
+          'model_range',
+          'modelrange',
+          'vehicle_model',
+          'car_model'
+        ]) || descriptionData.model || null,  // ✅ Fallback to description
         
         derivative: this.extractField(rawVehicle, [
           'derivative', 'variant', 'trim', 'version', 'variant_name'
           // ❌ REMOVED 'description' - description should NOT be used as variant!
-        ]),
+        ]) || descriptionData.derivative || null,  // ✅ Fallback to description
         
         year: parseInt(this.extractField(rawVehicle, [
           'year', 'reg_year', 'regyear', 'yearofmanufacture', 'year_of_manufacture', 'registration_year'
@@ -282,19 +360,19 @@ class FeedMapper {
           'mileage', 'miles', 'odometer', 'current_mileage'
         ]) || this.extractFromFeatures(rawVehicle, 'mileage')) || null,
         
-        fuel_type: fuelType,
+        fuel_type: fuelType || this.normalizeFuelType(descriptionData.fuel_type) || null,  // ✅ Fallback to description
         
         transmission: this.extractField(rawVehicle, [
           'transmission', 'gearbox', 'trans', 'transmission_type'
-        ]) || this.extractFromFeatures(rawVehicle, 'transmission'),
+        ]) || this.extractFromFeatures(rawVehicle, 'transmission') || descriptionData.transmission || null,  // ✅ Fallback to description
         
         colour: this.extractField(rawVehicle, [
           'colour', 'color', 'exterior_colour', 'exteriorcolour'
-        ]) || this.extractFromFeatures(rawVehicle, 'color') || this.extractFromFeatures(rawVehicle, 'colour'),
+        ]) || this.extractFromFeatures(rawVehicle, 'color') || this.extractFromFeatures(rawVehicle, 'colour') || descriptionData.colour || null,  // ✅ Fallback to description
         
         body_type: this.extractField(rawVehicle, [
           'body_type', 'bodytype', 'body_style', 'bodystyle', 'type'
-        ]) || this.extractFromFeatures(rawVehicle, 'bodyStyle') || this.extractFromFeatures(rawVehicle, 'body_type'),
+        ]) || this.extractFromFeatures(rawVehicle, 'bodyStyle') || this.extractFromFeatures(rawVehicle, 'body_type') || descriptionData.body_type || null,  // ✅ Fallback to description
         
         doors: (() => {
           const doorsValue = this.extractField(rawVehicle, [
@@ -306,19 +384,36 @@ class FeedMapper {
             type: typeof doorsValue,
             registration: rawVehicle.registration || rawVehicle.reg || 'unknown'
           });
-          if (doorsValue === null || doorsValue === undefined || doorsValue === '') return null;
-          const parsed = parseInt(doorsValue, 10);
-          console.log(`   → parsed: ${parsed}, isNaN: ${isNaN(parsed)}`);
-          return isNaN(parsed) ? null : parsed;
+          if (doorsValue) {
+            const parsed = parseInt(doorsValue, 10);
+            console.log(`   → parsed: ${parsed}, isNaN: ${isNaN(parsed)}`);
+            if (!isNaN(parsed)) return parsed;
+          }
+          // ✅ Description fallback
+          if (descriptionData.doors) {
+            const parsed = parseInt(descriptionData.doors, 10);
+            if (!isNaN(parsed)) {
+              console.log(`   → using description fallback: ${parsed}`);
+              return parsed;
+            }
+          }
+          return null;
         })(),
         
         seats: (() => {
           const seatsValue = this.extractField(rawVehicle, [
             'seats', 'seat_count', 'num_seats', 'number_of_seats', 'seating_capacity'
           ]);
-          if (seatsValue === null || seatsValue === undefined || seatsValue === '') return null;
-          const parsed = parseInt(seatsValue, 10);
-          return isNaN(parsed) ? null : parsed;
+          if (seatsValue) {
+            const parsed = parseInt(seatsValue, 10);
+            if (!isNaN(parsed)) return parsed;
+          }
+          // ✅ Description fallback
+          if (descriptionData.seats) {
+            const parsed = parseInt(descriptionData.seats, 10);
+            if (!isNaN(parsed)) return parsed;
+          }
+          return null;
         })(),
         
         engine_size: parseFloat(this.extractField(rawVehicle, [
@@ -614,9 +709,24 @@ class FeedMapper {
         continue;
       }
       
-      // ✅ Skip if it's an object (like XML parser's {STRING: "true"} from empty tags with attributes)
-      // Allow only primitive values: string, number, boolean
-      if (typeof value === 'object') {
+      // ✅ Handle XML parser's objects with attributes
+      // XML like <model string="true"/> becomes { STRING: 'true' } or similar
+      if (typeof value === 'object' && !Array.isArray(value)) {
+        // Check if it has text content (common in XML parsing)
+        if (value._ !== undefined && value._ !== null && value._ !== '') {
+          // Some XML parsers put text content in _ property
+          return String(value._).trim();
+        }
+        
+        // Check if it has text or $text property
+        if (value.text !== undefined && value.text !== null && value.text !== '') {
+          return String(value.text).trim();
+        }
+        if (value.$text !== undefined && value.$text !== null && value.$text !== '') {
+          return String(value.$text).trim();
+        }
+        
+        // Otherwise, it's likely an empty tag with attributes - skip it
         console.warn(`⚠️  [extractField] Skipping object value for field "${fieldName}":`, value);
         continue;
       }

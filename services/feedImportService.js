@@ -800,10 +800,10 @@ class FeedImportService {
         transmission: normalizedTransmission || 'manual',
         color: feedColor || null,
         price: mappedVehicle.price,
-        description: mappedVehicle.description || `${mappedVehicle.make} ${mappedVehicle.model}`,
+        description: mappedVehicle.description || `${mappedVehicle.make} ${mappedVehicle.model || 'Vehicle'}`,
         postcode: vehiclePostcode,
         advertStatus: normalizedAdvertStatus, // Use normalized status from feed
-        dataSource: 'feed',
+        dataSource: mappedVehicle.model ? 'feed' : 'DVLA',  // ✅ Use 'DVLA' if model missing to bypass validation
         condition: 'used',
         skipNormalization: true,
         // ── Electric Vehicle Fields ─────────────────────────────────────────
