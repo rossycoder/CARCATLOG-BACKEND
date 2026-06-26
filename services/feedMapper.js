@@ -608,9 +608,20 @@ class FeedMapper {
   extractField(vehicle, fieldNames) {
     for (const fieldName of fieldNames) {
       const value = this.getNestedProperty(vehicle, fieldName);
-      if (value !== undefined && value !== null && value !== '') {
-        return String(value).trim();
+      
+      // ✅ Skip if undefined, null, or empty string
+      if (value === undefined || value === null || value === '') {
+        continue;
       }
+      
+      // ✅ Skip if it's an object (like XML parser's {STRING: "true"} from empty tags with attributes)
+      // Allow only primitive values: string, number, boolean
+      if (typeof value === 'object') {
+        console.warn(`⚠️  [extractField] Skipping object value for field "${fieldName}":`, value);
+        continue;
+      }
+      
+      return String(value).trim();
     }
     return null;
   }

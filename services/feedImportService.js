@@ -1601,8 +1601,8 @@ class FeedImportService {
         dealerId: feedVehicle.dealerId,
         isDealerListing: true,
         registrationNumber: mappedVehicle.registration || `TBD${Date.now()}`,
-        make: mappedVehicle.make || specs.make || null,  // ✅ null instead of 'Unknown'
-        model: mappedVehicle.model || specs.model || null,  // ✅ null instead of 'Unknown'
+        make: mappedVehicle.make || specs.make || 'Unknown Make',  // Fallback for required field
+        model: mappedVehicle.model || specs.model || 'Unknown Model',  // Fallback for required field
         variant: mappedVehicle.derivative || (() => {
           // ⚠️  Only use API variant if API make matches feed make (prevents wrong vehicle data)
           if (!specs.variant) return null;
