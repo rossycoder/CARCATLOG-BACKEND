@@ -1449,8 +1449,8 @@ class FeedImportService {
         dealerId: feedVehicle.dealerId,
         isDealerListing: true,
         registrationNumber: mappedVehicle.registration || `TBD${Date.now()}`,
-        make: mappedVehicle.make || specs.make || 'Unknown Make',  // Fallback for required field
-        model: mappedVehicle.model || specs.model || 'Unknown Model',  // Fallback for required field
+        make: mappedVehicle.make || specs.make || null,  // null instead of 'Unknown Make'
+        model: mappedVehicle.model || specs.model || null,  // null instead of 'Unknown Model'
         variant: mappedVehicle.derivative || (() => {
           // ⚠️  Only use API variant if API make matches feed make (prevents wrong vehicle data)
           if (!specs.variant) return null;
@@ -1682,8 +1682,8 @@ class FeedImportService {
         const AutoDataPopulationService = require('./autoDataPopulationService');
         carData = AutoDataPopulationService.populateMissingData(carData);
         
-        // 🔄 SYNC MODE: Update ALL fields from feed (comprehensive sync)
-        // This ensures any changes in JSON/CSV/XML feed are reflected in database
+        // 🔄 SYNC MODE: Update ONLY valid fields from feed (smart sync)
+        // This ensures feed updates work while protecting existing data from being overwritten with empty values
         Object.keys(carData).forEach(key => {
           const newVal = carData[key];
           const oldVal = car[key];
@@ -1699,12 +1699,31 @@ class FeedImportService {
             return;
           }
           
-          // ── Fields jo HAMESHA update honge (feed se latest data) ──
+          // 🛡️ PROTECTION: Don't overwrite valid existing data with "Unknown" fallbacks
+          // If old value exists and is valid, and new value is a fallback like "Unknown", skip it
+          if (oldVal && newVal) {
+            const invalidValues = ['Unknown Make', 'Unknown Model', 'Unknown', 'Not Specified', 'TBD'];
+            const newValStr = String(newVal).trim();
+            const oldValStr = String(oldVal).trim();
+            
+            // If new value is a fallback AND old value is not a fallback, keep old value
+            if (invalidValues.includes(newValStr) && !invalidValues.includes(oldValStr)) {
+              return;
+            }
+          }
+          
+          // ── Fields jo HAMESHA update honge (feed mein change ho to) ──
+          // Ye fields feed control karta hai - CSV/XML/JSON update hua to DB update hoga
           const alwaysUpdateFields = [
-            'price', 'advertStatus', 'mileage', 'postcode', 'description',
-            'make', 'model', 'variant', 'year', 'fuelType', 'transmission',
-            'color', 'bodyType', 'doors', 'seats', 'engineSize', 'images',
-            'features', 'sellerContact', 'stockId', 'registrationNumber'
+            'price', 'advertStatus', 'mileage', 'description', 'fuelType',
+            'images', 'features', 'sellerContact', 'registrationNumber'
+          ];
+          
+          // ── Fields jo sirf VALID value hai to update honge (empty nahi) ──
+          // Agar feed mein missing/empty hai to DB ka value keep karo
+          const updateIfValidFields = [
+            'make', 'model', 'variant', 'year', 'transmission',
+            'color', 'bodyType', 'doors', 'seats', 'engineSize', 'postcode', 'stockId'
           ];
           
           // ── Fields jo sirf tab update honge jab existing value empty/bad ho ──
@@ -1717,20 +1736,29 @@ class FeedImportService {
           ];
           
           if (alwaysUpdateFields.includes(key)) {
-            // Feed se aaya data hamesha update karo
-            // Sirf ek exception: 'Unknown' se real value overwrite nahi karni
-            if (newVal === 'Unknown' && oldVal && oldVal !== 'Unknown') {
-              console.log(`⏭️  [Sync Protection] Keeping existing "${key}": "${oldVal}" (not overwriting with "Unknown")`);
-              return;
-            }
-            if (newVal === 'Not Specified' && oldVal && oldVal !== 'Not Specified') {
-              console.log(`⏭️  [Sync Protection] Keeping existing "${key}": "${oldVal}" (not overwriting with "Not Specified")`);
-              return;
-            }
-            
-            if (['postcode', 'doors', 'seats', 'color', 'transmission', 'bodyType', 'fuelType', 'year', 'make', 'model', 'variant'].includes(key)) {
-            }
+            // Feed se aaya data hamesha update karo (price, status, mileage etc)
             car[key] = newVal;
+          } else if (updateIfValidFields.includes(key)) {
+            // 🔒 SMART PROTECTION: Sirf VALID value se update karo
+            // Agar feed mein empty/null hai to DB ka existing value keep karo
+            const invalidValues = [null, undefined, '', 'Unknown', 'Unknown Model', 'Unknown Make', 'Not Specified'];
+            const isNewValid = newVal && !invalidValues.includes(newVal);
+            const isOldValid = oldVal && !invalidValues.includes(oldVal);
+            
+            if (isNewValid) {
+              // New value valid hai - update karo
+              if (oldVal !== newVal) {
+                console.log(`✅ [${key} Update] "${oldVal}" → "${newVal}"`);
+              }
+              car[key] = newVal;
+            } else if (isOldValid) {
+              // New value invalid hai LEKIN old value valid hai - keep old value
+              console.log(`⏭️  [${key} Protection] Keeping existing: "${oldVal}" (feed value invalid: "${newVal}")`);
+              // Don't update - keep existing value
+            } else {
+              // Dono invalid hain - try newVal (null se better)
+              car[key] = newVal;
+            }
           } else if (updateIfEmptyFields.includes(key)) {
             // Ye fields sirf tab update karo jab already empty ho
             const isEmpty = !oldVal || oldVal === 'Not Specified' || oldVal === 'Unknown';
