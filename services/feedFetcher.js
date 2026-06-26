@@ -203,7 +203,10 @@ class FeedFetcher {
     const start = dataStr.substring(0, 100).toLowerCase();
     
     // XML detection (check first 100 chars)
-    if (start.includes('<?xml') || (start.startsWith('<') && start.includes('<vehicle'))) {
+    // Check for XML declaration OR any valid XML opening tag
+    // Match pattern: starts with < followed by a letter/word and then > or space
+    if (start.includes('<?xml') || 
+        (start.startsWith('<') && /^<[a-z_][a-z0-9_-]*[\s>]/i.test(start))) {
       return 'xml';
     }
 
