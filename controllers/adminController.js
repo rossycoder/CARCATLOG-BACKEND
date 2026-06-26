@@ -117,7 +117,6 @@ const getAllListings = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error getting all listings:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get listings',
@@ -174,7 +173,6 @@ const getListingDetails = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error getting listing details:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get listing details'
@@ -233,7 +231,6 @@ const updateListing = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error updating listing:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to update listing',
@@ -275,7 +272,6 @@ const deleteListing = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error deleting listing:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to delete listing',
@@ -357,7 +353,6 @@ const getDashboardStats = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error getting dashboard stats:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get dashboard stats'
@@ -392,7 +387,6 @@ const getAPIStats = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error getting API stats:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get API statistics',
@@ -423,7 +417,6 @@ const getVehicleAPIStats = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error getting vehicle API stats:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get vehicle API statistics',
@@ -451,7 +444,6 @@ const getExcessiveAPICalls = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error getting excessive API calls:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get excessive API calls',
@@ -516,7 +508,6 @@ const activateVan = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ [Admin] Error activating van:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to activate van',
@@ -552,7 +543,6 @@ const getVansWithPaymentIssues = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ [Admin] Error fetching vans with payment issues:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to fetch vans',
@@ -722,7 +712,6 @@ const getAllUsers = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[Admin] Error fetching users:', error);
     return res.status(500).json({
       success: false,
       error: error.message || 'Failed to fetch users'
@@ -822,7 +811,6 @@ const getUserVehicles = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[Admin] Error fetching user vehicles:', error);
     return res.status(500).json({
       success: false,
       error: error.message || 'Failed to fetch user vehicles'
@@ -881,8 +869,6 @@ const deleteUser = async (req, res) => {
       } catch (e) { /* ignore */ }
 
       await TradeDealer.findByIdAndDelete(userId);
-      console.log(`✅ [Admin] Trade dealer ${userEmail} deleted`);
-
     } else {
       const UserModel = require('../models/User');
       const user = await UserModel.findById(userId);
@@ -904,15 +890,12 @@ const deleteUser = async (req, res) => {
       deletedVehicles = { cars: c.deletedCount, bikes: b.deletedCount, vans: v.deletedCount };
 
       await UserModel.findByIdAndDelete(userId);
-      console.log(`✅ [Admin] User ${userEmail} deleted`);
     }
 
     // ── Send account deletion confirmation email ──────────────────────────
     try {
       await emailService.sendAccountDeletionConfirmation(userEmail, userName, userType);
-      console.log(`✅ [Admin] Deletion email sent to ${userEmail}`);
     } catch (emailErr) {
-      console.warn(`⚠️  [Admin] Failed to send deletion email: ${emailErr.message}`);
     }
 
     res.json({
@@ -922,7 +905,6 @@ const deleteUser = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ [Admin] deleteUser error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

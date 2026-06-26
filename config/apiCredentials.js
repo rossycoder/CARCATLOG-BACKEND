@@ -59,8 +59,6 @@ function loadAPICredentials() {
     const errorMessage = `Missing API credentials: ${missingCredentials.join(', ')}`;
     
     if (process.env.NODE_ENV === 'production') {
-      console.warn(`⚠️  ${errorMessage}`);
-      console.warn('   Vehicle history and valuation features will be disabled');
       // Return partial credentials - services will handle missing keys gracefully
       return {
         historyAPI: {
@@ -134,8 +132,6 @@ function validateAndInitialize() {
     
     return credentials;
   } catch (error) {
-    console.error('✗ API Credentials validation failed:');
-    console.error(`  ${error.message}`);
     throw error;
   }
 }

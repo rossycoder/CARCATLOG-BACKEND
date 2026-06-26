@@ -52,7 +52,6 @@ class EmailService {
   async sendEmail(to, subject, text, html) {
     try {
       if (!this.enabled) {
-        console.log('Warning: Email service not configured, skipping email send');
         return true;
       }
 
@@ -77,8 +76,6 @@ class EmailService {
           const err = await response.json();
           throw new Error(`Brevo API error: ${JSON.stringify(err)}`);
         }
-
-        console.log(`Email sent via Brevo to: ${to}`);
         return true;
       }
 
@@ -86,7 +83,6 @@ class EmailService {
       else if (this.emailService === 'sendgrid') {
         const msg = { to, from: this.fromEmail, subject, text, html };
         await sgMail.send(msg);
-        console.log(`Email sent via SendGrid to: ${to}`);
         return true;
       }
 
@@ -94,15 +90,12 @@ class EmailService {
       else if (this.emailService === 'gmail') {
         const mailOptions = { from: this.fromEmail, to, subject, text, html };
         await this.transporter.sendMail(mailOptions);
-        console.log(`Email sent via Gmail to: ${to}`);
         return true;
       }
 
       return false;
     } catch (error) {
-      console.error('Error sending email:', error);
       if (error.response) {
-        console.error('Error details:', error.response.body);
       }
       return false;
     }
@@ -123,7 +116,6 @@ class EmailService {
 
       return await this.sendEmail(purchase.customerEmail, subject, text, html);
     } catch (error) {
-      console.error('Error sending confirmation email:', error);
       return false;
     }
   }
@@ -297,7 +289,6 @@ This is an automated email. Please do not reply to this message.
 
       return await this.sendEmail(email, subject, text, html);
     } catch (error) {
-      console.error('Error sending failure notification:', error);
       return false;
     }
   }
@@ -419,7 +410,6 @@ The CarCatalog Team
 
       return await this.sendEmail(dealer.email, subject, text, html);
     } catch (error) {
-      console.error('Error sending renewal reminder:', error);
       return false;
     }
   }
@@ -540,7 +530,6 @@ The CarCatalog Team
 
       return await this.sendEmail(dealer.email, subject, text, html);
     } catch (error) {
-      console.error('Error sending renewal confirmation:', error);
       return false;
     }
   }
@@ -663,7 +652,6 @@ The CarCatalog Team
 
       return await this.sendEmail(dealer.email, subject, text, html);
     } catch (error) {
-      console.error('Error sending payment failed email:', error);
       return false;
     }
   }
@@ -769,7 +757,6 @@ The CarCatalog Team
 
       return await this.sendEmail(dealer.email, subject, text, html);
     } catch (error) {
-      console.error('Error sending expired notification:', error);
       return false;
     }
   }
@@ -789,7 +776,6 @@ The CarCatalog Team
 
       return await this.sendEmail(user.email, emailContent.subject, emailContent.text, emailContent.html);
     } catch (error) {
-      console.error('Error sending car listing success email:', error);
       return false;
     }
   }
@@ -919,7 +905,6 @@ This is an automated confirmation. Please do not reply to this message.
 
       return await this.sendEmail(email, subject, text, html);
     } catch (error) {
-      console.error('Error sending account deletion email:', error);
       return false;
     }
   }

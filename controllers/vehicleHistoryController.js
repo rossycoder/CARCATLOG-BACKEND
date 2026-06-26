@@ -52,7 +52,6 @@ async function getCachedVehicleHistory(req, res) {
     });
 
   } catch (error) {
-    console.error('Error in getCachedVehicleHistory:', error);
     return res.status(500).json({
       success: false,
       error: 'Failed to retrieve cached vehicle history'
@@ -85,7 +84,6 @@ async function getCachedMOTHistory(req, res) {
 
     return res.json({ success: true, data: [], source: 'none', message: 'No cached MOT history found' });
   } catch (error) {
-    console.error('Error in getCachedMOTHistory:', error);
     return res.status(500).json({ success: false, error: 'Failed to retrieve cached MOT history' });
   }
 }
@@ -160,7 +158,6 @@ async function completeVehicleCheck(req, res) {
 
     return res.json({ success: true, data: combined });
   } catch (error) {
-    console.error('Error in completeVehicleCheck:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
 }

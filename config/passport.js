@@ -34,7 +34,6 @@ try {
                 emailTemplate.html
               );
             } catch (emailError) {
-              console.error('Failed to send login notification:', emailError);
             }
             
             return done(null, user);
@@ -62,7 +61,6 @@ try {
                 emailTemplate.html
               );
             } catch (emailError) {
-              console.error('Failed to send linking notification:', emailError);
             }
             
             return done(null, user);
@@ -90,20 +88,17 @@ try {
               emailTemplate.html
             );
           } catch (emailError) {
-            console.error('Failed to send welcome email:', emailError);
             // Don't fail the auth process if email fails
           }
 
           done(null, user);
         } catch (error) {
-          console.error('Error in Google OAuth callback:', error);
           done(error, null);
         }
       }
     )
   );
 } catch (error) {
-  console.error('❌ Failed to configure Google OAuth Strategy:', error);
 }
 
 // Configure Facebook OAuth Strategy
@@ -137,7 +132,6 @@ try {
                 emailTemplate.html
               );
             } catch (emailError) {
-              console.error('Failed to send login notification:', emailError);
             }
             
             return done(null, user);
@@ -167,7 +161,6 @@ try {
                   emailTemplate.html
                 );
               } catch (emailError) {
-                console.error('Failed to send linking notification:', emailError);
               }
               
               return done(null, user);
@@ -199,20 +192,17 @@ try {
                 emailTemplate.html
               );
             } catch (emailError) {
-              console.error('Failed to send welcome email:', emailError);
             }
           }
 
           done(null, user);
         } catch (error) {
-          console.error('Error in Facebook OAuth callback:', error);
           done(error, null);
         }
       }
     )
   );
 } catch (error) {
-  console.error('❌ Failed to configure Facebook OAuth Strategy:', error);
 }
 
 // Serialize user for session

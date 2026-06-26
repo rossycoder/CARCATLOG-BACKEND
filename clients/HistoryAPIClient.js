@@ -186,18 +186,15 @@ class HistoryAPIClient {
       try {
         return parseHistoryResponse(apiResponse, this.isTestMode);
       } catch (parseError) {
-        console.warn('Failed to parse complete response, attempting partial parse');
         return handlePartialResponse(apiResponse, this.isTestMode);
       }
     } catch (error) {
       // If carhistorycheck hits daily limit (403), fall back to ukvehicledata (£0.10)
       if (error.response?.status === 403) {
-        console.warn(`carhistorycheck daily limit reached for ${vrm}, falling back to ukvehicledata`);
         try {
           const fallbackResponse = await this.makeRequestWithRetry('ukvehicledata', vrm);
           return this.parseUKVehicleDataResponse(fallbackResponse);
         } catch (fallbackError) {
-          console.error(`ukvehicledata fallback also failed for ${vrm}:`, fallbackError.message);
           throw this.formatError(fallbackError, vrm, 'ukvehicledata-fallback');
         }
       }

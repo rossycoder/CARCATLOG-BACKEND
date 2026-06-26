@@ -27,7 +27,6 @@ class FeedMapper {
       }).filter(v => v !== null);
 
     } catch (error) {
-      console.error('Error mapping vehicles:', error);
       return [];
     }
   }
@@ -51,7 +50,6 @@ class FeedMapper {
     if (format === 'json') {
       // ── Step 1: Seedha array ho to wahi use karo ──────────────────────────
       if (Array.isArray(data)) {
-        console.log(`✅ [JSON] Root is array, count: ${data.length}`);
         return data;
       }
       
@@ -62,7 +60,6 @@ class FeedMapper {
         const dataKeys = Object.keys(data).map(k => k.toLowerCase());
         const looksLikeVehicle = vehicleKeys.filter(k => dataKeys.includes(k)).length >= 2;
         if (looksLikeVehicle) {
-          console.log('✅ [JSON] Root object looks like a single vehicle — wrapping in array');
           return [data];
         }
       }
@@ -76,25 +73,20 @@ class FeedMapper {
       
       for (const key of knownKeys) {
         if (Array.isArray(data[key]) && data[key].length > 0) {
-          console.log(`✅ [JSON] Found vehicles at key: "${key}", count: ${data[key].length}`);
           return data[key];
         }
       }
       
       // ── Step 3: Last resort - koi bhi array dhoondo ────────────────────────
-      console.log(`🔍 [JSON] Known keys not found, searching all keys...`);
       for (const key of Object.keys(data)) {
         if (Array.isArray(data[key]) && data[key].length > 0) {
           const sample = data[key][0];
           // Check if array contains objects (not primitives)
           if (sample && typeof sample === 'object' && !Array.isArray(sample)) {
-            console.log(`✅ [JSON] Found array at key: "${key}", count: ${data[key].length}`);
             return data[key];
           }
         }
       }
-      
-      console.warn(`⚠️  [JSON] No vehicle arrays found in data`);
       return [];
     }
 
@@ -105,17 +97,14 @@ class FeedMapper {
       if (data.dealerinventory?.vehicles?.vehicle) {
         const vehicles = data.dealerinventory.vehicles.vehicle;
         const isArray = Array.isArray(vehicles);
-        console.log('✅ Found data.dealerinventory.vehicles.vehicle, count:', isArray ? vehicles.length : 1);
         return isArray ? vehicles : [vehicles];
       }
       
       // Handle nested feed structure: { feed: { vehicles: {...} } }
       if (data.feed && data.feed.vehicles) {
-        console.log('✅ Found data.feed.vehicles structure');
         const vehicles = data.feed.vehicles;
         // If it's a single vehicle object, wrap it in an array
         if (!Array.isArray(vehicles)) {
-          console.log('✅ Converting single vehicle to array');
           return [vehicles];
         }
         return vehicles;
@@ -125,14 +114,12 @@ class FeedMapper {
       if (data.vehicles?.vehicle) {
         const vehicles = data.vehicles.vehicle;
         const isArray = Array.isArray(vehicles);
-        console.log('✅ Found data.vehicles.vehicle, count:', isArray ? vehicles.length : 1);
         // If it's a single vehicle object, wrap it in an array
         return isArray ? vehicles : [vehicles];
       }
       
       // Check for direct vehicles array (your XML structure)
       if (data.vehicles && Array.isArray(data.vehicles)) {
-        console.log('✅ Found data.vehicles as array, count:', data.vehicles.length);
         return data.vehicles;
       }
       
@@ -165,7 +152,6 @@ class FeedMapper {
       // array that looks most like a vehicle list, no matter how nested
       const deepFallback = this.findBestVehicleArray(data);
       if (deepFallback) {
-        console.log('✅ [extractVehiclesArray] Found vehicles via deep recursive search, count:', deepFallback.length);
         return deepFallback;
       }
     }
@@ -378,12 +364,6 @@ class FeedMapper {
           const doorsValue = this.extractField(rawVehicle, [
             'doors', 'door_count', 'num_doors', 'number_of_doors'
           ]);
-          console.log(`🔍 [feedMapper.doors] Raw vehicle doors field:`, {
-            rawValue: rawVehicle.doors,
-            extracted: doorsValue,
-            type: typeof doorsValue,
-            registration: rawVehicle.registration || rawVehicle.reg || 'unknown'
-          });
           if (doorsValue) {
             const parsed = parseInt(doorsValue, 10);
             console.log(`   → parsed: ${parsed}, isNaN: ${isNaN(parsed)}`);
@@ -393,7 +373,6 @@ class FeedMapper {
           if (descriptionData.doors) {
             const parsed = parseInt(descriptionData.doors, 10);
             if (!isNaN(parsed)) {
-              console.log(`   → using description fallback: ${parsed}`);
               return parsed;
             }
           }
@@ -536,7 +515,6 @@ class FeedMapper {
 
       // Validate minimum required fields
       if (!mapped.make) {
-        console.warn(`⚠️  [mapVehicle] Skipping vehicle #${index} - missing make field`);
         console.warn(`   Available fields:`, Object.keys(rawVehicle));
         console.warn(`   Raw vehicle:`, JSON.stringify(rawVehicle, null, 2).substring(0, 500));
         return null;
@@ -545,8 +523,6 @@ class FeedMapper {
       return mapped;
 
     } catch (error) {
-      console.error(`❌ [mapVehicle] Error mapping vehicle #${index}:`, error);
-      console.error(`   Raw vehicle:`, rawVehicle);
       return null;
     }
   }
@@ -580,9 +556,6 @@ class FeedMapper {
     };
     
     const normalized = statusMap[status] || 'active';
-    
-    console.log(`🔄 [normalizeStatus] "${rawStatus}" → "${normalized}"`);
-    
     return normalized;
   }
 
@@ -727,7 +700,6 @@ class FeedMapper {
         }
         
         // Otherwise, it's likely an empty tag with attributes - skip it
-        console.warn(`⚠️  [extractField] Skipping object value for field "${fieldName}":`, value);
         continue;
       }
       

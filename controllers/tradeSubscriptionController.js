@@ -29,7 +29,6 @@ exports.getPlans = async (req, res) => {
       }))
     });
   } catch (error) {
-    console.error('Get plans error:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching subscription plans'
@@ -85,7 +84,6 @@ exports.getCurrentSubscription = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get current subscription error:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching subscription'
@@ -333,7 +331,6 @@ exports.createCheckoutSession = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Create checkout session error:', error);
     res.status(500).json({
       success: false,
       message: 'Error creating checkout session',
@@ -384,7 +381,6 @@ exports.createSubscription = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Create subscription error:', error);
     res.status(500).json({
       success: false,
       message: 'Error creating subscription',
@@ -422,7 +418,6 @@ exports.cancelSubscription = async (req, res) => {
         : 'Subscription cancelled immediately'
     });
   } catch (error) {
-    console.error('Cancel subscription error:', error);
     res.status(500).json({
       success: false,
       message: 'Error cancelling subscription'
@@ -461,7 +456,6 @@ exports.reactivateSubscription = async (req, res) => {
       message: 'Subscription reactivated successfully'
     });
   } catch (error) {
-    console.error('Reactivate subscription error:', error);
     res.status(500).json({
       success: false,
       message: 'Error reactivating subscription'
@@ -603,7 +597,6 @@ exports.verifyPayment = async (req, res) => {
         try {
           await subscription.save();
         } catch (saveError) {
-          console.error('❌ Failed to save subscription:', saveError.message);
           throw saveError;
         }
         
@@ -618,7 +611,6 @@ exports.verifyPayment = async (req, res) => {
         try {
           await dealer.save();
         } catch (dealerError) {
-          console.error('❌ Failed to update dealer:', dealerError.message);
           throw dealerError;
         }
 
@@ -700,9 +692,6 @@ exports.verifyPayment = async (req, res) => {
       try {
         await subscription.save();
       } catch (saveError) {
-        console.error('❌ Failed to save subscription:', saveError.message);
-        console.error('   Error code:', saveError.code);
-        console.error('   Error details:', saveError);
         throw saveError;
       }
       
@@ -716,7 +705,6 @@ exports.verifyPayment = async (req, res) => {
       try {
         await dealer.save();
       } catch (dealerError) {
-        console.error('❌ Failed to update dealer:', dealerError.message);
         throw dealerError;
       }
     } else {
@@ -745,8 +733,6 @@ exports.verifyPayment = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('\n❌ VERIFY PAYMENT ERROR:', error.message);
-    console.error('Stack:', error.stack);
     res.status(500).json({
       success: false,
       message: 'Error verifying payment',
@@ -773,7 +759,6 @@ exports.handleWebhook = async (req, res) => {
         process.env.STRIPE_WEBHOOK_SECRET
       );
     } catch (err) {
-      console.error('Webhook signature verification failed:', err.message);
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
@@ -781,7 +766,6 @@ exports.handleWebhook = async (req, res) => {
 
     res.json({ received: true });
   } catch (error) {
-    console.error('Webhook handler error:', error);
     res.status(500).json({
       success: false,
       message: 'Error processing webhook'

@@ -57,7 +57,6 @@ class LightweightVanService {
           apiCalls = 1;
           apiProvider = 'dvla-fallback';
         } catch (dvlaError) {
-          console.error(`❌ Both CheckCarDetails and DVLA APIs failed for ${registration}`);
           throw new Error(`Van lookup failed: CheckCarDetails (${checkCarError.message}), DVLA (${dvlaError.message})`);
         }
       }
@@ -164,8 +163,6 @@ class LightweightVanService {
       };
       
     } catch (error) {
-      console.error(`❌ Van lookup failed for ${registration}:`, error.message);
-      
       return {
         success: false,
         error: `Van lookup failed: ${error.message}. Please check the registration number and try again.`,
@@ -280,7 +277,6 @@ class LightweightVanService {
       };
       
     } catch (error) {
-      console.error(`Cache check error for ${registration}:`, error.message);
       return null;
     }
   }
@@ -393,7 +389,6 @@ class LightweightVanService {
       }
       
     } catch (error) {
-      console.error(`❌ Cache storage error for ${registration}:`, error.message);
       return null;
     }
   }
@@ -535,7 +530,6 @@ class LightweightVanService {
       return estimatedPrice;
       
     } catch (error) {
-      console.error('Error calculating estimated van price:', error.message);
       return 15000; // Default £15,000
     }
   }
@@ -586,7 +580,6 @@ class LightweightVanService {
       return parsed;
       
     } catch (error) {
-      console.error(`❌ Error parsing DVLA response for van ${registration}:`, error.message);
       throw new Error(`Failed to parse DVLA response: ${error.message}`);
     }
   }

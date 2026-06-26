@@ -47,8 +47,6 @@ class ValuationService {
       return result;
     } catch (error) {
       const responseTime = Date.now() - startTime;
-      console.error(`Valuation API call failed after ${responseTime}ms:`, error.message);
-
       // Re-throw the error - no mock data fallback
       throw error;
     }
@@ -70,7 +68,6 @@ class ValuationService {
       try {
         dvlaData = await dvlaService.lookupVehicle(vrm);
       } catch (dvlaError) {
-        console.warn(`DVLA lookup failed for ${vrm}:`, dvlaError.message);
         // Continue without DVLA data - valuation is still valid
       }
       
@@ -80,7 +77,6 @@ class ValuationService {
         valuation,
       };
     } catch (error) {
-      console.error('Error getting detailed valuation:', error);
       throw error;
     }
   }

@@ -8,8 +8,6 @@ const connectDB = require('../config/database');
 
 async function createFeedIndexes() {
   try {
-    console.log('Creating stock feed indexes...');
-
     // Connect to database
     await connectDB();
 
@@ -26,18 +24,9 @@ async function createFeedIndexes() {
       FeedImage.createIndexes(),
       FeedLog.createIndexes()
     ]);
-
-    console.log('✓ Created DealerFeed collection with indexes');
-    console.log('✓ Created FeedVehicle collection with indexes');
-    console.log('✓ Created FeedImage collection with indexes');
-    console.log('✓ Created FeedLog collection with indexes');
-
-    console.log('\n✓ All stock feed collections created successfully!');
-    
     return true;
 
   } catch (error) {
-    console.error('Error creating feed collections:', error);
     throw error;
   }
 }
@@ -46,11 +35,9 @@ async function createFeedIndexes() {
 if (require.main === module) {
   createFeedIndexes()
     .then(() => {
-      console.log('\nMigration completed successfully');
       process.exit(0);
     })
     .catch((error) => {
-      console.error('\nMigration failed:', error);
       process.exit(1);
     });
 }

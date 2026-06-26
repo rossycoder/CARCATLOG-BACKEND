@@ -146,7 +146,6 @@ exports.createSession = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Create call session error:', error);
     res.status(500).json({ success: false, message: 'Error creating call session' });
   }
 };
@@ -199,7 +198,6 @@ exports.voiceWebhook = async (req, res) => {
     res.type('text/xml').send(twiml.toString());
 
   } catch (error) {
-    console.error('❌ Voice webhook error:', error);
     twiml.say({ voice: 'alice', language: 'en-GB' }, 'Sorry, an error occurred. Please try again.');
     res.type('text/xml').send(twiml.toString());
   }
@@ -228,11 +226,9 @@ exports.callStatusWebhook = async (req, res) => {
           { proxyNumber: calledNumber },
           { $set: { status: 'available' } }
         );
-        console.log(`✅ Number ${calledNumber} released — dial status: ${dialStatus}`);
       }
     }
   } catch (error) {
-    console.error('❌ Call status webhook error:', error);
   }
 
   // Always return empty TwiML
@@ -348,7 +344,6 @@ exports.syncTwilioNumbers = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ syncTwilioNumbers error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

@@ -44,7 +44,6 @@ class APICacheService {
       
       return cached;
     } catch (error) {
-      console.error(`❌ [Cache] Error checking cache:`, error.message);
       return null;
     }
   }
@@ -77,7 +76,6 @@ class APICacheService {
       
       return cacheEntry;
     } catch (error) {
-      console.error(`❌ [Cache] Error saving cache:`, error.message);
       throw error;
     }
   }
@@ -99,7 +97,6 @@ class APICacheService {
       
       return false;
     } catch (error) {
-      console.error(`❌ [Cache] Error invalidating cache:`, error.message);
       return false;
     }
   }
@@ -125,7 +122,6 @@ class APICacheService {
         ttlDays: this.CACHE_TTL_DAYS
       };
     } catch (error) {
-      console.error(`❌ [Cache] Error getting stats:`, error.message);
       return null;
     }
   }

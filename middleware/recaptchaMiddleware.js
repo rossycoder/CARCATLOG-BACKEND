@@ -24,7 +24,6 @@ const verifyRecaptcha = async (req, res, next) => {
     const secretKey = process.env.RECAPTCHA_SECRET_KEY;
     
     if (!secretKey) {
-      console.error('❌ RECAPTCHA_SECRET_KEY not configured');
       // Allow request to proceed if not configured (for backward compatibility)
       return next();
     }
@@ -60,8 +59,6 @@ const verifyRecaptcha = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.error('❌ reCAPTCHA verification error:', error.message);
-    
     // Don't block the request if reCAPTCHA service is down
     // Log the error and proceed
     next();

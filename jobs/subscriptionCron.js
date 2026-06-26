@@ -40,7 +40,6 @@ async function convertExpiredTrials() {
 
     for (const sub of expiredTrials) {
       if (!sub.dealerId || !sub.planId) {
-        console.warn(`⚠️  Skipping ${sub._id} — missing dealer or plan`);
         continue;
       }
 
@@ -159,7 +158,6 @@ async function convertExpiredTrials() {
         await emailService.sendSubscriptionRenewed(dealer, sub);
 
       } catch (err) {
-        console.error(`❌ Failed to convert trial for ${dealer.businessName}:`, err.message);
         // Mark as past_due so the payment-failed cron picks it up
         sub.status = 'past_due';
         await sub.save();
@@ -168,7 +166,6 @@ async function convertExpiredTrials() {
     }
 
   } catch (error) {
-    console.error('❌ Error in convertExpiredTrials:', error);
   }
 }
 
@@ -201,7 +198,6 @@ async function checkExpiringSubscriptions() {
     }
 
   } catch (error) {
-    console.error('❌ Error in checkExpiringSubscriptions:', error);
   }
 }
 
@@ -244,7 +240,6 @@ async function checkExpiredSubscriptions() {
     }
 
   } catch (error) {
-    console.error('❌ Error in checkExpiredSubscriptions:', error);
   }
 }
 
@@ -272,7 +267,6 @@ async function checkPastDueSubscriptions() {
     }
 
   } catch (error) {
-    console.error('❌ Error in checkPastDueSubscriptions:', error);
   }
 }
 

@@ -53,7 +53,6 @@ router.post('/:carId', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ Error refreshing MOT history:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to refresh MOT history',
@@ -101,7 +100,6 @@ router.post('/vrm/:vrm', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ Error refreshing MOT history:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to refresh MOT history',

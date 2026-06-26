@@ -41,7 +41,6 @@ function extractModel(apiResponse) {
   }
   
   // If all fail, return null
-  console.warn('[HistoryParser] No model found in API response');
   return null;
 }
 

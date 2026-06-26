@@ -36,7 +36,6 @@ async function getVehicleHistory(req, res) {
       data: history,
     });
   } catch (error) {
-    console.error('Error in getVehicleHistory:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to retrieve vehicle history',
@@ -79,8 +78,6 @@ async function checkVehicleHistory(req, res) {
       data: history,
     });
   } catch (error) {
-    console.error('Error in checkVehicleHistory:', error);
-    
     // Check for daily limit error (403 Forbidden)
     if (error.isDailyLimitError || error.details?.status === 403) {
       return res.status(503).json({
@@ -135,8 +132,6 @@ async function getMOTHistory(req, res) {
       data: motHistory,
     });
   } catch (error) {
-    console.error('Error in getMOTHistory:', error);
-    
     // Handle API unavailability with fallback
     if (isAPIUnavailable(error)) {
       return res.status(503).json(handleHistoryAPIUnavailable(error));
@@ -179,8 +174,6 @@ async function getVehicleRegistration(req, res) {
       data: registration,
     });
   } catch (error) {
-    console.error('Error in getVehicleRegistration:', error);
-    
     const errorResponse = formatErrorResponse(error, 'vehicle registration');
     const statusCode = error.message.includes('Invalid VRM') ? 400 : 500;
     
@@ -211,8 +204,6 @@ async function getVehicleSpecs(req, res) {
       data: specs,
     });
   } catch (error) {
-    console.error('Error in getVehicleSpecs:', error);
-    
     const errorResponse = formatErrorResponse(error, 'vehicle specifications');
     const statusCode = error.message.includes('Invalid VRM') ? 400 : 500;
     
@@ -243,8 +234,6 @@ async function getMileageHistory(req, res) {
       data: mileage,
     });
   } catch (error) {
-    console.error('Error in getMileageHistory:', error);
-    
     const errorResponse = formatErrorResponse(error, 'mileage history');
     const statusCode = error.message.includes('Invalid VRM') ? 400 : 500;
     
@@ -275,8 +264,6 @@ async function getComprehensiveData(req, res) {
       data,
     });
   } catch (error) {
-    console.error('Error in getComprehensiveData:', error);
-    
     const errorResponse = formatErrorResponse(error, 'comprehensive vehicle data');
     const statusCode = error.message.includes('Invalid VRM') ? 400 : 500;
     

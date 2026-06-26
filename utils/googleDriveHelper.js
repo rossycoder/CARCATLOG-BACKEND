@@ -39,7 +39,6 @@ function convertDriveLinkToDirectURL(driveUrl) {
   }
 
   if (!fileId) {
-    console.warn('⚠️  Could not extract file ID from Drive URL:', driveUrl);
     return driveUrl; // Return original if we can't parse it
   }
 

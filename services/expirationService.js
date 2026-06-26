@@ -49,7 +49,6 @@ class ExpirationService {
           results.movedToDraft++;
 
         } catch (error) {
-          console.error(`Error moving car ${car._id} to draft:`, error);
           results.errors.push({
             carId: car._id,
             error: error.message
@@ -59,7 +58,6 @@ class ExpirationService {
 
       return results;
     } catch (error) {
-      console.error('Error in expireListings:', error);
       throw error;
     }
   }
@@ -104,7 +102,6 @@ class ExpirationService {
             results.warned++;
           }
         } catch (error) {
-          console.error(`Error sending warning for car ${car._id}:`, error);
           results.errors.push({
             carId: car._id,
             error: error.message
@@ -114,7 +111,6 @@ class ExpirationService {
 
       return results;
     } catch (error) {
-      console.error('Error in sendExpirationWarnings:', error);
       throw error;
     }
   }
@@ -280,7 +276,6 @@ The CarCatalog Team`;
 
       await sendEmail(email, subject, text, html);
     } catch (error) {
-      console.error('Error sending expiration notification:', error);
       throw error;
     }
   }
@@ -396,7 +391,6 @@ If you have any questions, please contact our support team.`;
 
       await sendEmail(email, subject, text, html);
     } catch (error) {
-      console.error('Error sending expiration warning:', error);
       throw error;
     }
   }

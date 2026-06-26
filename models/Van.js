@@ -597,7 +597,6 @@ vanSchema.pre('save', async function(next) {
         } else {
         }
       } catch (error) {
-        console.error(`❌ [Van Model] Error fetching coordinates:`, error.message);
       }
     }
   }

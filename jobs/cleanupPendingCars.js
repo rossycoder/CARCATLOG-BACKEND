@@ -82,9 +82,6 @@ async function cleanupPendingPaymentCars() {
     };
     
   } catch (error) {
-    console.error('❌ [Cleanup Job] Error during cleanup:', error);
-    console.error(error.stack);
-    
     return {
       success: false,
       error: error.message
@@ -125,7 +122,6 @@ async function cleanupOrphanedCars() {
     };
     
   } catch (error) {
-    console.error('❌ [Cleanup Job] Error during orphaned cars cleanup:', error);
     return {
       success: false,
       error: error.message
@@ -156,7 +152,6 @@ async function runDailyCleanup() {
     };
     
   } catch (error) {
-    console.error('❌ [Daily Cleanup Job] Fatal error:', error);
     return {
       success: false,
       error: error.message,

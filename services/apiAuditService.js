@@ -60,7 +60,6 @@ class APIAuditService {
       
       return logEntry;
     } catch (error) {
-      console.error(`❌ [Audit] Error logging API call:`, error.message);
       // Don't throw - logging failure shouldn't break the app
       return null;
     }
@@ -76,7 +75,6 @@ class APIAuditService {
     try {
       return await APICallLog.getCostSummary(startDate, endDate);
     } catch (error) {
-      console.error(`❌ [Audit] Error getting cost summary:`, error.message);
       return null;
     }
   }
@@ -90,7 +88,6 @@ class APIAuditService {
     try {
       return await APICallLog.getDailyCosts(days);
     } catch (error) {
-      console.error(`❌ [Audit] Error getting daily costs:`, error.message);
       return [];
     }
   }
@@ -106,7 +103,6 @@ class APIAuditService {
     try {
       return await APICallLog.getUserCosts(userId, startDate, endDate);
     } catch (error) {
-      console.error(`❌ [Audit] Error getting user costs:`, error.message);
       return [];
     }
   }
@@ -163,7 +159,6 @@ class APIAuditService {
         hitRate: Math.round(hitRate * 100) / 100
       };
     } catch (error) {
-      console.error(`❌ [Audit] Error getting cache hit rate:`, error.message);
       return null;
     }
   }
@@ -183,7 +178,6 @@ class APIAuditService {
       
       return false;
     } catch (error) {
-      console.error(`❌ [Audit] Error checking cost threshold:`, error.message);
       return false;
     }
   }
@@ -218,7 +212,6 @@ class APIAuditService {
       
       return report;
     } catch (error) {
-      console.error(`❌ [Audit] Error generating report:`, error.message);
       return 'Error generating report';
     }
   }

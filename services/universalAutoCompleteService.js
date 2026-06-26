@@ -122,7 +122,6 @@ class UniversalAutoCompleteService {
           
           // Check if meets minimum threshold (70%)
           if (!this.meetsCompletenessThreshold(revalidationResult)) {
-            console.warn(`⚠️  Vehicle data still below 70% completeness threshold`);
             // Continue anyway but log the issue
           }
         }
@@ -157,9 +156,6 @@ class UniversalAutoCompleteService {
       } catch (error) {
         // Rollback transaction on any error
         await session.abortTransaction();
-        console.error(`❌ Transaction aborted for ${vrm}:`, error.message);
-        console.error(`❌ [UniversalAutoComplete] Error for ${vrm}:`, error.message);
-        
         // Return standardized error response
         return this.createErrorResponse(error, vrm, 'PROCESSING_ERROR');
       } finally {
@@ -330,7 +326,6 @@ class UniversalAutoCompleteService {
     ];
     
     if (skipHistoryCheck) {
-      console.log(`ℹ️  Skipping expensive history check for pending_payment car: ${vrm}`);
     }
 
     const results = {};
@@ -398,7 +393,6 @@ class UniversalAutoCompleteService {
     
     // Add comprehensive error reporting
     if (errors.length > 0) {
-      console.warn(`⚠️  ${errors.length}/${endpoints.length} API calls failed for ${vrm}`);
       this.reportApiFailures(vrm, errors);
     }
     
@@ -522,7 +516,6 @@ class UniversalAutoCompleteService {
       }
       
     } catch (fallbackError) {
-      console.error(`   ❌ Fallback strategy failed for ${endpointName}:`, fallbackError.message);
     }
     
     return null;
@@ -1146,9 +1139,7 @@ class UniversalAutoCompleteService {
                          null;
       
       if (parsed.motDueDate) {
-        console.log(`✅ MOT Due Date found: ${parsed.motDueDate}`);
       } else {
-        console.log(`⚠️  No MOT due date found in response`);
       }
       
       // Handle both direct motHistory array and nested structure
@@ -1217,7 +1208,6 @@ class UniversalAutoCompleteService {
       vehicle.model = nm;
       vehicle.variant = nv;
       if (wasSwapped) {
-        console.log(`🔄 [UniversalService] model/variant corrected for ${vehicle.registrationNumber}: model="${nm}", variant="${nv}"`);
       }
     }
 
@@ -1404,7 +1394,6 @@ class UniversalAutoCompleteService {
         saveModel   = normalised.model;
         saveVariant = normalised.variant;
         if (normalised.wasSwapped) {
-          console.log(`🔄 [saveToVehicleHistory] corrected model/variant for ${vrm}: model="${saveModel}", variant="${saveVariant}"`);
         }
       }
 
@@ -1451,7 +1440,6 @@ class UniversalAutoCompleteService {
       return vehicleHistory;
       
     } catch (error) {
-      console.error('❌ Failed to save VehicleHistory:', error.message);
       throw error; // Re-throw to trigger transaction rollback
     }
   }
@@ -1506,7 +1494,6 @@ class UniversalAutoCompleteService {
       return null;
       
     } catch (error) {
-      console.error('❌ Cache check failed:', error.message);
       return null;
     }
   }
@@ -1526,7 +1513,6 @@ class UniversalAutoCompleteService {
       if (result.deletedCount > 0) {
       }
     } catch (error) {
-      console.error('❌ Cache cleanup failed:', error.message);
     }
   }
 
@@ -1544,7 +1530,6 @@ class UniversalAutoCompleteService {
           this.refreshCacheInBackground(vrm);
         }
       } catch (error) {
-        console.error(`❌ Cache warming failed for ${vrm}:`, error.message);
       }
     });
     
@@ -1581,7 +1566,6 @@ class UniversalAutoCompleteService {
               await this.completeCarData(vehicle, true);
               resolve();
             } catch (error) {
-              console.error(`❌ Background cache refresh failed for ${vrm}:`, error.message);
               resolve(); // Resolve anyway to clean up lock
             } finally {
               // Clean up lock after completion
@@ -1593,7 +1577,6 @@ class UniversalAutoCompleteService {
         this.processingLocks.set(refreshKey, refreshPromise);
       }
     } catch (error) {
-      console.error(`❌ Background cache refresh setup failed for ${vrm}:`, error.message);
     }
   }
 
@@ -1616,7 +1599,6 @@ class UniversalAutoCompleteService {
       vehicle.model = nm;
       vehicle.variant = nv;
       if (wasSwapped) {
-        console.log(`🔄 [UniversalService/cache] model/variant corrected for ${vehicle.registrationNumber}: model="${nm}", variant="${nv}"`);
       }
     }
     
@@ -2070,7 +2052,6 @@ class UniversalAutoCompleteService {
       };
       
     } catch (error) {
-      console.error(`❌ [UniversalAutoComplete] Comprehensive fetch failed:`, error);
       return {
         vrm: vrm.toUpperCase(),
         success: false,
@@ -2663,7 +2644,6 @@ class UniversalAutoCompleteService {
       });
       
     } catch (fallbackError) {
-      console.error('❌ Fallback data application failed:', fallbackError.message);
       return this.createErrorResponse(fallbackError, vehicle.registrationNumber, 'FALLBACK_ERROR');
     }
   }
@@ -2809,7 +2789,6 @@ class UniversalAutoCompleteService {
       };
       
     } catch (error) {
-      console.error(`❌ [UniversalAutoComplete] getVehicleData error for ${vrm}:`, error.message);
       return {
         success: false,
         error: error.message || 'Failed to fetch vehicle data'

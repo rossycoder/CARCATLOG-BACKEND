@@ -96,11 +96,6 @@ class StripeService {
         currency: 'gbp'
       };
     } catch (error) {
-      console.error('❌ Error creating advertising checkout session:', error);
-      console.error('   Error type:', error.type);
-      console.error('   Error code:', error.code);
-      console.error('   Package details:', { packageId, packageName, price });
-      
       if (error.type === 'StripeCardError') {
         throw new Error('Payment method declined. Please try a different card.');
       } else if (error.type === 'StripeRateLimitError') {
@@ -182,7 +177,6 @@ class StripeService {
         currency: 'gbp'
       };
     } catch (error) {
-      console.error('Error creating Stripe checkout session:', error);
       throw new Error(`Failed to create payment session: ${error.message}`);
     }
   }
@@ -253,7 +247,6 @@ class StripeService {
         currency: 'gbp'
       };
     } catch (error) {
-      console.error('Error creating credit checkout session:', error);
       throw new Error(`Failed to create credit payment session: ${error.message}`);
     }
   }
@@ -268,7 +261,6 @@ class StripeService {
       const session = await this.stripe.checkout.sessions.retrieve(sessionId);
       return session;
     } catch (error) {
-      console.error('Error retrieving checkout session:', error);
       throw new Error(`Failed to retrieve payment session: ${error.message}`);
     }
   }
@@ -288,7 +280,6 @@ class StripeService {
       );
       return event;
     } catch (error) {
-      console.error('Webhook signature verification failed:', error);
       throw new Error(`Webhook signature verification failed: ${error.message}`);
     }
   }
@@ -315,7 +306,6 @@ class StripeService {
         created: new Date(paymentIntent.created * 1000)
       };
     } catch (error) {
-      console.error('Error processing successful payment:', error);
       throw new Error(`Failed to process payment: ${error.message}`);
     }
   }
@@ -350,7 +340,6 @@ class StripeService {
         created: new Date(refund.created * 1000)
       };
     } catch (error) {
-      console.error('Error creating refund:', error);
       throw new Error(`Failed to create refund: ${error.message}`);
     }
   }
@@ -365,7 +354,6 @@ class StripeService {
       const paymentIntent = await this.stripe.paymentIntents.retrieve(paymentIntentId);
       return paymentIntent;
     } catch (error) {
-      console.error('Error retrieving payment intent:', error);
       throw new Error(`Failed to retrieve payment details: ${error.message}`);
     }
   }

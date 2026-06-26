@@ -16,28 +16,21 @@ let isRunning = false;
  */
 async function processPendingImages() {
   if (isRunning) {
-    console.log('⏭️  Image processing already running, skipping...');
     return;
   }
 
   isRunning = true;
 
   try {
-    console.log('\n🖼️  Starting image processing job...');
-
     // Find all feed vehicles with pending images
     const pendingImages = await FeedImage.find({
       downloadStatus: 'pending'
     }).limit(50); // Process max 50 images per run
 
     if (pendingImages.length === 0) {
-      console.log('✅ No pending images to process');
       isRunning = false;
       return;
     }
-
-    console.log(`📊 Found ${pendingImages.length} pending images`);
-
     // Group by feedVehicleId
     const vehicleGroups = {};
     for (const image of pendingImages) {
@@ -58,7 +51,6 @@ async function processPendingImages() {
         const feedVehicle = await FeedVehicle.findById(feedVehicleId);
         
         if (!feedVehicle || !feedVehicle.carId) {
-          console.warn(`⚠️  No car linked for feed vehicle ${feedVehicleId}`);
           continue;
         }
 
@@ -72,14 +64,9 @@ async function processPendingImages() {
         totalSuccessful += result.success; // Use result.success instead of the whole object
 
       } catch (error) {
-        console.error(`Error processing vehicle ${feedVehicleId}:`, error.message);
       }
     }
-
-    console.log(`✅ Image processing complete: ${totalSuccessful}/${totalProcessed} successful`);
-
   } catch (error) {
-    console.error('❌ Image processing job error:', error);
   } finally {
     isRunning = false;
   }

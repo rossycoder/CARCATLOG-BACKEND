@@ -14,7 +14,6 @@ router.post('/expire-listings', async (req, res) => {
       results
     });
   } catch (error) {
-    console.error('Error in manual expiration trigger:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to expire listings',
@@ -36,7 +35,6 @@ router.post('/send-warnings', async (req, res) => {
       results
     });
   } catch (error) {
-    console.error('Error in manual warning trigger:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to send warnings',
@@ -56,7 +54,6 @@ router.get('/expiration-stats', async (req, res) => {
       stats
     });
   } catch (error) {
-    console.error('Error getting expiration stats:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get stats',
@@ -78,7 +75,6 @@ router.post('/cleanup-expired', async (req, res) => {
       deletedCount: results.deletedCount
     });
   } catch (error) {
-    console.error('Error in manual cleanup:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to cleanup',

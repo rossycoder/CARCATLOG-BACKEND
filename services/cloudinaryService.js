@@ -44,7 +44,6 @@ const uploadImage = async (imageData, options = {}) => {
       }
     };
   } catch (error) {
-    console.error('Cloudinary upload error:', error);
     return {
       success: false,
       error: error.message
@@ -85,7 +84,6 @@ const deleteImage = async (publicId) => {
       data: result
     };
   } catch (error) {
-    console.error('Cloudinary delete error:', error);
     return {
       success: false,
       error: error.message

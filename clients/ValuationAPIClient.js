@@ -94,7 +94,6 @@ class ValuationAPIClient {
         return parsedResult;
       } catch (parseError) {
         // If parsing fails due to malformed response, try partial parsing
-        console.warn('Failed to parse complete valuation response, attempting partial parse');
         const partialResult = handlePartialValuationResponse(apiResponse, this.isTestMode);
         return partialResult;
       }
@@ -110,9 +109,6 @@ class ValuationAPIClient {
         mileage,
         isTestMode: this.isTestMode,
       };
-
-      console.error('Valuation API call failed:', errorDetails);
-      
       // Check if this is a 404 (vehicle not found) wrapped in 500
       const is404Error = error.response?.status === 500 && 
                          error.response?.data?.message?.code === 404;

@@ -87,7 +87,6 @@ router.post('/add-electric-vehicle', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Demo error:', error);
     res.status(500).json({
       success: false,
       error: {
@@ -129,7 +128,6 @@ router.get('/electric-vehicles', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Demo error:', error);
     res.status(500).json({
       success: false,
       error: {
@@ -157,7 +155,6 @@ router.delete('/cleanup', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Demo cleanup error:', error);
     res.status(500).json({
       success: false,
       error: {

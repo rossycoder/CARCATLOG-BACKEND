@@ -13,8 +13,6 @@ const createAdvert = async (req, res) => {
   try {
     
     const { vehicleData } = req.body;
-    
-    console.log('🔍 [createAdvert] Request received');
     console.log('   Vehicle Data:', JSON.stringify(vehicleData, null, 2));
     
     if (!vehicleData) {
@@ -29,12 +27,8 @@ const createAdvert = async (req, res) => {
     // CRITICAL: Check for existing car with same registration to avoid duplicate API calls
     // Check ALL statuses (active, pending_payment, draft) - not just active
     const registration = vehicleData.registration || vehicleData.registrationNumber;
-    console.log('🔍 [createAdvert] Checking for existing car with registration:', registration);
-    
     if (registration) {
       const cleanReg = registration.toUpperCase().replace(/\s/g, '');
-      console.log('   Cleaned registration:', cleanReg);
-      
       // Find ANY existing car with this registration (any status)
       const existing = await Car.findOne({ 
         registrationNumber: cleanReg 
@@ -57,28 +51,18 @@ const createAdvert = async (req, res) => {
                                   (carDealerId && currentDealerId && carDealerId === currentDealerId) ||
                                   req.user.isAdmin;
         }
-        
-        console.log(`   🔐 Ownership check: ${isOwnedByCurrentUser ? 'OWNED BY USER' : 'OWNED BY DIFFERENT USER'}`);
-        
         // ⚠️ ONLY block if this is a DIFFERENT dealer's car (from feed import)
         if (existing.dealerId && !existing.advertId && !isOwnedByCurrentUser) {
-          console.log(`⚠️ [createAdvert] This car belongs to a DIFFERENT Trade Dealer`);
-          console.log(`   Registration ${cleanReg} is already in use by another dealer.`);
-          
           return res.status(409).json({
             success: false,
             message: `Registration ${registration} is already listed by another dealer. You cannot list the same vehicle.`,
             error: 'DEALER_CAR_EXISTS'
           });
         }
-        
-        console.log(`   Car Status: ${existing.advertStatus}`);
-        console.log(`   Car MongoDB _id: ${existing._id}`);
         console.log(`   Car advertId (UUID): ${existing.advertId}`);
         
         // CRITICAL: If car is ACTIVE and owned by DIFFERENT user, return special response
         if (existing.advertStatus === 'active' && !isOwnedByCurrentUser) {
-          console.log(`   ⚠️ Active car owned by different user - returning car detail page redirect`);
           return res.status(200).json({
             success: true,
             data: {
@@ -91,9 +75,6 @@ const createAdvert = async (req, res) => {
             }
           });
         }
-        
-        console.log(`   ✅ Same user re-adding their own car - returning for edit page`);
-        console.log(`   Returning existing car data - SKIPPING API calls to save costs`);
         console.log(`   Will use MongoDB _id: ${existing._id.toString()} for routing`);
         
         // Return existing car data to frontend
@@ -134,8 +115,6 @@ const createAdvert = async (req, res) => {
           }
         });
       } else {
-        console.log(`❌ [createAdvert] No existing car found for registration: ${cleanReg}`);
-        console.log('   Creating new car...');
       }
     }
     
@@ -333,7 +312,6 @@ const createAdvert = async (req, res) => {
         } else {
         }
       } catch (syncError) {
-        console.error(`❌ Failed to sync MOT data:`, syncError.message);
         // Don't fail the request - continue without MOT data
       }
     }
@@ -385,7 +363,6 @@ const createAdvert = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ Error:', error.message);
     res.status(500).json({
       success: false,
       message: 'Failed to create advert',
@@ -481,7 +458,6 @@ const getAdvert = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching advert:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch advert'
@@ -848,7 +824,6 @@ const updateAdvert = async (req, res) => {
             );
             
           } catch (historyError) {
-            console.error('⚠️ [updateAdvert] Failed to update VehicleHistory:', historyError.message);
             // Don't fail the whole operation if VehicleHistory update fails
           }
         }
@@ -864,8 +839,6 @@ const updateAdvert = async (req, res) => {
         });
         
       } catch (error) {
-        console.error(`❌ [updateAdvert] Error on attempt ${attempt + 1}:`, error.message);
-        
         if (error.name === 'VersionError' && attempt < maxRetries - 1) {
           attempt++;
           await new Promise(resolve => setTimeout(resolve, 100 * attempt)); // Exponential backoff
@@ -892,8 +865,6 @@ const updateAdvert = async (req, res) => {
     throw new Error('Failed to update after multiple attempts due to concurrent modifications');
     
   } catch (error) {
-    console.error('❌ [updateAdvert] Error updating advert:', error);
-    console.error('❌ [updateAdvert] Error stack:', error.stack);
     res.status(500).json({
       success: false,
       message: 'Failed to update advert',
@@ -931,7 +902,6 @@ const publishAdvert = async (req, res) => {
       message: 'Advert published successfully'
     });
   } catch (error) {
-    console.error('Error publishing advert:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to publish advert'
@@ -969,8 +939,6 @@ const deleteAdvert = async (req, res) => {
         }
       });
     } else {
-      console.error('❌ [deleteAdvert] Delete failed:', result.error);
-      
       return res.status(404).json({
         success: false,
         message: result.error || 'Car not found'
@@ -978,8 +946,6 @@ const deleteAdvert = async (req, res) => {
     }
     
   } catch (error) {
-    console.error('❌ [deleteAdvert] Error:', error);
-    
     return res.status(500).json({
       success: false,
       message: 'Failed to delete advert'

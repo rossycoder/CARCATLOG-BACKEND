@@ -24,7 +24,6 @@ const adminAuth = (req, res, next) => {
     // User is admin, proceed
     next();
   } catch (error) {
-    console.error('Admin auth error:', error);
     return res.status(500).json({
       success: false,
       message: 'Server error'

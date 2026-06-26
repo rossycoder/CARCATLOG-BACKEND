@@ -74,12 +74,7 @@ class FeedImportService {
       stats.vehicles_found = mappedVehicles.length;
 
       if (mappedVehicles.length === 0) {
-        console.error('❌ No vehicles found in feed!');
-        console.error('   Feed URL:', feedUrl);
-        console.error('   Format:', format);
-        console.error('   Provider:', provider);
         console.error('   Parsed data keys:', typeof parsedData === 'object' ? Object.keys(parsedData) : 'not an object');
-        console.error('   Parsed data type:', typeof parsedData);
         console.error('   Is array?:', Array.isArray(parsedData));
         throw new Error('No vehicles found in feed');
       }
@@ -214,23 +209,12 @@ class FeedImportService {
         const currentUsage = await this.getCurrentListingUsage(dealerId);
         const availableSlots = Math.max(0, subscription.listingsLimit - currentUsage);
         const originalFeedCount = mappedVehicles.length; // Save original count for logging
-
-        console.log(`🔒 [Feed Import] Subscription check:`, {
-          plan: subscription.planName || 'Unknown',
-          limit: subscription.listingsLimit,
-          currentUsage: currentUsage,
-          available: availableSlots,
-          foundInFeed: originalFeedCount
-        });
-
         if (availableSlots <= 0) {
           throw new Error(`Subscription limit reached. You have used ${currentUsage} out of ${subscription.listingsLimit} listings (including active, sold, and draft cars).`);
         }
 
         if (availableSlots < originalFeedCount) {
           const carsToIgnore = originalFeedCount - availableSlots; // Calculate BEFORE slicing
-          
-          console.log(`⚠️  [Feed Import] Applying limit: reducing from ${originalFeedCount} to ${availableSlots} vehicles`);
           console.log(`📊 [Feed Import] Current database count: ${currentUsage} cars (active + sold + draft)`);
           console.log(`🚫 [Feed Import] ${carsToIgnore} cars will be IGNORED (exceed limit)`);
           
@@ -257,7 +241,6 @@ class FeedImportService {
           if (isSold) {
             if (isFirstImport) {
               // ✅ First import: SKIP sold cars (don't add to database)
-              console.log(`⏭️  [SKIP] Sold on first import: ${mappedVehicle.make} ${mappedVehicle.model}`);
               stats.vehicles_skipped++;
               continue; // Skip sold car
             }
@@ -269,21 +252,14 @@ class FeedImportService {
               if (mappedVehicle.registration) orQuery.push({ registrationNumber: mappedVehicle.registration });
               
               if (orQuery.length === 0) {
-                console.log(`⚠️  [SOLD] No stockId or registration for: ${mappedVehicle.make}`);
                 stats.vehicles_skipped++;
                 continue;
               }
-              
-              console.log(`🔍 [SOLD] Looking for car to mark as sold:`, { dealerId, orQuery });
-              
               const soldCar = await Car.findOneAndUpdate(
                 { dealerId, $or: orQuery, advertStatus: { $ne: 'sold' } },
                 { $set: { advertStatus: 'sold', soldAt: new Date() } },
                 { new: true }
               );
-              
-              console.log(`🔍 [SOLD] findOneAndUpdate result:`, soldCar ? `FOUND - ${soldCar._id}` : 'NOT FOUND');
-              
               if (soldCar) {
                 await FeedVehicle.findOneAndUpdate(
                   { dealerId, feedId: dealerFeed._id, stockId: mappedVehicle.stock_id },
@@ -292,11 +268,9 @@ class FeedImportService {
                 stats.vehicles_updated++;
                 console.log(`✅ [SOLD] Marked sold: ${mappedVehicle.make} ${mappedVehicle.model} (stockId: ${mappedVehicle.stock_id})`);
               } else {
-                console.log(`⚠️  [SOLD] Car not in DB or already sold: stockId=${mappedVehicle.stock_id}`);
                 stats.vehicles_skipped++;
               }
             } catch (soldError) {
-              console.error(`❌ [SOLD] Error:`, soldError.message);
               stats.errors.push({ stockId: mappedVehicle.stock_id, error: soldError.message });
             }
             
@@ -311,7 +285,6 @@ class FeedImportService {
             const currentUsage = await this.getCurrentListingUsage(dealerId);
             
             if (currentUsage >= subscription.listingsLimit) {
-              console.log(`🚫 [Feed Import] HARD STOP - Subscription limit ${subscription.listingsLimit} reached`);
               console.log(`📊 [Feed Import] Current count: ${currentUsage} cars (active + sold + draft)`);
               console.log(`⏭️  [Feed Import] Remaining ${mappedVehicles.indexOf(mappedVehicle) - mappedVehicles.length} cars will NOT be added to database`);
               
@@ -336,8 +309,6 @@ class FeedImportService {
           if (result.unsplashImages) stats.unsplash_images_used += result.unsplashImages;
 
         } catch (error) {
-          console.error(`❌ [Feed Import] Error processing ${mappedVehicle.stock_id}:`, error.message);
-          console.error(`   Stack trace:`, error.stack);
           stats.errors.push({ stockId: mappedVehicle.stock_id, error: error.message });
         }
       }
@@ -414,14 +385,7 @@ class FeedImportService {
   async processVehicleEnhanced(dealerId, feedId, mappedVehicle, options = {}) {
     try {
       console.log('\n' + '═'.repeat(80));
-      console.log('🔍 [processVehicleEnhanced] Processing vehicle...');
       console.log('═'.repeat(80));
-      console.log('📋 Input Data:');
-      console.log('   stockId:', mappedVehicle.stock_id);
-      console.log('   make:', mappedVehicle.make);
-      console.log('   model:', mappedVehicle.model);
-      console.log('   registration:', mappedVehicle.registration);
-      console.log('   imageCount:', mappedVehicle.images?.length || 0);
       console.log('═'.repeat(80) + '\n');
 
       // ── Step 1: Save/update FeedVehicle record ─────────────────────────────
@@ -442,14 +406,9 @@ class FeedImportService {
       // ═══════════════════════════════════════════════════════════════════════
       if (!feedVehicleData.stockId || feedVehicleData.stockId === 'null' || feedVehicleData.stockId === 'undefined') {
         const errorMsg = `FATAL: Attempting to create FeedVehicle with invalid stockId! stockId=${feedVehicleData.stockId}`;
-        console.error('❌ ' + errorMsg);
-        console.error('   mappedVehicle.stock_id =', mappedVehicle.stock_id);
         console.error('   mappedVehicle keys:', Object.keys(mappedVehicle));
         throw new Error(errorMsg);
       }
-      
-      console.log('✅ [processVehicleEnhanced] Valid stockId confirmed before FeedVehicle creation:', feedVehicleData.stockId);
-
       // ═══════════════════════════════════════════════════════════════════════
       // 🔧 FIX: Use upsert with retry logic to avoid race condition
       // This prevents "concurrent modification" errors when same car is processed multiple times
@@ -479,7 +438,6 @@ class FeedImportService {
           );
           
           if (feedVehicle) {
-            console.log(`✅ [processVehicleEnhanced] Upserted FeedVehicle: ${feedVehicle._id}`);
             break; // Success - exit loop
           }
         } catch (upsertError) {
@@ -487,19 +445,14 @@ class FeedImportService {
           
           if (upsertError.code === 11000) {
             // Duplicate key - wait and retry
-            console.log(`⚠️  [processVehicleEnhanced] Retry ${retryCount}/${maxRetries} - duplicate detected for stockId: ${mappedVehicle.stock_id}`);
-            console.log(`   Duplicate key error:`, upsertError.message);
-            
             // On final retry, try to find existing FeedVehicle
             if (retryCount >= maxRetries) {
-              console.log(`⚠️  [processVehicleEnhanced] Max retries reached, attempting to find existing FeedVehicle...`);
               feedVehicle = await FeedVehicle.findOne({ 
                 dealerId, 
                 feedId, 
                 stockId: mappedVehicle.stock_id 
               });
               if (feedVehicle) {
-                console.log(`✅ [processVehicleEnhanced] Found existing FeedVehicle: ${feedVehicle._id}`);
                 break; // Exit retry loop with existing FeedVehicle
               }
             } else {
@@ -507,7 +460,6 @@ class FeedImportService {
             }
           } else {
             // Other error - throw immediately
-            console.error(`❌ [processVehicleEnhanced] Non-duplicate error:`, upsertError.message);
             throw upsertError;
           }
         }
@@ -515,7 +467,6 @@ class FeedImportService {
       
       if (!feedVehicle) {
         // WORKAROUND: Skip this vehicle instead of failing entire import
-        console.error(`⚠️  [processVehicleEnhanced] Skipping vehicle after ${maxRetries} retries: ${mappedVehicle.stock_id}`);
         return { 
           action: 'skipped', 
           reason: 'Failed to create FeedVehicle - possible duplicate or race condition',
@@ -526,36 +477,15 @@ class FeedImportService {
       // ═══════════════════════════════════════════════════════════════════════
       // 🔍 FINAL VALIDATION: Double-check FeedVehicle has valid stockId
       // ═══════════════════════════════════════════════════════════════════════
-      console.log('🔍 [processVehicleEnhanced] Final FeedVehicle validation:');
-      console.log('   FeedVehicle._id:', feedVehicle._id);
-      console.log('   FeedVehicle.stockId:', feedVehicle.stockId);
-      console.log('   FeedVehicle.vehicleData exists:', !!feedVehicle.vehicleData);
-      console.log('   FeedVehicle.vehicleData.stock_id:', feedVehicle.vehicleData?.stock_id);
-      
       if (!feedVehicle.stockId) {
         const errorMsg = `FATAL: FeedVehicle ${feedVehicle._id} was saved but has no stockId!`;
-        console.error('❌ ' + errorMsg);
         throw new Error(errorMsg);
       }
-      
-      console.log('✅ [processVehicleEnhanced] FeedVehicle validation passed!\n');
-
       // ── Step 2: Create/update Car listing ─────────────────────────────────
       let carResult;
       try {
-        console.log(`🚗 [processVehicleEnhanced] Creating car from FeedVehicle:`, {
-          feedVehicleId: feedVehicle._id,
-          stockId: feedVehicle.stockId,
-          make: feedVehicle.vehicleData?.make,
-          model: feedVehicle.vehicleData?.model
-        });
-        
         carResult = await this.createOrUpdateCarListing(feedVehicle, options);
-        console.log(`✅ [processVehicleEnhanced] Car ${carResult.action}: ${carResult.car?._id}`);
       } catch (carError) {
-        console.error(`❌ [processVehicleEnhanced] Car creation error for stock ${feedVehicle.stockId}:`, carError.message);
-        console.error(`   Error code:`, carError.code);
-        console.error(`   Full error:`, carError);
         throw new Error(`Failed to create car listing for stock ${feedVehicle.stockId}: ${carError.message}`);
       }
 
@@ -569,17 +499,13 @@ class FeedImportService {
         // Save FeedImage records (pending download)
         try {
           imagesCount = await this.importImages(feedVehicle._id, imageList);
-          console.log(`🖼️  [processVehicleEnhanced] Saved ${imagesCount} image records`);
         } catch (imageError) {
-          console.warn(`⚠️  [processVehicleEnhanced] Image save warning: ${imageError.message}`);
           // Don't fail the whole vehicle import if images fail
         }
 
         // Kick off background download → Cloudinary → Car.images update
         if (carResult.car && imagesCount > 0) {
-          console.log(`🖼️  [processVehicleEnhanced] Background image processing for car ${carResult.car._id}`);
           this.processImagesAsync(feedVehicle._id, carResult.car._id).catch(err => {
-            console.error(`Background image processing failed for ${feedVehicle._id}:`, err.message);
           });
         }
 
@@ -599,12 +525,6 @@ class FeedImportService {
 
     } catch (error) {
       // 🚨 CATCH ANY ERROR and log it clearly
-      console.error(`\n❌ [processVehicleEnhanced] FATAL ERROR processing vehicle ${mappedVehicle.stock_id || 'UNKNOWN'}:`);
-      console.error(`   Error message: ${error.message}`);
-      console.error(`   Error name: ${error.name}`);
-      console.error(`   Error code: ${error.code}`);
-      console.error(`   Stack trace:`, error.stack);
-      console.error();
       throw error; // Re-throw with original error for proper error handling
     }
   }
@@ -633,7 +553,6 @@ class FeedImportService {
         planName: subscription?.planId?.name || 'No Plan'
       };
     } catch (error) {
-      console.error('❌ [checkSubscriptionLimits] Error:', error.message);
       // Return unlimited if check fails (don't block import)
       return { listingsLimit: null, listingsUsed: 0, hasLimit: false, planName: 'Unknown' };
     }
@@ -656,7 +575,6 @@ class FeedImportService {
       console.log(`📊 [getCurrentListingUsage] Dealer ${dealerId}: ${count} cars (active + sold + draft)`);
       return count;
     } catch (error) {
-      console.error('❌ [getCurrentListingUsage] Error:', error.message);
       return 0;
     }
   }
@@ -722,11 +640,9 @@ class FeedImportService {
         imagesCount = await this.importImages(feedVehicle._id, mappedVehicle.images);
         if (car && imagesCount > 0) {
           this.processImagesAsync(feedVehicle._id, car._id).catch(err => {
-            console.error(`Background image processing failed for ${feedVehicle._id}:`, err.message);
           });
         }
       } catch (error) {
-        console.error(`Failed to import images for ${mappedVehicle.stock_id}:`, error.message);
       }
     }
 
@@ -740,7 +656,6 @@ class FeedImportService {
     try {
       await feedImageService.processVehicleImages(feedVehicleId, carId);
     } catch (error) {
-      console.error('Async image processing error:', error);
     }
   }
 
@@ -832,7 +747,6 @@ class FeedImportService {
 
       return car;
     } catch (error) {
-      console.error('Error syncing car listing:', error);
       return null;
     }
   }
@@ -858,13 +772,11 @@ class FeedImportService {
           });
           count++;
         } catch (error) {
-          console.error(`Error creating image record:`, error.message);
         }
       }
 
       return count;
     } catch (error) {
-      console.error('importImages fatal error:', error);
       throw error;
     }
   }
@@ -888,8 +800,6 @@ class FeedImportService {
       try {
         // Delete FeedVehicle
         await FeedVehicle.findByIdAndDelete(vehicle._id);
-        console.log(`✅ [ARCHIVE] Deleted FeedVehicle: ${vehicle.stockId}`);
-        
         // Delete associated Car from database
         if (vehicle.carId) {
           const deletedCar = await Car.findByIdAndDelete(vehicle.carId);
@@ -899,19 +809,16 @@ class FeedImportService {
             // Also delete associated VehicleHistory if exists
             if (deletedCar.vehicleHistory) {
               await VehicleHistory.findByIdAndDelete(deletedCar.vehicleHistory);
-              console.log(`✅ [ARCHIVE] Deleted VehicleHistory for: ${deletedCar.registrationNumber}`);
             }
           }
         }
         
         count++;
       } catch (error) {
-        console.error(`❌ [ARCHIVE] Error deleting ${vehicle.stockId}:`, error.message);
       }
     }
 
     if (count > 0) {
-      console.log(`🎯 [ARCHIVE] Successfully deleted ${count} cars that were removed from feed`);
     }
 
     return count;
@@ -938,7 +845,6 @@ class FeedImportService {
     
     // ── Registration zaroori hai ──────────────────────────────────────────────
     if (!mappedVehicle.registration) {
-      console.log(`⏭️  [API] No registration — skipping enrichment`);
       return null;
     }
 
@@ -949,15 +855,6 @@ class FeedImportService {
       // ── Step 1: Cache check (30 din valid) ──────────────────────────────────
       // Agar pehle call ho chuki hai aur 30 din nahi guzre, dobara call nahi hogi
       const cachedData = await this.checkCachedVehicleData(registration);
-      
-      console.log(`🔍 [API] Smart check for ${registration}:`, {
-        hasSpecs: cachedData.hasSpecs,
-        hasMOT: cachedData.hasMOT,
-        hasHistory: cachedData.hasHistory,
-        hasValuation: cachedData.hasValuation,
-        cache: cachedData.summary
-      });
-
       // ── Step 2: Decide kya kya missing hai ────────────────────────────────────
       // 🆕 SMART MISSING FIELD DETECTION: Call API if ANY important field is missing
       // This ensures high-quality, complete listings that build user trust
@@ -1031,7 +928,6 @@ class FeedImportService {
           reasons.push('No cached specs');
         }
         console.log(`   🔍 ${reasons.join(' | ')}`);
-        console.log(`   📞 Calling Specs API to fill missing data...`);
       }
       
       // MOT: sirf tab call ho jab MOT history feed mein nahi hai
@@ -1057,8 +953,6 @@ class FeedImportService {
                         (needsValuation ? 0.02 : 0);
 
       if (!needsSpecs && !needsMOT && !needsHistory && !needsValuation) {
-        console.log(`✅ [API] ${registration}: Sab data already available — no API calls needed`);
-        
         // ✅ FIX: Return cached data instead of null!
         // Load cached data from existing car/history
         const enrichment = {};
@@ -1085,7 +979,6 @@ class FeedImportService {
               retailPrice: existingCar.valuationData?.retailPrice,
               confidence: existingCar.valuationData?.confidence || 'medium'
             };
-            console.log(`   💷 Using cached valuation: £${existingCar.estimatedValue}`);
           }
         }
         
@@ -1097,7 +990,6 @@ class FeedImportService {
             enrichment.motHistory = existingCar.motHistory;
             enrichment.motStatus = existingCar.motStatus;
             enrichment.motExpiry = existingCar.motExpiry;
-            console.log(`   🔧 Using cached MOT: ${existingCar.motHistory.length} tests`);
           }
         }
         
@@ -1122,7 +1014,6 @@ class FeedImportService {
           specsClient.getVehicleData(registration)
             .then(data => ({ type: 'specs', data }))
             .catch(err => {
-              console.warn(`⚠️  [API] Specs failed for ${registration}:`, err.message);
               return { type: 'specs', data: null };
             })
         );
@@ -1136,7 +1027,6 @@ class FeedImportService {
           motService.getMOTHistory(registration)
             .then(data => ({ type: 'mot', data }))
             .catch(err => {
-              console.warn(`⚠️  [API] MOT failed for ${registration}:`, err.message);
               return { type: 'mot', data: null };
             })
         );
@@ -1151,7 +1041,6 @@ class FeedImportService {
           historyService.checkVehicleHistory(registration, false)
             .then(data => ({ type: 'history', data }))
             .catch(err => {
-              console.warn(`⚠️  [API] History failed for ${registration}:`, err.message);
               return { type: 'history', data: null };
             })
         );
@@ -1170,7 +1059,6 @@ class FeedImportService {
           valuationClient.getValuation(registration, mappedVehicle.mileage)
             .then(data => ({ type: 'valuation', data }))
             .catch(err => {
-              console.warn(`⚠️  [API] Valuation failed for ${registration}:`, err.message);
               return { type: 'valuation', data: null };
             })
         );
@@ -1198,16 +1086,13 @@ class FeedImportService {
           if (!rawSpecs.variant || rawSpecs.variant === 'undefined' || rawSpecs.variant === 'null') rawSpecs.variant = null;
           if (!rawSpecs.color || rawSpecs.color === 'undefined' || rawSpecs.color === 'null') rawSpecs.color = null;
           enrichment.specs = rawSpecs;
-          console.log(`✅ [API] Specs fetched for ${registration}: variant="${rawSpecs.variant}", fuelType="${rawSpecs.fuelType}", color="${rawSpecs.color}", seats=${rawSpecs.seats}`);
         } else if (result.type === 'mot') {
           enrichment.motHistory = result.data.motTests || result.data.motHistory || [];
           enrichment.motStatus  = result.data.motStatus;
           enrichment.motDue     = result.data.motExpiryDate || result.data.motDueDate;
           enrichment.motExpiry  = result.data.motExpiryDate;
-          console.log(`✅ [API] MOT fetched for ${registration}: ${enrichment.motHistory.length} tests`);
         } else if (result.type === 'history') {
           enrichment.history = result.data;
-          console.log(`✅ [API] History fetched for ${registration}`);
         } else if (result.type === 'valuation') {
           // Handle different valuation response formats
           const valuationData = result.data;
@@ -1234,14 +1119,12 @@ class FeedImportService {
           };
           
           const displayPrice = enrichment.valuation.estimatedValue || enrichment.valuation.privatePrice || 'N/A';
-          console.log(`✅ [API] Valuation fetched for ${registration}: £${displayPrice}`);
         }
       }
 
       return Object.keys(enrichment).length > 0 ? enrichment : null;
 
     } catch (error) {
-      console.error(`❌ [API] Error enriching ${registration}:`, error.message);
       return Object.keys(enrichment).length > 0 ? enrichment : null;
     }
   }
@@ -1313,7 +1196,6 @@ class FeedImportService {
       };
 
     } catch (error) {
-      console.error('Error checking cache:', error.message);
       return {
         hasSpecs: false,
         hasMOT: false,
@@ -1339,7 +1221,6 @@ class FeedImportService {
         maxCostPerCar: dealer?.settings?.maxAPIEnrichmentCost || 2.00 // Max £2 per car
       };
     } catch (error) {
-      console.error('Error fetching dealer settings:', error.message);
       return { enabled: true, maxCostPerCar: 2.00 }; // ✅ Default: ENABLED
     }
   }
@@ -1352,13 +1233,6 @@ class FeedImportService {
       // ═══════════════════════════════════════════════════════════════════════
       // 🔍 DIAGNOSTIC: Check feedVehicle data integrity
       // ═══════════════════════════════════════════════════════════════════════
-      console.log('\n🚗 [createOrUpdateCarListing] Starting car creation/update...');
-      console.log('   FeedVehicle ID:', feedVehicle._id);
-      console.log('   FeedVehicle.stockId:', feedVehicle.stockId);
-      console.log('   FeedVehicle.vehicleData exists:', !!feedVehicle.vehicleData);
-      console.log('   FeedVehicle.vehicleData.stock_id:', feedVehicle.vehicleData?.stock_id);
-      console.log('   FeedVehicle.carId:', feedVehicle.carId);
-      
       const mappedVehicle = feedVehicle.vehicleData || {};
       
       // ═══════════════════════════════════════════════════════════════════════
@@ -1366,14 +1240,8 @@ class FeedImportService {
       // ═══════════════════════════════════════════════════════════════════════
       if (!feedVehicle.stockId || feedVehicle.stockId === 'null' || feedVehicle.stockId === 'undefined') {
         const errorMsg = `FATAL: FeedVehicle ${feedVehicle._id} has no valid stockId!`;
-        console.error('❌ ' + errorMsg);
-        console.error('   feedVehicle.stockId =', feedVehicle.stockId);
-        console.error('   mappedVehicle.stock_id =', mappedVehicle.stock_id);
         throw new Error(errorMsg);
       }
-      
-      console.log('✅ [createOrUpdateCarListing] Valid stockId confirmed:', feedVehicle.stockId);
-
       // ═══════════════════════════════════════════════════════════════════════
       // 🚨 CRITICAL: Use REGISTRATION as primary identifier, not stockId
       // Registration is ALWAYS present in feed, stockId might be missing
@@ -1451,14 +1319,8 @@ class FeedImportService {
         );
         
         if (apiEnrichment) {
-          console.log(`🔄 [createOrUpdateCarListing] Enriched ${isNewCar ? 'NEW' : 'existing'} car from APIs for ${mappedVehicle.registration}:`, {
-            hasValuation: !!apiEnrichment.valuation,
-            hasMOTHistory: !!apiEnrichment.motHistory,
-            hasSpecs: !!apiEnrichment.specs
-          });
         }
       } else {
-        console.log(`⏭️  [createOrUpdateCarListing] Skipping API enrichment for existing car: ${mappedVehicle.registration}`);
       }
 
       let dealerPostcode = 'SW1A 1AA';
@@ -1492,17 +1354,11 @@ class FeedImportService {
           })
           .filter(Boolean);
       }
-      
-      console.log(`📸 [createOrUpdateCarListing] Found ${imageUrls.length} images for ${mappedVehicle.make} ${mappedVehicle.model}`);
       if (imageUrls.length > 0) {
-        console.log('   Image sources:');
         imageUrls.slice(0, 3).forEach((img, i) => {
           console.log(`   ${i + 1}. ${img.substring(0, 100)}`);
         });
       } else {
-        console.log('   ⚠️  NO IMAGES FOUND - checking source data...');
-        console.log('   feedVehicle.images:', feedVehicle.images?.length || 0);
-        console.log('   mappedVehicle.images:', mappedVehicle.images?.length || 0);
         if (mappedVehicle.images && mappedVehicle.images.length > 0) {
           console.log('   Sample mappedVehicle image:', JSON.stringify(mappedVehicle.images[0]));
         }
@@ -1519,9 +1375,7 @@ class FeedImportService {
                                 : undefined;
       
       if (validatedStockId) {
-        console.log('✅ [createOrUpdateCarListing] Using stockId:', validatedStockId);
       } else {
-        console.log('⚠️  [createOrUpdateCarListing] No valid stockId - using registration as identifier');
       }
       
       // Merge feed data with API enrichment
@@ -1558,7 +1412,6 @@ class FeedImportService {
         const feedMake = mappedVehicle.make.toLowerCase().trim();
         const apiMake = specs.make.toLowerCase().trim();
         if (feedMake && apiMake && !apiMake.includes(feedMake) && !feedMake.includes(apiMake)) {
-          console.log(`⚠️  [fuelType] API make "${specs.make}" ≠ feed make "${mappedVehicle.make}" → rejecting API fuelType "${apiFuelType}"`);
           apiFuelType = null;
         }
       }
@@ -1569,10 +1422,7 @@ class FeedImportService {
       // Extra check: if specs says "Petrol" but history says "Diesel", trust history
       if (apiFuelType === 'Petrol' && historyFuelType === 'Diesel') {
         apiFuelType = 'Diesel';
-        console.log(`🔧 [fuelType] Corrected: specs="Petrol" overridden by history="Diesel"`);
       }
-      console.log(`🔧 [fuelType] specs="${specs.fuelType}", history="${historyFuelType}", final="${apiFuelType}"`);
-
       // Transmission: normalize API value
       const apiTransmission = (specs.transmission && specs.transmission !== 'Unknown')
         ? this.normalizeTransmission(specs.transmission)
@@ -1590,10 +1440,8 @@ class FeedImportService {
               latitude: postcodeData.latitude,
               longitude: postcodeData.longitude
             };
-            console.log(`📍 [Location] Resolved postcode ${vehiclePostcode} → ${postcodeData.locationName}`);
           }
         } catch (err) {
-          console.warn(`⚠️  [Location] Failed to lookup postcode ${vehiclePostcode}:`, err.message);
         }
       }
 
@@ -1610,7 +1458,6 @@ class FeedImportService {
           const apiMake = (specs.make || '').toLowerCase().trim();
           // If both makes are present and they don't match → reject API variant
           if (feedMake && apiMake && !apiMake.includes(feedMake) && !feedMake.includes(apiMake)) {
-            console.log(`⚠️  [variant] API make "${specs.make}" ≠ feed make "${mappedVehicle.make}" → rejecting API variant "${specs.variant}"`);
             return null;
           }
           return specs.variant;
@@ -1628,7 +1475,6 @@ class FeedImportService {
           // CRITICAL FIX: If feed normalization resulted in default "Petrol" AND API has a valid different value, prefer API
           // This prevents "Unknown" or "Not Specified" in feed from overriding correct API data
           if (feedFuelType === 'Petrol' && cleanApiFuelType && cleanApiFuelType !== 'Petrol') {
-            console.log(`🔧 [fuelType] Feed normalized to "Petrol" but API says "${cleanApiFuelType}" → using API value`);
             return cleanApiFuelType;
           }
           // 🚫 REMOVED DEFAULT "Petrol" - if both feed and API are null, keep it null
@@ -1655,9 +1501,6 @@ class FeedImportService {
         
         // 🔍 DEBUG: Log vehiclePostcode calculation
         ...(() => {
-          console.log(`\n🔍 [POSTCODE DEBUG] ${mappedVehicle.registration}:`);
-          console.log(`   mappedVehicle.postcode: "${mappedVehicle.postcode || 'NULL'}"`);
-          console.log(`   dealerPostcode: "${dealerPostcode}"`);
           console.log(`   vehiclePostcode (final): "${vehiclePostcode}"`);
           return {};
         })(),
@@ -1695,12 +1538,6 @@ class FeedImportService {
         
         // 🔍 DEBUG: Log seller fields
         ...(() => {
-          console.log(`\n🔍 [createOrUpdateCarListing] Seller Fields for ${mappedVehicle.registration}:`);
-          console.log(`   seller_name: "${mappedVehicle.seller_name || 'NULL'}"`);
-          console.log(`   seller_contact: "${mappedVehicle.seller_contact || 'NULL'}"`);
-          console.log(`   seller_email: "${mappedVehicle.seller_email || 'NULL'}"`);
-          console.log(`   seller_location: "${mappedVehicle.seller_location || 'NULL'}"`);
-          console.log(`   features count: ${mappedVehicle.features?.length || 0}`);
           if (mappedVehicle.features) {
             console.log(`   features: ${JSON.stringify(mappedVehicle.features)}`);
           }
@@ -1717,7 +1554,6 @@ class FeedImportService {
           const feedMake = (mappedVehicle.make || '').toLowerCase().trim();
           const apiMake = (specs.make || '').toLowerCase().trim();
           if (feedMake && apiMake && !apiMake.includes(feedMake) && !feedMake.includes(apiMake)) {
-            console.log(`⚠️  [bodyType] API make "${specs.make}" ≠ feed make "${mappedVehicle.make}" → rejecting API bodyType "${specs.bodyType}"`);
             return undefined;
           }
           return specs.bodyType;
@@ -1725,10 +1561,8 @@ class FeedImportService {
         doors: (() => {
           const feedDoors = mappedVehicle.doors;
           const apiDoors = specs.doors;
-          console.log(`🔍 [DOORS DEBUG] ${mappedVehicle.registration}:`);
           console.log(`   mappedVehicle.doors: ${feedDoors} (type: ${typeof feedDoors})`);
           console.log(`   specs.doors: ${apiDoors} (type: ${typeof apiDoors})`);
-          console.log(`   final value: ${feedDoors || apiDoors}`);
           return feedDoors || apiDoors;
         })(),
         seats: mappedVehicle.seats || specs.seats,
@@ -1771,13 +1605,6 @@ class FeedImportService {
         // 🔍 DEBUG: Log running costs from API
         ...(() => {
           if (specs.combinedMpg || specs.co2Emissions) {
-            console.log(`\n🔍 [DEBUG] Running Costs from API for ${mappedVehicle.registration}:`);
-            console.log(`   - urbanMpg: ${specs.urbanMpg}`);
-            console.log(`   - extraUrbanMpg: ${specs.extraUrbanMpg}`);
-            console.log(`   - combinedMpg: ${specs.combinedMpg}`);
-            console.log(`   - co2Emissions: ${specs.co2Emissions}`);
-            console.log(`   - insuranceGroup: ${specs.insuranceGroup}`);
-            console.log(`   - annualTax: ${specs.annualTax}`);
           }
           return {};
         })(),
@@ -1846,23 +1673,9 @@ class FeedImportService {
       // ═══════════════════════════════════════════════════════════════════════
       if (car) {
         // Car exists - update it
-        console.log(`🔄 [createOrUpdateCarListing] Updating existing car:`, {
-          carId: car._id,
-          oldMake: car.make,
-          newMake: carData.make,
-          oldModel: car.model,
-          newModel: carData.model,
-          oldStatus: car.advertStatus,
-          newStatus: carData.advertStatus,
-          oldPrice: car.price,
-          newPrice: carData.price
-        });
-        
         car.$locals = skipAPIFetchFlag;
         
         // 🔍 DEBUG: Log postcode before sync
-        console.log(`🔍 [SYNC DEBUG] Postcode info:`);
-        console.log(`   carData.postcode: "${carData.postcode}"`);
         console.log(`   car.postcode (before): "${car.postcode}"`);
         
         // ── Auto-populate missing data for Electric/Hybrid vehicles ────────
@@ -1916,14 +1729,12 @@ class FeedImportService {
             }
             
             if (['postcode', 'doors', 'seats', 'color', 'transmission', 'bodyType', 'fuelType', 'year', 'make', 'model', 'variant'].includes(key)) {
-              console.log(`   🔄 [SYNC] Updating "${key}": "${oldVal}" → "${newVal}"`);
             }
             car[key] = newVal;
           } else if (updateIfEmptyFields.includes(key)) {
             // Ye fields sirf tab update karo jab already empty ho
             const isEmpty = !oldVal || oldVal === 'Not Specified' || oldVal === 'Unknown';
             if (isEmpty) {
-              console.log(`   📝 [SYNC] Filling empty "${key}": "${newVal}"`);
               car[key] = newVal;
             }
           }
@@ -1931,8 +1742,6 @@ class FeedImportService {
         });
         
         // 🔍 DEBUG: Log postcode after sync
-        console.log(`🔍 [SYNC DEBUG] Postcode after update: "${car.postcode}"`);
-        
         // 🆕 CRITICAL FIX: Check if postcode was updated BEFORE saving
         const postcodeWasModified = car.isModified('postcode');
         
@@ -1940,7 +1749,6 @@ class FeedImportService {
         
         // 🆕 Update locationName if postcode changed
         if (postcodeWasModified && car.postcode) {
-          console.log(`📍 [SYNC] Postcode changed to "${car.postcode}", updating locationName...`);
           try {
             const postcodeService = require('../services/postcodeService');
             const postcodeData = await postcodeService.lookupPostcode(car.postcode);
@@ -1955,16 +1763,11 @@ class FeedImportService {
               await car.save();
               console.log(`✅ [SYNC] Updated location: "${postcodeData.locationName}" (from postcode "${car.postcode}")`);
             } else {
-              console.log(`⚠️  [SYNC] Postcode lookup returned no data for "${car.postcode}"`);
             }
           } catch (err) {
-            console.error(`❌ [SYNC] Postcode lookup failed: ${err.message}`);
           }
         } else {
-          console.log(`⏭️  [SYNC] Postcode not modified, skipping locationName update`);
         }
-        
-        console.log('✅ [createOrUpdateCarListing] Updated car:', car._id);
       } else {
         // Car doesn't exist - create new
         try {
@@ -1978,23 +1781,17 @@ class FeedImportService {
           car.$locals = skipAPIFetchFlag;
           await car.save();
           action = 'imported';
-          console.log('✅ [createOrUpdateCarListing] Created car:', car._id, '| saved fuelType:', car.fuelType);
-          
           // ── POST-SAVE FUELTYPE CORRECTION ──────────────────────────────────
           // If the pre-save hook changed fuelType (e.g. from 'Electric' to 'Petrol'),
           // correct it via updateOne which bypasses the pre-save hook entirely
           const desiredFuelType = carData.fuelType;
           if (desiredFuelType && car.fuelType !== desiredFuelType) {
-            console.log(`🔧 [fuelType CORRECTION] Pre-save changed "${desiredFuelType}" → "${car.fuelType}", correcting...`);
             await Car.updateOne({ _id: car._id }, { $set: { fuelType: desiredFuelType } });
             car.fuelType = desiredFuelType;
-            console.log(`✅ [fuelType CORRECTION] Fixed: fuelType="${desiredFuelType}"`);
           }
         } catch (carCreateError) {
           // If creation fails with duplicate key, try to find and update
           if (carCreateError.code === 11000) {
-            console.log(`⚠️  [createOrUpdateCarListing] Duplicate detected, fetching existing...`);
-            
             // Try to find by stockId
             car = await Car.findOne({ stockId: feedVehicle.stockId, dealerId: feedVehicle.dealerId });
             
@@ -2008,7 +1805,6 @@ class FeedImportService {
                 }
               });
               await car.save();
-              console.log('✅ [createOrUpdateCarListing] Updated existing car:', car._id);
             } else {
               // Still not found - rethrow error
               throw carCreateError;
@@ -2026,7 +1822,6 @@ class FeedImportService {
       return { action, car };
 
     } catch (error) {
-      console.error('❌ [createOrUpdateCarListing] Error:', error);
       throw error;
     }
   }
@@ -2189,7 +1984,6 @@ class FeedImportService {
     }
     
     // Default to active for unknown statuses
-    console.log(`⚠️  Unknown status "${value}" - defaulting to "active"`);
     return 'active';
   }
 

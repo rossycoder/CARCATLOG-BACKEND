@@ -119,7 +119,6 @@ router.get('/', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching electric vehicles:', error);
     res.status(500).json({
       success: false,
       error: {
@@ -223,7 +222,6 @@ router.get('/stats', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching electric vehicle stats:', error);
     res.status(500).json({
       success: false,
       error: {
@@ -299,7 +297,6 @@ router.get('/charging-calculator', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error calculating charging costs:', error);
     res.status(500).json({
       success: false,
       error: {
@@ -358,7 +355,6 @@ router.get('/:id', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching electric vehicle:', error);
     res.status(500).json({
       success: false,
       error: {

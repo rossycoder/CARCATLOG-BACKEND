@@ -6,56 +6,33 @@ const TradeDealer = require('../models/TradeDealer');
  */
 const authenticateTradeDealer = async (req, res, next) => {
   try {
-    console.log('\n🔐 [Auth Middleware] Starting authentication...');
-    
     // Get token from header
     const token = req.headers.authorization?.replace('Bearer ', '');
 
     if (!token) {
-      console.log('❌ [Auth Middleware] No token provided');
       return res.status(401).json({
         success: false,
         message: 'Authentication required'
       });
     }
-
-    console.log('✅ [Auth Middleware] Token found, verifying...');
-
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('✅ [Auth Middleware] Token verified');
-    console.log('   Decoded ID:', decoded.id);
-    console.log('   Decoded Role:', decoded.role);
-
     // Check if it's a trade dealer token
     if (decoded.role !== 'trade_dealer' && decoded.role !== 'trade_admin') {
-      console.log('❌ [Auth Middleware] Wrong role:', decoded.role);
       return res.status(403).json({
         success: false,
         message: 'Access denied. Trade dealer account required.'
       });
     }
-
-    console.log('🔍 [Auth Middleware] Looking for dealer in database...');
-    console.log('   Dealer ID:', decoded.id);
-
     // Get dealer from database
     const dealer = await TradeDealer.findById(decoded.id);
 
     if (!dealer) {
-      console.log('❌ [Auth Middleware] Dealer not found in database!');
-      console.log('   Searched for ID:', decoded.id);
-      console.log('   This means the JWT token has an invalid dealer ID');
       return res.status(401).json({
         success: false,
         message: 'Dealer not found'
       });
     }
-
-    console.log('✅ [Auth Middleware] Dealer found in database');
-    console.log('   Email:', dealer.email);
-    console.log('   Status:', dealer.status);
-
     // Check if dealer is active
     if (dealer.status !== 'active') {
       console.log(`❌ [Auth Middleware] Dealer status is "${dealer.status}" (needs to be "active")`);
@@ -64,10 +41,6 @@ const authenticateTradeDealer = async (req, res, next) => {
         message: `Account is ${dealer.status}. Please contact support.`
       });
     }
-
-    console.log('✅ [Auth Middleware] All checks passed!');
-    console.log('   Attaching dealer to request...\n');
-
     // Attach dealer to request
     req.dealer = dealer;
     req.dealerId = dealer._id;
@@ -75,7 +48,6 @@ const authenticateTradeDealer = async (req, res, next) => {
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError') {
-      console.log('❌ [Auth Middleware] Invalid JWT token');
       return res.status(401).json({
         success: false,
         message: 'Invalid token'
@@ -83,14 +55,11 @@ const authenticateTradeDealer = async (req, res, next) => {
     }
 
     if (error.name === 'TokenExpiredError') {
-      console.log('❌ [Auth Middleware] JWT token expired');
       return res.status(401).json({
         success: false,
         message: 'Token expired'
       });
     }
-
-    console.error('❌ [Auth Middleware] Unexpected error:', error);
     res.status(500).json({
       success: false,
       message: 'Authentication error'
@@ -120,7 +89,6 @@ const requireActiveSubscription = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.error('[Subscription Middleware] Error:', error);
     res.status(500).json({
       success: false,
       message: 'Error checking subscription'
@@ -165,7 +133,6 @@ const checkListingLimit = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.error('Listing limit check error:', error);
     res.status(500).json({
       success: false,
       message: 'Error checking listing limit'

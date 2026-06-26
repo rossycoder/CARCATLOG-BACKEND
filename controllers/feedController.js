@@ -20,7 +20,6 @@ exports.testFeed = async (req, res) => {
     res.json(result);
 
   } catch (error) {
-    console.error('Error testing feed:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to test feed',
@@ -42,10 +41,8 @@ exports.importFeed = async (req, res) => {
     // 🔍 DIAGNOSTIC LOGGING - Track frontend requests
     // ═══════════════════════════════════════════════════════════════════════
     console.log('\n' + '═'.repeat(80));
-    console.log('📥 FRONTEND IMPORT REQUEST RECEIVED');
     console.log('═'.repeat(80));
     console.log('⏰ Timestamp:', new Date().toISOString());
-    console.log('🔐 Dealer ID:', req.dealerId || req.dealer?.id || 'NOT FOUND');
     console.log('📋 Request Body:', JSON.stringify(req.body, null, 2));
     console.log('═'.repeat(80) + '\n');
     
@@ -53,7 +50,6 @@ exports.importFeed = async (req, res) => {
     dealerId = req.dealerId || req.dealer?.id;
     
     if (!dealerId) {
-      console.error('❌ No dealer ID found in request\n');
       return res.status(401).json({
         success: false,
         message: 'Unauthorized: Dealer authentication required'
@@ -71,22 +67,11 @@ exports.importFeed = async (req, res) => {
     } = req.body);
 
     if (!feedUrl) {
-      console.error('❌ No feed URL provided\n');
       return res.status(400).json({
         success: false,
         message: 'Feed URL is required'
       });
     }
-
-    console.log('✅ Starting import with options:', {
-      removeSoldVehicles: removeSoldVehicles !== false,
-      importImages: importImages !== false,
-      useUnsplashFallback: useUnsplashFallback === true,
-      limitVehicles: limitVehicles === true,
-      selectionMode: selectionMode || 'first'
-    });
-    console.log();
-
     // ── Get dealer settings to check if API enrichment is enabled ──
     const TradeDealer = require('../models/TradeDealer');
     const dealer = await TradeDealer.findById(dealerId).select('settings');
@@ -116,9 +101,7 @@ exports.importFeed = async (req, res) => {
     });
     
     console.log('\n' + '─'.repeat(80));
-    console.log('📊 IMPORT COMPLETED');
     console.log('─'.repeat(80));
-    console.log('✅ Success:', result.success);
     console.log('📈 Stats:', JSON.stringify(result.stats, null, 2));
     console.log('─'.repeat(80) + '\n');
 
@@ -148,12 +131,7 @@ exports.importFeed = async (req, res) => {
 
   } catch (error) {
     console.error('\n' + '═'.repeat(80));
-    console.error('❌ IMPORT FAILED - ERROR DETAILS');
     console.error('═'.repeat(80));
-    console.error('Error Message:', error.message);
-    console.error('Error Stack:', error.stack);
-    console.error('Feed URL:', feedUrl);
-    console.error('Dealer ID:', dealerId);
     console.error('═'.repeat(80) + '\n');
     
     // Send detailed error to frontend
@@ -192,7 +170,6 @@ exports.getDealerFeeds = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching dealer feeds:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch dealer feeds',
@@ -261,9 +238,6 @@ exports.updateFeed = async (req, res) => {
     await DealerFeed.findByIdAndUpdate(feedId, updateData);
 
     const updatedFeed = await DealerFeed.findById(feedId);
-
-    console.log(`✅ Feed ${feedId} updated - Auto-import: ${updatedFeed.autoImportEnabled}`);
-
     res.json({
       success: true,
       message: 'Feed settings updated',
@@ -271,7 +245,6 @@ exports.updateFeed = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error updating feed:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to update feed',
@@ -316,7 +289,6 @@ exports.deleteFeed = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error deleting feed:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to delete feed',
@@ -349,7 +321,6 @@ exports.getFeedLogs = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching feed logs:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch feed logs',
@@ -363,7 +334,6 @@ exports.getFeedLogs = async (req, res) => {
  */
 exports.syncFeed = async (req, res) => {
   console.log('\n' + '═'.repeat(80));
-  console.log('📥 [syncFeed] REQUEST RECEIVED');
   console.log('═'.repeat(80));
   console.log('⏰ Timestamp:', new Date().toISOString());
   console.log('═'.repeat(80) + '\n');
@@ -372,7 +342,6 @@ exports.syncFeed = async (req, res) => {
     const dealerId = req.dealerId || req.dealer?.id;
     
     if (!dealerId) {
-      console.log('❌ [syncFeed] No dealer ID found\n');
       return res.status(401).json({
         success: false,
         message: 'Unauthorized: Dealer authentication required'
@@ -380,8 +349,6 @@ exports.syncFeed = async (req, res) => {
     }
     
     const { feedId } = req.params;
-    console.log(`✅ [syncFeed] Processing sync for feedId: ${feedId}, dealerId: ${dealerId}`);
-
     const feed = await DealerFeed.findOne({
       _id: feedId,
       dealerId
@@ -416,14 +383,6 @@ exports.syncFeed = async (req, res) => {
     } else {
       console.log('⏭️  [Sync Now] API Enrichment DISABLED (explicitly disabled by dealer)');
     }
-    
-    console.log(`\n🔄 [syncFeed] Starting feed import with options:`, {
-      dealerHasAPIEnabled,
-      enableAPIEnrichmentForSync,
-      removeSoldVehicles: false, // ← ← ← IMPORTANT: sirf sold mark, delete nahi
-      importImages: feed.importImages !== false
-    });
-    
     const result = await feedImportService.importFeedEnhanced(dealerId, feed.feedUrl, {
       removeSoldVehicles: false, // ← ← ← YE MOST IMPORTANT — cars DELETE nahi honge
       importImages: feed.importImages !== false,
@@ -433,8 +392,6 @@ exports.syncFeed = async (req, res) => {
       enableAPIEnrichment: enableAPIEnrichmentForSync, // ✅ Smart: only for NEW cars
       onlyEnrichNewCars: true // 🆕 Flag to only enrich new imports, not existing
     });
-    
-    console.log(`\n✅ [syncFeed] Import completed successfully`);
     console.log(`   Stats:`, JSON.stringify(result.stats, null, 2));
 
     const imported = result.stats.vehicles_imported || 0;
@@ -453,7 +410,6 @@ exports.syncFeed = async (req, res) => {
     };
 
     console.log('\n' + '═'.repeat(80));
-    console.log('📤 SENDING RESPONSE TO FRONTEND');
     console.log('═'.repeat(80));
     console.log(JSON.stringify(responseData, null, 2));
     console.log('═'.repeat(80) + '\n');
@@ -461,7 +417,6 @@ exports.syncFeed = async (req, res) => {
     res.json(responseData);
 
   } catch (error) {
-    console.error('Error syncing feed:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to sync feed',
@@ -510,7 +465,6 @@ exports.testImageProcessing = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error testing image processing:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to test image processing',

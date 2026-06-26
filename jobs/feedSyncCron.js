@@ -18,7 +18,6 @@ class FeedSyncCron {
    */
   start() {
     if (this.cronJob) {
-      console.log('Feed sync cron is already running');
       return;
     }
 
@@ -37,7 +36,6 @@ class FeedSyncCron {
     if (this.cronJob) {
       this.cronJob.stop();
       this.cronJob = null;
-      console.log('Feed sync cron job stopped');
     }
   }
 
@@ -46,13 +44,10 @@ class FeedSyncCron {
    */
   async syncAllFeeds() {
     if (this.isRunning) {
-      console.log('Feed sync already in progress, skipping...');
       return;
     }
 
     this.isRunning = true;
-    console.log('\n--- Starting feed sync job ---');
-
     try {
       // Find all active feeds that need syncing
       const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
@@ -65,17 +60,12 @@ class FeedSyncCron {
           { lastSync: { $lt: fifteenMinutesAgo } }
         ]
       });
-
-      console.log(`Found ${feeds.length} feeds to sync`);
-
       let successCount = 0;
       let errorCount = 0;
 
       // Process each feed
       for (const feed of feeds) {
         try {
-          console.log(`\nSyncing feed ${feed._id} for dealer ${feed.dealerId}...`);
-          
           // ── Check dealer settings for API enrichment ──
           const TradeDealer = require('../models/TradeDealer');
           const dealer = await TradeDealer.findById(feed.dealerId).select('settings');
@@ -93,18 +83,9 @@ class FeedSyncCron {
               onlyEnrichNewCars: true // 🆕 Only enrich new cars, not existing
             }
           );
-
-          console.log(`✓ Feed ${feed._id} synced successfully:`, {
-            imported: result.stats.vehicles_imported,
-            updated: result.stats.vehicles_updated,
-            archived: result.stats.vehicles_archived
-          });
-
           successCount++;
 
         } catch (error) {
-          console.error(`✗ Error syncing feed ${feed._id}:`, error.message);
-          
           // Update feed status to error
           await DealerFeed.findByIdAndUpdate(feed._id, {
             status: 'error'
@@ -113,12 +94,7 @@ class FeedSyncCron {
           errorCount++;
         }
       }
-
-      console.log('\n--- Feed sync job completed ---');
-      console.log(`Success: ${successCount}, Errors: ${errorCount}`);
-
     } catch (error) {
-      console.error('Error in feed sync cron:', error);
     } finally {
       this.isRunning = false;
     }

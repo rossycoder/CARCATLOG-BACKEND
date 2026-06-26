@@ -88,7 +88,6 @@ router.post('/signup', async (req, res) => {
 
     res.json({ success: true, message: 'Signed up successfully' });
   } catch (error) {
-    console.error('Notify signup error:', error);
     res.status(500).json({ success: false, message: 'Error processing signup' });
   }
 });

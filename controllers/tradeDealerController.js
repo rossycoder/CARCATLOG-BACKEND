@@ -74,7 +74,6 @@ exports.register = async (req, res) => {
       if (uploadResult.success && uploadResult.data) {
         logoUrl = uploadResult.data.url;
       } else {
-        console.error('Cloudinary upload failed:', uploadResult.error);
         // Continue with registration even if logo upload fails
       }
     }
@@ -205,7 +204,6 @@ The CarCatalog Team
         emailHtml
       );
     } catch (emailErr) {
-      console.error('⚠️ Failed to send verification email to:', dealer.email, emailErr.message);
       // Don't fail registration if email fails
     }
 
@@ -221,7 +219,6 @@ The CarCatalog Team
       }
     });
   } catch (error) {
-    console.error('Trade dealer registration error:', error);
     res.status(500).json({
       success: false,
       message: 'Error registering dealer',
@@ -283,7 +280,6 @@ exports.verifyEmail = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Email verification error:', error);
     res.status(500).json({
       success: false,
       message: 'Error verifying email'
@@ -396,7 +392,6 @@ exports.login = async (req, res) => {
       } : null
     });
   } catch (error) {
-    console.error('Trade dealer login error:', error);
     res.status(500).json({
       success: false,
       message: 'Error logging in'
@@ -472,7 +467,6 @@ exports.getMe = async (req, res) => {
       } : null
     });
   } catch (error) {
-    console.error('Get dealer info error:', error);
     res.status(500).json({
       success: false,
       message: 'Error getting dealer information'
@@ -594,7 +588,6 @@ The CarCatalog Team
       message: 'If an account exists with this email, a password reset link has been sent.'
     });
   } catch (error) {
-    console.error('Forgot password error:', error);
     res.status(500).json({
       success: false,
       message: 'Error processing password reset request'
@@ -655,7 +648,6 @@ exports.resetPassword = async (req, res) => {
       token: authToken
     });
   } catch (error) {
-    console.error('Reset password error:', error);
     res.status(500).json({
       success: false,
       message: 'Error resetting password'

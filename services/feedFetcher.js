@@ -87,7 +87,6 @@ class FeedFetcher {
       // 🧪 TESTING MODE: Support local file:// URLs for development
       // ═══════════════════════════════════════════════════════════════════════
       if (url.startsWith('file://')) {
-        console.log('🧪 [Testing Mode] Loading local file:', url);
         const fs = require('fs');
         const path = require('path');
         
@@ -101,9 +100,6 @@ class FeedFetcher {
           // Relative path - resolve from current directory
           filePath = path.resolve(process.cwd(), filePath);
         }
-        
-        console.log('📂 Reading file from:', filePath);
-        
         try {
           const content = fs.readFileSync(filePath, 'utf8');
           console.log(`✅ File loaded successfully (${content.length} bytes)`);
@@ -115,7 +111,6 @@ class FeedFetcher {
             status: 200
           };
         } catch (fileError) {
-          console.error('❌ File read error:', fileError.message);
           return {
             success: false,
             error: `Cannot read local file: ${fileError.message}. Try uploading the feed to GitHub Gist, Pastebin, or use an HTTP URL instead.`
@@ -194,7 +189,6 @@ class FeedFetcher {
    */
   detectFormat(data, contentType) {
     // Log for debugging
-    console.log('Content-Type:', contentType);
     let dataStr = typeof data === 'string' ? data.trim() : JSON.stringify(data);
     dataStr = dataStr.replace(/^\uFEFF/, ''); // Strip BOM (Byte Order Mark) common in Excel/Windows exports
     console.log('Data preview (first 200 chars):', dataStr.substring(0, 200));
@@ -218,7 +212,6 @@ class FeedFetcher {
         return 'json';
       } catch (e) {
         // JSON structure detected but invalid - throw descriptive error
-        console.error('❌ JSON parsing failed:', e.message);
         throw new Error(`Invalid JSON format: ${e.message}. Please check your feed data for syntax errors (missing values, trailing commas, etc.)`);
       }
     }
@@ -243,15 +236,10 @@ class FeedFetcher {
       const hasCommonHeaders = commonHeaders.some(header => 
         firstLine.toLowerCase().includes(header)
       );
-      
-      console.log('CSV detection - hasCommas:', hasCommas, 'hasCommonHeaders:', hasCommonHeaders);
-      
       if (hasCommas && (hasCommonHeaders || secondLine.includes(','))) {
         return 'csv';
       }
     }
-
-    console.log('Format detection failed - returning unknown');
     return 'unknown';
   }
 

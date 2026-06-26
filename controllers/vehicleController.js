@@ -172,8 +172,6 @@ class VehicleController {
       try {
         dvlaData = await dvlaService.lookupVehicle(registrationNumber);
       } catch (error) {
-        console.error(`[Vehicle Controller] DVLA lookup failed:`, error.message);
-        
         // Return appropriate error
         let statusCode = 500;
         let errorMessage = 'Failed to lookup vehicle from DVLA';
@@ -262,7 +260,6 @@ class VehicleController {
             carData.model = nm;
             carData.variant = nv;
             if (wasSwapped) {
-              console.log(`🔄 [VehicleController/cache] model/variant corrected: model="${nm}", variant="${nv}"`);
             }
           }
 
@@ -307,7 +304,6 @@ class VehicleController {
           if (completeVehicle.historyCheckDate !== null && completeVehicle.historyCheckDate !== undefined) carData.historyCheckDate = completeVehicle.historyCheckDate;
           
         } catch (universalError) {
-          console.warn(`⚠️  Universal Service lookup failed, using DVLA data as fallback: ${universalError.message}`);
           // Continue with DVLA data if Universal Service fails
         }
       }
@@ -331,7 +327,6 @@ class VehicleController {
           }
         } catch (postcodeError) {
           // Don't fail car creation if postcode lookup fails
-          console.warn(`[Vehicle Controller] Failed to fetch postcode data: ${postcodeError.message}`);
         }
       }
 
@@ -470,7 +465,6 @@ class VehicleController {
       });
 
     } catch (error) {
-      console.error('[Vehicle Controller] Error in lookupAndCreateVehicle:', error);
       return res.status(500).json({
         success: false,
         error: {
@@ -563,7 +557,6 @@ class VehicleController {
           });
         }
         // MOT missing — fall through to live DVLA call to fetch it
-        console.log(`🔍 [dvlaLookup] ${registrationNumber} found in DB but motDue missing — fetching from DVLA`);
       }
       
       // Check VehicleHistory cache (30-day cache)
@@ -674,13 +667,10 @@ class VehicleController {
               if (motStatus)          motUpdate.motStatus  = motStatus;
               if (motHistory.length)  motUpdate.motHistory = motHistory;
               await Car.updateOne({ _id: existingCar._id }, { $set: motUpdate });
-              console.log(`✅ [dvlaLookup] MOT saved to DB for ${registrationNumber}: ${motDueDate}`);
             } catch (saveErr) {
-              console.warn(`⚠️  [dvlaLookup] Failed to save MOT to DB: ${saveErr.message}`);
             }
           }
         } else {
-          console.warn(`⚠️  [dvlaLookup] MOT fetch failed for ${registrationNumber}: ${motResult.reason?.message}`);
           // Fall back to DVLA motExpiryDate if MOT API fails
           motDueDate = dvlaData?.motExpiryDate || null;
           motStatus  = dvlaData?.motStatus     || null;
@@ -730,8 +720,6 @@ class VehicleController {
           vehicle: mergedData
         });
       } catch (error) {
-        console.error(`[Vehicle Controller] Lookup failed for: ${registrationNumber}`, error.message);
-        
         // Return appropriate error based on error type
         let statusCode = 500;
         let errorMessage = 'Failed to lookup vehicle';
@@ -831,7 +819,6 @@ class VehicleController {
         }
       });
     } catch (err) {
-      console.error('❌ motLookup error:', err.message);
       return res.status(500).json({ success: false, message: err.message });
     }
   }
@@ -935,7 +922,6 @@ class VehicleController {
           normalizeModelVariant(carData.model, carData.variant, carData.make);
 
         if (wasSwapped) {
-          console.log(`🔄 [getCarById] model/variant swap fixed for ${carData.registrationNumber}: model="${fixedModel}", variant="${fixedVariant}"`);
           carData.model   = fixedModel;
           carData.variant = fixedVariant;
 
@@ -946,7 +932,6 @@ class VehicleController {
                 $set: { model: fixedModel, variant: fixedVariant }
               });
             } catch (e) {
-              console.warn(`⚠️  [getCarById] Failed to persist model/variant fix: ${e.message}`);
             }
           });
         }
@@ -1014,13 +999,11 @@ class VehicleController {
                   }
                 });
               } catch (saveError) {
-                console.error(`⚠️ Failed to save running costs to Car:`, saveError.message);
               }
             });
             
           }
         } catch (syncError) {
-          console.warn(`⚠️ Failed to auto-sync running costs:`, syncError.message);
           // Continue without running costs - not critical for display
         }
       }
@@ -1080,7 +1063,6 @@ class VehicleController {
           } else {
           }
         } catch (distanceError) {
-          console.warn(`[Vehicle Controller] Failed to calculate distance:`, distanceError.message);
           // Don't fail the request if distance calculation fails
         }
       }
@@ -1586,7 +1568,6 @@ class VehicleController {
             }
           }
         } catch (syncError) {
-          console.error(`⚠️ Background running costs sync failed:`, syncError.message);
         }
       });
 
@@ -1605,7 +1586,6 @@ class VehicleController {
       });
 
     } catch (error) {
-      console.error('[Vehicle Controller] Error in searchCars:', error);
       return res.status(500).json({
         success: false,
         error: error.message || 'Failed to search cars',
@@ -1636,7 +1616,6 @@ class VehicleController {
 
       return res.json({ success: true, data: sorted });
     } catch (error) {
-      console.error('getModelsForMake error:', error);
       return res.status(500).json({ success: false, error: 'Failed to fetch models' });
     }
   }
@@ -1658,7 +1637,6 @@ class VehicleController {
 
       return res.json({ success: true, data: sorted });
     } catch (error) {
-      console.error('getMakes error:', error);
       return res.status(500).json({ success: false, error: 'Failed to fetch makes' });
     }
   }
@@ -2130,7 +2108,6 @@ class VehicleController {
       return res.json(result);
 
     } catch (error) {
-      console.error('[Vehicle Controller] Error in getFilterOptions:', error);
       next(error);
     }
   }
@@ -2281,7 +2258,6 @@ class VehicleController {
               if (!apiData.taxStatus && dvlaResp.data?.taxStatus) apiData.taxStatus = dvlaResp.data.taxStatus;
             }
           } catch (dvlaErr) {
-            console.warn(`⚠️  [basicVehicleLookup] DVLA color fetch failed: ${dvlaErr.message}`);
           }
           
           if (!apiData.annualTax && apiData.co2Emissions && apiData.year) {
@@ -2390,8 +2366,6 @@ class VehicleController {
         }
         
       } catch (lookupError) {
-        console.error(`[Vehicle Controller] Basic lookup failed for ${cleanedReg}:`, lookupError.message);
-        
         result = {
           success: false,
           error: lookupError.message || 'Vehicle lookup failed'
@@ -2399,7 +2373,6 @@ class VehicleController {
       }
 
       if (!result.success) {
-        console.error(`[Vehicle Controller] Basic lookup failed for ${registration}:`, result.error);
         return res.status(404).json({
           success: false,
           error: {
@@ -2420,7 +2393,6 @@ class VehicleController {
       });
 
     } catch (error) {
-      console.error('[Vehicle Controller] Error in basicVehicleLookup:', error);
       return res.status(500).json({
         success: false,
         error: {
@@ -2499,9 +2471,7 @@ class VehicleController {
           odometerValue: t.odometerValue || null,
           odometerUnit:  'mi'
         }));
-        console.log(`✅ [enhancedVehicleLookup] MOT fetched for ${cleanedReg}: ${fetchedMotDue}`);
       } else {
-        console.warn(`⚠️  [enhancedVehicleLookup] MOT fetch failed for ${cleanedReg}: ${motLookupResult.reason?.message}`);
       }
       
       try {
@@ -2593,9 +2563,6 @@ class VehicleController {
         };
         
       } catch (universalError) {
-        console.error(`[Vehicle Controller] Universal Service enhanced lookup failed for ${cleanedReg}:`, universalError.message);
-        console.error(universalError.stack);
-        
         // Return error in expected format
         result = {
           success: false,
@@ -2604,7 +2571,6 @@ class VehicleController {
       }
 
       if (!result.success) {
-        console.error(`[Vehicle Controller] Enhanced lookup failed for ${registration}:`, result.error);
         return res.status(500).json({
           success: false,
           error: {
@@ -2627,7 +2593,6 @@ class VehicleController {
       });
 
     } catch (error) {
-      console.error('[Vehicle Controller] Error in enhancedVehicleLookup:', error);
       return res.status(500).json({
         success: false,
         error: {
@@ -2846,7 +2811,6 @@ class VehicleController {
       });
 
     } catch (error) {
-      console.error('[Vehicle Controller] Error in getMyListings:', error);
       return res.status(500).json({
         success: false,
         error: error.message || 'Failed to fetch listings'
@@ -2921,7 +2885,6 @@ class VehicleController {
       });
 
     } catch (error) {
-      console.error('[Vehicle Controller] Error in updateVehicleStatus:', error);
       return res.status(500).json({
         success: false,
         error: error.message || 'Failed to update vehicle status'
@@ -3006,7 +2969,6 @@ class VehicleController {
       });
 
     } catch (error) {
-      console.error('[Vehicle Controller] Error in updateVehicle:', error);
       return res.status(500).json({ success: false, error: error.message || 'Failed to update vehicle' });
     }
   }
@@ -3071,7 +3033,6 @@ class VehicleController {
       });
 
     } catch (error) {
-      console.error('[Vehicle Controller] Error in deleteVehicle:', error);
       return res.status(500).json({
         success: false,
         error: error.message || 'Failed to delete vehicle'
@@ -3126,7 +3087,6 @@ class VehicleController {
         inquiryCount: vehicle.inquiryCount
       });
     } catch (error) {
-      console.error('[Vehicle Controller] Error tracking inquiry:', error);
       return res.status(500).json({
         success: false,
         message: 'Failed to track inquiry'
@@ -3218,7 +3178,6 @@ class VehicleController {
       });
 
     } catch (error) {
-      console.error('[Vehicle Controller] Error relisting vehicle:', error);
       return res.status(500).json({
         success: false,
         error: error.message || 'Failed to relist vehicle'

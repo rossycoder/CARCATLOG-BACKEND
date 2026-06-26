@@ -62,13 +62,6 @@ async function searchByPostcode(req, res) {
     // Handle errors with appropriate status codes
     const statusCode = err.statusCode || 500;
     const message = err.message || 'An unexpected error occurred';
-
-    console.error('Postcode search error:', {
-      message: err.message,
-      statusCode,
-      originalError: err.originalError
-    });
-
     return res.status(statusCode).json({
       success: false,
       error: message

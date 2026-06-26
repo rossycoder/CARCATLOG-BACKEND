@@ -47,7 +47,6 @@ const enhanceElectricVehicleData = async (req, res, next) => {
     
     next();
   } catch (error) {
-    console.error('❌ Error enhancing electric vehicle data:', error);
     // Don't fail the request, just log the error and continue
     next();
   }

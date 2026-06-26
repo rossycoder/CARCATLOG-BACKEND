@@ -11,7 +11,6 @@ exports.getAnalytics = async (req, res) => {
 
 
     if (!dealerId) {
-      console.error('[Analytics Controller] No dealerId found in request');
       return res.status(400).json({
         success: false,
         message: 'Dealer ID not found'
@@ -137,7 +136,6 @@ exports.getAnalytics = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get analytics error:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching analytics',

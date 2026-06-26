@@ -558,7 +558,6 @@ bikeSchema.pre('save', async function(next) {
         } else {
         }
       } catch (error) {
-        console.error(`❌ [Bike Model] Error fetching coordinates:`, error.message);
       }
     }
   }
@@ -649,7 +648,6 @@ bikeSchema.pre('save', async function(next) {
     
     next();
   } catch (error) {
-    console.error('❌ [Bike] Error in electric vehicle pre-save hook:', error);
     // Don't fail the save operation, just log the error
     next();
   }

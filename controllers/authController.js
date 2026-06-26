@@ -72,7 +72,6 @@ const register = async (req, res) => {
         new Promise((_, reject) => setTimeout(() => reject(new Error('Email timeout')), 10000))
       ]);
     } catch (emailError) {
-      console.error('Failed to send verification email:', emailError);
       // Don't fail registration if email fails
     }
 
@@ -92,7 +91,6 @@ const register = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Registration error:', error);
     res.status(500).json({
       success: false,
       message: 'Error creating account',
@@ -180,7 +178,6 @@ const login = async (req, res) => {
         new Promise((_, reject) => setTimeout(() => reject(new Error('Email timeout')), 10000))
       ]);
     } catch (emailError) {
-      console.error('Failed to send login notification:', emailError);
       // Don't fail login if email fails
     }
 
@@ -200,7 +197,6 @@ const login = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Login error:', error);
     res.status(500).json({
       success: false,
       message: 'Error logging in',
@@ -234,7 +230,6 @@ const checkEmail = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Check email error:', error);
     res.status(500).json({
       success: false,
       message: 'Error checking email'
@@ -265,7 +260,6 @@ const getMe = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get me error:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching user'
@@ -347,7 +341,6 @@ const verifyEmail = async (req, res) => {
         new Promise((_, reject) => setTimeout(() => reject(new Error('Email timeout')), 10000))
       ]);
     } catch (emailError) {
-      console.error('Failed to send welcome email:', emailError);
       // Don't fail verification if welcome email fails
     }
 
@@ -365,7 +358,6 @@ const verifyEmail = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Email verification error:', error);
     res.status(500).json({
       success: false,
       message: 'Error verifying email. Please try again.',
@@ -419,7 +411,6 @@ const resendVerification = async (req, res) => {
       const emailContent = emailVerificationEmail(user.name, user.email, verificationToken);
       await sendEmail(user.email, emailContent.subject, emailContent.text, emailContent.html);
     } catch (emailError) {
-      console.error('Failed to send verification email:', emailError);
       return res.status(500).json({
         success: false,
         message: 'Failed to send verification email'
@@ -431,7 +422,6 @@ const resendVerification = async (req, res) => {
       message: 'Verification email sent successfully'
     });
   } catch (error) {
-    console.error('Resend verification error:', error);
     res.status(500).json({
       success: false,
       message: 'Error resending verification email',
@@ -455,7 +445,6 @@ const googleCallback = async (req, res) => {
     // Redirect to frontend with token
     res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${token}`);
   } catch (error) {
-    console.error('Google callback error:', error);
     res.redirect(`${process.env.FRONTEND_URL}/signin?error=auth_failed`);
   }
 };
@@ -502,7 +491,6 @@ const forgotPassword = async (req, res) => {
       const emailContent = passwordResetEmail(user.name, user.email, resetToken);
       await sendEmail(user.email, emailContent.subject, emailContent.text, emailContent.html);
     } catch (emailError) {
-      console.error('Failed to send password reset email:', emailError);
       user.passwordResetToken = undefined;
       user.passwordResetExpires = undefined;
       await user.save();
@@ -517,7 +505,6 @@ const forgotPassword = async (req, res) => {
       message: 'If an account exists with this email, you will receive a password reset link'
     });
   } catch (error) {
-    console.error('Forgot password error:', error);
     res.status(500).json({
       success: false,
       message: 'Error processing request',
@@ -595,7 +582,6 @@ const resetPassword = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Reset password error:', error);
     res.status(500).json({
       success: false,
       message: 'Error resetting password',

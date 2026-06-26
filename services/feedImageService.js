@@ -195,7 +195,6 @@ async function downloadImage(originalUrl) {
         return await downloadFromUrl(directUrl, type);
       }
     } catch (err) {
-      console.warn(`[ImageDownloader] Unsplash API failed, trying direct URL: ${err.message}`);
     }
   }
 
@@ -275,7 +274,6 @@ async function downloadFromUrl(url, sourceType, retries = 3) {
       lastError = error;
       if (attempt < retries) {
         const delay = attempt * 1500; // 1.5s, 3s backoff
-        console.warn(`[ImageDownloader] Attempt ${attempt} failed for ${url}: ${error.message}. Retrying in ${delay}ms...`);
         await new Promise(r => setTimeout(r, delay));
       }
     }
@@ -401,12 +399,8 @@ class FeedImageService {
     }).sort({ imageOrder: 1 });
 
     if (feedImages.length === 0) {
-      console.log(`[ImageDownloader] No pending images for vehicle ${feedVehicleId}`);
       return { success: 0, failed: 0, skipped: 0, urls: [] };
     }
-
-    console.log(`[ImageDownloader] Processing ${feedImages.length} images for vehicle ${feedVehicleId}`);
-
     const uploadedUrls = [];
     let successCount = 0;
     let failedCount = 0;
@@ -429,8 +423,6 @@ class FeedImageService {
         }
       } catch (error) {
         failedCount++;
-        console.error(`[ImageDownloader] Failed image ${feedImage.sourceUrl}: ${error.message}`);
-
         await FeedImage.findByIdAndUpdate(feedImage._id, {
           downloadStatus: 'failed',
           errorMessage: error.message,
@@ -445,7 +437,6 @@ class FeedImageService {
       await Car.findByIdAndUpdate(carId, {
         $set: { images: uploadedUrls } // ✅ REPLACE images on sync (don't add to old ones)
       });
-      console.log(`✅ [ImageDownloader] Updated car ${carId} with ${uploadedUrls.length} Cloudinary images`);
     } else {
       // Upload fail hua — source URLs fallback ke tor par rakho
       const sourceUrls = feedImages
@@ -456,9 +447,7 @@ class FeedImageService {
         await Car.findByIdAndUpdate(carId, {
           $set: { images: sourceUrls }
         });
-        console.log(`⚠️  [ImageDownloader] Cloudinary failed — using ${sourceUrls.length} source URLs as fallback`);
       } else {
-        console.log(`❌ [ImageDownloader] No images available for car ${carId}`);
       }
     }
 
@@ -475,15 +464,9 @@ class FeedImageService {
    */
   async processSingleImage(feedImage, carId) {
     const sourceUrl = feedImage.sourceUrl;
-
-    console.log(`[ImageDownloader] Processing: ${sourceUrl}`);
-
     const urlInfo = detectAndNormalizeUrl(sourceUrl);
-    console.log(`[ImageDownloader] Detected type: ${urlInfo.type}`);
-
     // Already on Cloudinary — no need to re-upload, just return the URL
     if (urlInfo.alreadyOnCloudinary) {
-      console.log(`[ImageDownloader] Already on Cloudinary, skipping upload`);
       return urlInfo.cloudinaryUrl;
     }
 
@@ -541,7 +524,6 @@ class FeedImageService {
         }
 
         if (urlInfo.type === 'invalid' || urlInfo.type === 'unknown') {
-          console.warn(`[ImageDownloader] Skipping unsupported URL: ${url}`);
           continue;
         }
 
@@ -561,10 +543,7 @@ class FeedImageService {
         );
 
         results.push(cloudinaryUrl);
-        console.log(`[ImageDownloader] ✅ ${i + 1}/${imageUrls.length}: ${cloudinaryUrl}`);
-
       } catch (error) {
-        console.error(`[ImageDownloader] ❌ Failed URL ${url}: ${error.message}`);
       }
     }
 
@@ -615,9 +594,7 @@ class FeedImageService {
       const folderPath = `carcatalog/feed-vehicles/${carId}`;
       await cloudinary.api.delete_resources_by_prefix(folderPath);
       await cloudinary.api.delete_folder(folderPath);
-      console.log(`[ImageDownloader] Deleted Cloudinary folder: ${folderPath}`);
     } catch (error) {
-      console.error('[ImageDownloader] Error deleting images:', error.message);
     }
   }
 

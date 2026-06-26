@@ -137,7 +137,6 @@ router.post('/fix-subscription', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Fix subscription error:', error);
     res.status(500).json({
       success: false,
       message: 'Error fixing subscription',
@@ -199,7 +198,6 @@ router.get('/check-subscription/:email', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Check subscription error:', error);
     res.status(500).json({
       success: false,
       message: 'Error checking subscription',

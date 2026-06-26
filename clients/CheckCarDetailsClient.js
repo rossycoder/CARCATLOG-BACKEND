@@ -32,7 +32,6 @@ class CheckCarDetailsClient {
     if (!this.apiKey) {
       const error = new Error('CheckCarDetails API key not configured');
       error.code = 'MISSING_API_KEY';
-      console.error('CheckCarDetails API key missing. Please set CHECKCARD_API_KEY in .env file');
       throw error;
     }
   }
@@ -188,14 +187,11 @@ class CheckCarDetailsClient {
     };
 
     // Log error details
-    console.error('CheckCarDetails API error:', errorDetails);
-
     // Handle specific error codes
     if (error.response) {
       const status = error.response.status;
 
       if (status === 403) {
-        console.warn('CheckCarDetails API rate limit or forbidden access');
         const rateLimitError = new Error('CheckCarDetails API rate limit exceeded or access forbidden');
         rateLimitError.code = 'RATE_LIMIT_EXCEEDED';
         rateLimitError.userMessage = 'Unable to fetch vehicle data at this time. Please try again later.';

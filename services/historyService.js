@@ -38,7 +38,6 @@ class HistoryService {
       }
       return null;
     } catch (error) {
-      console.error('Error retrieving cached history:', error);
       return null;
     }
   }
@@ -166,7 +165,6 @@ class HistoryService {
       return historyDoc;
 
     } catch (error) {
-      console.error('❌ Error storing history result:', error.message);
       throw error;
     }
   }
@@ -282,7 +280,6 @@ class HistoryService {
       }
 
     } catch (error) {
-      console.error(`❌ [HistoryService] syncMOTDataToCar failed for ${vrm}:`, error.message);
       // Non-critical — don't rethrow
     }
   }
@@ -293,7 +290,6 @@ class HistoryService {
     try {
       return await this.client.getVehicleRegistration(vrm);
     } catch (error) {
-      console.error(`Vehicle registration fetch failed:`, error.message);
       throw error;
     }
   }
@@ -302,7 +298,6 @@ class HistoryService {
     try {
       return await this.client.getVehicleSpecs(vrm);
     } catch (error) {
-      console.error(`Vehicle specs fetch failed:`, error.message);
       throw error;
     }
   }
@@ -311,7 +306,6 @@ class HistoryService {
     try {
       return await this.client.getMileageHistory(vrm);
     } catch (error) {
-      console.error(`Mileage history fetch failed:`, error.message);
       throw error;
     }
   }
@@ -320,7 +314,6 @@ class HistoryService {
     try {
       return await this.client.getMOTHistory(vrm);
     } catch (error) {
-      console.error(`MOT history fetch failed:`, error.message);
       const isNetworkError = error.code === 'ENOTFOUND' ||
                              error.details?.code === 'ENOTFOUND' ||
                              error.originalError?.code === 'ENOTFOUND';
@@ -359,7 +352,6 @@ class HistoryService {
         }
       };
     } catch (error) {
-      console.error(`Comprehensive fetch failed:`, error.message);
       throw error;
     }
   }

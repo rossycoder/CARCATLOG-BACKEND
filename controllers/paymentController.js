@@ -57,7 +57,6 @@ async function fetchVehicleAPIs(registrationNumber, forceRefresh = false) {
       }
     }
   } else {
-    console.warn(`⚠️  [fetchVehicleAPIs] MOT failed: ${motResult.reason?.message}`);
   }
 
   // ── History ───────────────────────────────────────────────────────────────
@@ -72,7 +71,6 @@ async function fetchVehicleAPIs(registrationNumber, forceRefresh = false) {
     if (h.colourChanges   !== undefined) out.colourChanges   = h.colourChanges;
     if (h.plateChanges    !== undefined) out.plateChanges    = h.plateChanges;
   } else {
-    console.warn(`⚠️  [fetchVehicleAPIs] History failed: ${histResult.reason?.message}`);
   }
 
   return out;
@@ -244,7 +242,6 @@ async function createAdvertCheckoutSession(req, res) {
       }
     });
   } catch (error) {
-    console.error('❌ createAdvertCheckoutSession:', error);
     res.status(500).json(formatErrorResponse(error, 'payment'));
   }
 }
@@ -279,7 +276,6 @@ async function createCheckoutSession(req, res) {
       }
     });
   } catch (error) {
-    console.error('Error in createCheckoutSession:', error);
     res.status(500).json(formatErrorResponse(error, 'payment'));
   }
 }
@@ -302,7 +298,6 @@ async function createCreditCheckoutSession(req, res) {
     );
     res.json({ success: true, data: session });
   } catch (error) {
-    console.error('Error in createCreditCheckoutSession:', error);
     res.status(500).json(formatErrorResponse(error, 'payment'));
   }
 }
@@ -331,7 +326,6 @@ async function getSessionDetails(req, res) {
       }
     });
   } catch (error) {
-    console.error('Error in getSessionDetails:', error);
     res.status(500).json(formatErrorResponse(error, 'payment'));
   }
 }
@@ -362,7 +356,6 @@ async function handleWebhook(req, res) {
 
     res.json({ received: true });
   } catch (error) {
-    console.error('Error in handleWebhook:', error);
     res.status(400).json({ success: false, error: 'Webhook processing failed' });
   }
 }
@@ -389,7 +382,6 @@ async function handlePaymentSuccess(paymentIntent) {
         // fetchVehicleAPIs is the ONLY place we call these services
         await fetchVehicleAPIs(paymentData.vrm, false);
       } catch (err) {
-        console.error(`❌ [Payment] History report failed:`, err.message);
       }
       return;
     }
@@ -405,7 +397,6 @@ async function handlePaymentSuccess(paymentIntent) {
 
     const purchase = await AdvertisingPackagePurchase.findBySessionId(paymentData.sessionId);
     if (!purchase) {
-      console.error(`⚠️  Purchase not found for session: ${paymentData.sessionId}`);
       return;
     }
 
@@ -414,7 +405,6 @@ async function handlePaymentSuccess(paymentIntent) {
 
     const advertId      = purchase.metadata.get('advertId');
     if (!advertId) {
-      console.warn('⚠️  No advertId in metadata — nothing to publish');
       return;
     }
 
@@ -436,7 +426,6 @@ async function handlePaymentSuccess(paymentIntent) {
         longitude   = pc.longitude;
         locationName= pc.locationName;
       } catch (err) {
-        console.warn(`⚠️  Postcode geocode failed: ${err.message}`);
       }
     }
 
@@ -665,7 +654,6 @@ async function handlePaymentSuccess(paymentIntent) {
       try {
         apiData = await fetchVehicleAPIs(vehicleData.registrationNumber, false); // use cache
       } catch (error) {
-        console.error(`❌ [Car Payment] fetchVehicleAPIs failed:`, error.message);
         // Continue without API data - car will still be created
       }
     } else if (isRelist) {
@@ -798,15 +786,12 @@ async function handlePaymentSuccess(paymentIntent) {
           price: car.price
         };
         carListingEmailService.sendCarListingSuccess(resolvedUser, carEmailDetails).catch(err => {
-          console.warn(`⚠️  Car listing success email failed: ${err.message}`);
         });
       }
     } catch (emailErr) {
-      console.warn(`⚠️  Car listing email error: ${emailErr.message}`);
     }
 
   } catch (error) {
-    console.error('❌ handlePaymentSuccess:', error);
   }
 }
 
@@ -872,7 +857,6 @@ function buildCarUpdateFields(car, userId, apiData, locationBlock, packageBlock,
 async function ensureUser(userId, email) {
   if (userId) return userId;
   if (!email) {
-    console.warn('⚠️ No userId and no email in payment session — will rely on existing car userId');
     return null;
   }
   const User   = require('../models/User');
@@ -896,7 +880,6 @@ async function sendConfirmationEmail(purchase) {
     const emailService = new EmailService();
     await emailService.sendAdvertisingPackageConfirmation(purchase);
   } catch (err) {
-    console.warn(`⚠️  Email send failed: ${err.message}`);
   }
 }
 
@@ -905,7 +888,6 @@ async function handlePaymentFailure(paymentIntent) {
   try {
     // TODO: log + notify if needed
   } catch (error) {
-    console.error('Error handling payment failure:', error);
   }
 }
 
@@ -921,7 +903,6 @@ async function handleCheckoutCompleted(session) {
       }
     }
   } catch (error) {
-    console.error('Error handling checkout completion:', error);
   }
 }
 
@@ -969,7 +950,6 @@ async function getPurchaseDetails(req, res) {
       }
     });
   } catch (error) {
-    console.error('Error in getPurchaseDetails:', error);
     res.status(500).json(formatErrorResponse(error, 'payment'));
   }
 }
@@ -982,7 +962,6 @@ async function createRefund(req, res) {
     const refund        = await stripeService.createRefund(paymentIntentId, amount, reason);
     res.json({ success: true, data: refund });
   } catch (error) {
-    console.error('Error in createRefund:', error);
     res.status(500).json(formatErrorResponse(error, 'payment'));
   }
 }
@@ -1003,7 +982,6 @@ async function completeTestPurchase(req, res) {
     res.json({ success: true, message: 'Test purchase completed', vehicleId: updated.vehicleId,
       purchase: { id: updated._id, status: updated.paymentStatus, packageStatus: updated.packageStatus, vehicleId: updated.vehicleId } });
   } catch (error) {
-    console.error('Error completing test purchase:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
@@ -1031,7 +1009,6 @@ async function autoCompletePurchase(req, res) {
       purchase: { id: updated._id, status: updated.paymentStatus, packageStatus: updated.packageStatus, vehicleId: updated.vehicleId }
     });
   } catch (error) {
-    console.error('Error auto-completing purchase:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 }

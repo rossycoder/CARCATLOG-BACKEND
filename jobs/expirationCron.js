@@ -14,7 +14,6 @@ const startExpirationCron = () => {
     try {
       const results = await expirationService.expireListings();
     } catch (error) {
-      console.error('Error in expiration cron job:', error);
     }
   });
 
@@ -30,7 +29,6 @@ const startWarningCron = () => {
     try {
       const results = await expirationService.sendExpirationWarnings(3);
     } catch (error) {
-      console.error('Error in warning cron job:', error);
     }
   });
 
@@ -47,7 +45,6 @@ const startCleanupCron = () => {
     try {
       const results = await runDailyCleanup();
     } catch (error) {
-      console.error('Error in cleanup cron job:', error);
     }
   });
 
@@ -81,7 +78,6 @@ const startCallSessionCleanupCron = () => {
 
       console.log(`✅ Released ${proxyNumbers.length} proxy number(s) back to pool`);
     } catch (error) {
-      console.error('Error in call session cleanup cron:', error);
     }
   });
 };

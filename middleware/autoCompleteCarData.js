@@ -9,7 +9,6 @@
  * Kept for backward compatibility
  */
 async function autoCompleteCarDataMiddleware(doc, next) {
-  console.warn('⚠️  autoCompleteCarData middleware is deprecated. Use universalAutoCompleteService instead.');
   next();
 }
 

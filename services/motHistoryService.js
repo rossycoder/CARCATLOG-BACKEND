@@ -81,7 +81,6 @@ class MOTHistoryService {
       };
 
     } catch (error) {
-      console.error(`[MOTHistoryService] Error fetching MOT history for ${vrm}:`, error);
       throw error;
     }
   }
@@ -205,10 +204,8 @@ class MOTHistoryService {
         if (updateData.motStatus) {
         }
       } else {
-        console.warn(`[MOTHistoryService] Car not found for ${vrm}`);
       }
     } catch (error) {
-      console.error(`[MOTHistoryService] Error saving to Car:`, error);
     }
   }
 
@@ -234,7 +231,6 @@ class MOTHistoryService {
       } else {
       }
     } catch (error) {
-      console.error(`[MOTHistoryService] Error saving to VehicleHistory:`, error);
     }
   }
 
@@ -280,7 +276,6 @@ class MOTHistoryService {
       };
 
     } catch (error) {
-      console.error(`[MOTHistoryService] Error getting cached MOT history:`, error);
       throw error;
     }
   }

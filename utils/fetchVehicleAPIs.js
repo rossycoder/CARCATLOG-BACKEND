@@ -47,7 +47,6 @@ async function fetchVehicleAPIs(registrationNumber, forceRefresh = false) {
       }
     }
   } else {
-    console.warn(`⚠️  [fetchVehicleAPIs] MOT failed for ${registrationNumber}: ${motResult.reason?.message}`);
   }
 
   // ── History ───────────────────────────────────────────────────────────────
@@ -62,7 +61,6 @@ async function fetchVehicleAPIs(registrationNumber, forceRefresh = false) {
     if (h.colourChanges  !== undefined) out.colourChanges  = h.colourChanges;
     if (h.plateChanges   !== undefined) out.plateChanges   = h.plateChanges;
   } else {
-    console.warn(`⚠️  [fetchVehicleAPIs] History failed for ${registrationNumber}: ${histResult.reason?.message}`);
   }
 
   return out;

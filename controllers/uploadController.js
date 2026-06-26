@@ -27,8 +27,6 @@ const uploadImage = async (req, res) => {
       res.status(500).json(result);
     }
   } catch (error) {
-    console.error('[Upload] Error:', error.message);
-    console.error('[Upload] Stack:', error.stack);
     res.status(500).json({
       success: false,
       message: 'Failed to upload image',
@@ -73,7 +71,6 @@ const uploadMultipleImages = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Multiple upload error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to upload images',
@@ -108,7 +105,6 @@ const deleteImage = async (req, res) => {
       res.status(500).json(result);
     }
   } catch (error) {
-    console.error('Delete error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to delete image',

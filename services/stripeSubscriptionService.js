@@ -20,7 +20,6 @@ class StripeSubscriptionService {
 
       return customer;
     } catch (error) {
-      console.error('Error creating Stripe customer:', error);
       throw error;
     }
   }
@@ -69,7 +68,6 @@ class StripeSubscriptionService {
 
       return session.url;
     } catch (error) {
-      console.error('Error creating checkout session:', error);
       throw error;
     }
   }
@@ -138,7 +136,6 @@ class StripeSubscriptionService {
 
       return tradeSubscription;
     } catch (error) {
-      console.error('Error creating subscription:', error);
       throw error;
     }
   }
@@ -172,7 +169,6 @@ class StripeSubscriptionService {
 
       return tradeSubscription;
     } catch (error) {
-      console.error('Error cancelling subscription:', error);
       throw error;
     }
   }
@@ -210,7 +206,6 @@ class StripeSubscriptionService {
         default:
       }
     } catch (error) {
-      console.error('Error handling webhook:', error);
       throw error;
     }
   }
@@ -229,9 +224,6 @@ class StripeSubscriptionService {
       const dealer = await TradeDealer.findById(dealerId);
 
       if (!plan || !dealer) {
-        console.error('❌ Plan or dealer not found:', { dealerId, planId });
-        console.error('   Plan found:', !!plan);
-        console.error('   Dealer found:', !!dealer);
         return;
       }
 
@@ -275,8 +267,6 @@ class StripeSubscriptionService {
         try {
           await tradeSubscription.save();
         } catch (saveError) {
-          console.error('❌ Failed to save subscription:', saveError.message);
-          console.error('   Error details:', saveError);
           throw saveError;
         }
       } else {
@@ -296,13 +286,10 @@ class StripeSubscriptionService {
       try {
         await dealer.save();
       } catch (dealerError) {
-        console.error('❌ Failed to update dealer:', dealerError.message);
         throw dealerError;
       }
 
     } catch (error) {
-      console.error('\n❌ WEBHOOK ERROR:', error.message);
-      console.error('Stack:', error.stack);
       throw error;
     }
   }

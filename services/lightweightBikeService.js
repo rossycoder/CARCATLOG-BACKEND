@@ -95,7 +95,6 @@ class LightweightBikeService {
           apiCalls = 1;
           apiProvider = 'dvla-fallback';
         } catch (dvlaError) {
-          console.error(`❌ Both CheckCarDetails and DVLA APIs failed for ${registration}`);
           throw new Error(`Bike lookup failed: CheckCarDetails (${checkCarError.message}), DVLA (${dvlaError.message})`);
         }
       }
@@ -182,8 +181,6 @@ class LightweightBikeService {
       };
       
     } catch (error) {
-      console.error(`❌ Bike lookup failed for ${registration}:`, error.message);
-      
       return {
         success: false,
         error: `Bike lookup failed: ${error.message}. Please check the registration number and try again.`,
@@ -274,7 +271,6 @@ class LightweightBikeService {
       };
       
     } catch (error) {
-      console.error(`Cache check error for ${registration}:`, error.message);
       return null;
     }
   }
@@ -367,7 +363,6 @@ class LightweightBikeService {
       }
       
     } catch (error) {
-      console.error(`❌ Cache storage error for ${registration}:`, error.message);
       return null;
     }
   }
@@ -466,7 +461,6 @@ class LightweightBikeService {
       return estimatedPrice;
       
     } catch (error) {
-      console.error('Error calculating estimated bike price:', error.message);
       return 3000; // Default £3,000
     }
   }
@@ -514,7 +508,6 @@ class LightweightBikeService {
       return parsed;
       
     } catch (error) {
-      console.error(`❌ Error parsing DVLA response for bike ${registration}:`, error.message);
       throw new Error(`Failed to parse DVLA response: ${error.message}`);
     }
   }
@@ -639,7 +632,6 @@ class LightweightBikeService {
       };
       
     } catch (error) {
-      console.error(`❌ [Complete Data] Error fetching complete bike data:`, error);
       return {
         success: false,
         error: error.message,

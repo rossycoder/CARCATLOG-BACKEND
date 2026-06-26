@@ -63,7 +63,6 @@ exports.getInventory = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get inventory error:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching inventory'
@@ -191,7 +190,6 @@ exports.getStats = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get stats error:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching stats'
@@ -222,7 +220,6 @@ exports.getVehicle = async (req, res) => {
       vehicle
     });
   } catch (error) {
-    console.error('Get vehicle error:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching vehicle'
@@ -493,9 +490,6 @@ exports.createVehicle = async (req, res) => {
     if (regNumber) {
       try {
         const { fetchVehicleAPIs, applyAPIDataToVehicle } = require('../utils/fetchVehicleAPIs');
-
-        console.log(`🔍 [Trade createVehicle] Fetching MOT+History for ${regNumber}...`);
-
         const apiData = await fetchVehicleAPIs(regNumber, true); // forceRefresh=true (first time)
 
         if (Object.keys(apiData).length > 0) {
@@ -514,15 +508,11 @@ exports.createVehicle = async (req, res) => {
               ...(apiData.plateChanges   !== undefined && { plateChanges:   apiData.plateChanges }),
             }}
           );
-          console.log(`✅ [Trade createVehicle] MOT+History saved for ${regNumber}`);
         } else {
-          console.warn(`⚠️  [Trade createVehicle] No API data returned for ${regNumber}`);
         }
       } catch (apiErr) {
-        console.error(`❌ [Trade createVehicle] API error for ${regNumber}: ${apiErr.message}`);
       }
     } else {
-      console.warn(`⚠️  [Trade createVehicle] No registration number — skipping MOT/History fetch`);
     }
 
     // Increment subscription usage
@@ -553,7 +543,6 @@ exports.createVehicle = async (req, res) => {
         emailTemplate.html
       );
     } catch (emailError) {
-      console.error('[Trade Inventory] Failed to send listing email:', emailError.message);
       // Don't block the response if email fails
     }
 
@@ -563,9 +552,6 @@ exports.createVehicle = async (req, res) => {
       vehicle
     });
   } catch (error) {
-    console.error('[Trade Inventory] Create vehicle error:', error);
-    console.error('[Trade Inventory] Error stack:', error.stack);
-    
     // Send detailed error for debugging
     res.status(500).json({
       success: false,
@@ -609,7 +595,6 @@ exports.updateVehicle = async (req, res) => {
       vehicle
     });
   } catch (error) {
-    console.error('Update vehicle error:', error);
     res.status(500).json({
       success: false,
       message: 'Error updating vehicle'
@@ -658,7 +643,6 @@ exports.deleteVehicle = async (req, res) => {
       message: 'Vehicle deleted successfully'
     });
   } catch (error) {
-    console.error('Delete vehicle error:', error);
     res.status(500).json({
       success: false,
       message: 'Error deleting vehicle'
@@ -713,7 +697,6 @@ exports.markAsSold = async (req, res) => {
       vehicle
     });
   } catch (error) {
-    console.error('Mark as sold error:', error);
     res.status(500).json({
       success: false,
       message: 'Error marking vehicle as sold',
@@ -823,7 +806,6 @@ exports.publishVehicle = async (req, res) => {
       } else {
       }
     } catch (error) {
-      console.error(`[Trade Publish] ❌ Location fetch failed: ${error.message}`);
       // Continue with publish even if location fetch fails
     }
 
@@ -923,7 +905,6 @@ exports.publishVehicle = async (req, res) => {
 
       if (needsHistory || needsMOT) {
         try {
-          console.log(`🔍 [Trade Publish] Fetching missing data for ${car.registrationNumber}...`);
           const apiData = await fetchVehicleAPIs(car.registrationNumber, false); // use cache
 
           if (needsMOT && apiData.motHistory?.length) {
@@ -937,12 +918,9 @@ exports.publishVehicle = async (req, res) => {
             updateData.historyCheckStatus = apiData.historyCheckStatus;
             updateData.historyCheckDate   = apiData.historyCheckDate;
           }
-          console.log(`✅ [Trade Publish] Data fetched for ${car.registrationNumber}`);
         } catch (error) {
-          console.error(`[Trade Publish] ❌ API fetch failed: ${error.message}`);
         }
       } else {
-        console.log(`ℹ️  [Trade Publish] MOT+History already in DB for ${car.registrationNumber}, skipping`);
       }
     }
     
@@ -1046,10 +1024,6 @@ exports.publishVehicle = async (req, res) => {
       message: 'Vehicle published successfully'
     });
   } catch (error) {
-    console.error('[Trade Publish] ========== PUBLISH ERROR ==========');
-    console.error('[Trade Publish] Error:', error);
-    console.error('[Trade Publish] Error stack:', error.stack);
-    
     res.status(500).json({ 
       success: false, 
       message: 'Failed to publish vehicle',
@@ -1115,8 +1089,6 @@ exports.chargeTrialListing = async (req, res) => {
       chargeId: paymentIntent.id
     });
   } catch (error) {
-    console.error('❌ Trial listing charge error:', error);
-    
     // Don't block listing if charge fails
     res.json({
       success: true,

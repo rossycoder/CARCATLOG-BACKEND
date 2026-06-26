@@ -142,9 +142,6 @@ class SafeAPIService {
         responseTime,
         cacheHit: false
       });
-      
-      console.error(`❌ [Safe API] API call failed for ${endpoint} - ${cleanVrm}:`, error.message);
-      
       throw error;
     }
   }

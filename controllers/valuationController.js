@@ -88,8 +88,6 @@ async function getValuation(req, res) {
       });
     }
   } catch (error) {
-    console.error('Error in getValuation:', error);
-    
     // Handle valuation not found error
     if (error.code === 'VALUATION_NOT_FOUND') {
       return res.status(404).json({
@@ -155,8 +153,6 @@ async function getDetailedValuation(req, res) {
       data: detailedValuation,
     });
   } catch (error) {
-    console.error('Error in getDetailedValuation:', error);
-    
     // Handle valuation not found error
     if (error.code === 'VALUATION_NOT_FOUND') {
       return res.status(404).json({
@@ -231,8 +227,6 @@ async function getFreshValuation(req, res) {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('❌ [Fresh Valuation] Error:', error.message);
-    
     // Handle valuation not found error
     if (error.code === 'VALUATION_NOT_FOUND') {
       return res.status(404).json({

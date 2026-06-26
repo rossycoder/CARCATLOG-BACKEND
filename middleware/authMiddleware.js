@@ -196,7 +196,6 @@ const verifyVehicleOwnership = async (req, res, next) => {
     });
     
   } catch (error) {
-    console.error('❌ Error verifying vehicle ownership:', error);
     return res.status(500).json({
       success: false,
       message: 'Error verifying vehicle ownership'

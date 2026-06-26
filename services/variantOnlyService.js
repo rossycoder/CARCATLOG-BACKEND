@@ -73,8 +73,6 @@ class VariantOnlyService {
       return { variant, make, model, engineSize, cached: false, cost: 0.05 };
       
     } catch (error) {
-      console.error(`❌ Variant API call failed for ${registration}:`, error.message);
-      
       // Generate fallback variant
       return {
         variant: null,
@@ -126,7 +124,6 @@ class VariantOnlyService {
       };
       
     } catch (error) {
-      console.error(`Cache check error for ${registration}:`, error.message);
       return null;
     }
   }
@@ -173,7 +170,6 @@ class VariantOnlyService {
       }
       
     } catch (error) {
-      console.error(`❌ Variant cache storage error for ${registration}:`, error.message);
       return null;
     }
   }

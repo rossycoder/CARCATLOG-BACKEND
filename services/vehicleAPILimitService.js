@@ -94,8 +94,6 @@ class VehicleAPILimitService {
       };
 
     } catch (error) {
-      console.error(`❌ [Vehicle API Limit] Error checking limit:`, error.message);
-      
       // On error, allow the call (fail open)
       return {
         allowed: true,
@@ -150,7 +148,6 @@ class VehicleAPILimitService {
       };
 
     } catch (error) {
-      console.error(`❌ [Vehicle API Limit] Error getting summary:`, error.message);
       return null;
     }
   }
@@ -192,7 +189,6 @@ class VehicleAPILimitService {
       }));
 
     } catch (error) {
-      console.error(`❌ [Vehicle API Limit] Error getting stats:`, error.message);
       return [];
     }
   }
@@ -233,7 +229,6 @@ class VehicleAPILimitService {
       return results;
 
     } catch (error) {
-      console.error(`❌ [Vehicle API Limit] Error finding excessive calls:`, error.message);
       return [];
     }
   }

@@ -515,7 +515,6 @@ carSchema.pre('save', async function(next) {
     this.registrationNumber = this.registrationNumber.toUpperCase().replace(/\s/g, '');
     
     if (originalReg !== this.registrationNumber) {
-      console.log(`📝 [Pre-Save] Normalized registration: "${originalReg}" → "${this.registrationNumber}"`);
     }
   }
 
@@ -572,7 +571,6 @@ carSchema.pre('save', async function(next) {
           this.locationName = areaMap[this.postcode.substring(0, 2).toUpperCase()] || 'UK';
         }
       } catch (err) {
-        console.warn(`⚠️  [Pre-Save] Postcode lookup failed: ${err.message}`);
         if (!this.locationName) this.locationName = 'UK';
       }
     }
@@ -621,7 +619,6 @@ carSchema.pre('save', async function(next) {
             }
           }
         } catch (err) {
-          console.warn(`⚠️  [Pre-Save] DVLA fetch failed: ${err.message}`);
         }
       }
     }
@@ -684,7 +681,6 @@ carSchema.pre('save', async function(next) {
         }
 
       } catch (err) {
-        console.error(`❌ [Pre-Save] Variant fetch failed: ${err.message}`);
         this.variant = this.engineSize && this.fuelType
           ? `${this.engineSize}L ${this.fuelType}`
           : (this.fuelType || 'Standard');
@@ -720,7 +716,6 @@ carSchema.pre('save', async function(next) {
         const populated = AutoDataPopulationService.populateMissingData(enhanced);
         Object.keys(populated).forEach(k => { if (k !== '_id' && k !== '__v') this[k] = populated[k]; });
       } catch (err) {
-        console.error(`❌ [Pre-Save] EV enhancement failed: ${err.message}`);
       }
     }
 
@@ -769,7 +764,6 @@ carSchema.pre('save', async function(next) {
           this.price          = val.estimatedValue.private;
           this.estimatedValue = val.estimatedValue.private;
         } catch (err) {
-          console.warn(`⚠️  [Pre-Save] Valuation fetch failed: ${err.message}`);
         }
       }
     }
@@ -785,10 +779,8 @@ carSchema.pre('save', async function(next) {
           if (user) {
             this.userId = user._id;
           } else {
-            console.warn(`⚠️  [Pre-Save] No user found for ${this.sellerContact.email} — car won't appear in My Listings`);
           }
         } catch (err) {
-          console.warn(`⚠️  [Pre-Save] userId lookup failed: ${err.message}`);
         }
       } else if (!this.userId) {
         console.warn(`⚠️  [Pre-Save] No userId and no email — car won't appear in My Listings (id=${this._id})`);
@@ -807,7 +799,6 @@ carSchema.pre('save', async function(next) {
 
   } catch (err) {
     // Catch-all — never let a hook error silently prevent saving
-    console.error(`❌ [Pre-Save] Unhandled error: ${err.message}`, err);
   }
 
   next();
@@ -834,7 +825,6 @@ carSchema.pre(['deleteOne', 'findOneAndDelete', 'findByIdAndDelete'], async func
       }
     }
   } catch (err) {
-    console.error('❌ [Delete] Cleanup error:', err);
   }
 });
 
@@ -885,21 +875,16 @@ carSchema.statics.deleteCarWithCleanup = async function(carId) {
       if (feedVehicle) {
         // Delete all associated FeedImages
         const deletedImages = await FeedImage.deleteMany({ feedVehicleId: feedVehicle._id });
-        console.log(`🗑️  [CASCADE] Deleted ${deletedImages.deletedCount} FeedImages for car ${carId}`);
-        
         // Delete FeedVehicle
         await FeedVehicle.findByIdAndDelete(feedVehicle._id);
-        console.log(`🗑️  [CASCADE] Deleted FeedVehicle ${feedVehicle._id} for car ${carId}`);
       }
     } catch (cascadeError) {
-      console.error('⚠️  [CASCADE DELETE] Error cleaning feed data:', cascadeError.message);
       // Don't fail the car deletion if cascade delete fails
     }
     
     await this.findByIdAndDelete(carId);
     return { success: true, message: 'Car and associated data deleted successfully' };
   } catch (err) {
-    console.error('❌ [deleteCarWithCleanup]', err);
     return { success: false, error: err.message };
   }
 };

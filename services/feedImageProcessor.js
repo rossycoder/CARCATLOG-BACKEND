@@ -31,13 +31,9 @@ class FeedImageProcessor {
     try {
       // Extract all possible image sources from vehicle data
       const imageUrls = this.extractImageUrls(vehicleData);
-
-      console.log(`🖼️  [FeedImageProcessor] Found ${imageUrls.length} images in feed for ${vehicleData.make} ${vehicleData.model}`);
-
       if (imageUrls.length === 0) {
         // No images found - use Unsplash if enabled
         if (options.useUnsplashFallback) {
-          console.log(`⚠️  [FeedImageProcessor] No images in feed, using Unsplash fallback`);
           const unsplashImages = await this.generateAndUploadUnsplashImages(vehicleData);
           results.processedImages = unsplashImages;
           results.unsplashUsed = true;
@@ -60,7 +56,6 @@ class FeedImageProcessor {
             throw new Error('Upload failed');
           }
         } catch (error) {
-          console.error(`❌ [FeedImageProcessor] Failed to process image: ${imageUrl}`, error.message);
           results.failedImages.push({
             originalUrl: imageUrl,
             error: error.message
@@ -70,17 +65,13 @@ class FeedImageProcessor {
 
       // If no images processed successfully and fallback enabled
       if (results.processedImages.length === 0 && options.useUnsplashFallback) {
-        console.log(`⚠️  [FeedImageProcessor] All images failed, using Unsplash fallback`);
         const unsplashImages = await this.generateAndUploadUnsplashImages(vehicleData);
         results.processedImages = unsplashImages;
         results.unsplashUsed = true;
       }
 
     } catch (error) {
-      console.error('❌ [FeedImageProcessor] Error processing vehicle images:', error);
     }
-
-    console.log(`📊 [FeedImageProcessor] Results: ${results.totalProcessed} processed, ${results.failedImages.length} failed`);
     return results;
   }
 
@@ -126,7 +117,6 @@ class FeedImageProcessor {
       const dataURI = `data:${contentType};base64,${base64Image}`;
 
       // Upload to Cloudinary
-      console.log(`☁️  Uploading to Cloudinary...`);
       const uploadResult = await cloudinary.uploader.upload(dataURI, {
         folder: `carcatalog/feed-images/${vehicleData.stock_id || 'unknown'}`,
         quality: 'auto:good',
@@ -137,7 +127,6 @@ class FeedImageProcessor {
       return uploadResult.secure_url;
 
     } catch (error) {
-      console.error(`❌ Download/upload failed for ${imageUrl}:`, error.message);
       return null;
     }
   }
@@ -154,7 +143,6 @@ class FeedImageProcessor {
       });
       return result.secure_url;
     } catch (error) {
-      console.error('Base64 upload failed:', error.message);
       return null;
     }
   }
@@ -178,13 +166,9 @@ class FeedImageProcessor {
       // Use export=view for images (more reliable than export=download)
       // This URL works for public images without authentication
       const directUrl = `https://drive.google.com/uc?export=view&id=${fileId}`;
-      console.log(`🔄 [Drive] Converting viewer link to direct URL`);
       console.log(`   Original: ${driveUrl.substring(0, 60)}...`);
-      console.log(`   Direct:   ${directUrl}`);
       return directUrl;
     }
-
-    console.warn(`⚠️  [Drive] Could not extract file ID from: ${driveUrl}`);
     return driveUrl;
   }
 
@@ -226,14 +210,12 @@ class FeedImageProcessor {
             cloudinaryUrls.push(cloudinaryUrl);
           }
         } catch (error) {
-          console.error(`Failed to upload Unsplash image:`, error.message);
         }
       }
 
       return cloudinaryUrls.length > 0 ? cloudinaryUrls : unsplashPhotos; // Fallback to originals if upload fails
 
     } catch (error) {
-      console.error('Unsplash fallback failed:', error.message);
       // Return direct Unsplash URLs as last resort
       return [
         'https://images.unsplash.com/photo-1555215695-3004980ad54e?w=800&q=80',

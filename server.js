@@ -17,9 +17,6 @@ require('./config/passport');
 try {
   validateAndInitialize();
 } catch (error) {
-  console.warn('⚠️  Warning: API credentials validation failed');
-  console.warn('   Some features (vehicle history/valuation) may not work');
-  console.warn('   Error:', error.message);
   // Don't exit - allow server to start without these optional features
 }
 
@@ -194,7 +191,6 @@ app.use('/api/notify', require('./routes/notifyRoutes')); // Coming soon notify 
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
   res.status(err.status || 500).json({
     error: err.message || 'Internal Server Error',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
@@ -259,7 +255,7 @@ cron.schedule('*/10 * * * *', async () => {
       )
     ]);
   } catch (err) {
-    console.error('❌ Call session cleanup error:', err.message);
+    // Silent error handling
   }
 });
 

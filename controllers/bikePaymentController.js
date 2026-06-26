@@ -79,7 +79,6 @@ async function createBikeCheckoutSession(req, res) {
     });
 
   } catch (error) {
-    console.error('❌ [Bike Payment] Error creating checkout session:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to create checkout session',

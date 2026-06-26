@@ -79,7 +79,6 @@ async function createVanCheckoutSession(req, res) {
     });
 
   } catch (error) {
-    console.error('❌ [Van Payment] Error creating checkout session:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to create checkout session',

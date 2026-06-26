@@ -97,7 +97,6 @@ exports.getVans = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching vans:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching vans',
@@ -158,7 +157,6 @@ exports.getVanById = async (req, res) => {
       data: van
     });
   } catch (error) {
-    console.error('Error fetching van:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching van',
@@ -210,7 +208,6 @@ exports.createVan = async (req, res) => {
       message: 'Van created successfully'
     });
   } catch (error) {
-    console.error('Error creating van:', error);
     res.status(400).json({
       success: false,
       message: 'Error creating van',
@@ -241,7 +238,6 @@ exports.updateVan = async (req, res) => {
       message: 'Van updated successfully'
     });
   } catch (error) {
-    console.error('Error updating van:', error);
     res.status(400).json({
       success: false,
       message: 'Error updating van',
@@ -277,7 +273,6 @@ exports.deleteVan = async (req, res) => {
       message: 'Van deleted successfully'
     });
   } catch (error) {
-    console.error('Error deleting van:', error);
     res.status(500).json({
       success: false,
       message: 'Error deleting van',
@@ -338,7 +333,6 @@ exports.markVanAsSold = async (req, res) => {
       van
     });
   } catch (error) {
-    console.error('Error marking van as sold:', error);
     res.status(500).json({
       success: false,
       message: 'Error marking van as sold',
@@ -361,7 +355,6 @@ exports.getVanCount = async (req, res) => {
       count
     });
   } catch (error) {
-    console.error('Error getting van count:', error);
     res.status(500).json({
       success: false,
       message: 'Error getting van count',
@@ -478,7 +471,6 @@ exports.searchByPostcode = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error searching vans by postcode:', error);
     res.status(500).json({
       success: false,
       message: 'Error searching vans',
@@ -559,7 +551,6 @@ exports.publishVan = async (req, res) => {
           coordinates: [postcodeData.longitude, postcodeData.latitude]
         };
       } catch (error) {
-        console.warn('[Van Publish] Could not geocode postcode:', error.message);
       }
     }
 
@@ -575,8 +566,6 @@ exports.publishVan = async (req, res) => {
       message: 'Van published successfully'
     });
   } catch (error) {
-    console.error('[Van Publish] ========== PUBLISH ERROR ==========');
-    console.error('[Van Publish] Error:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to publish van',
@@ -623,7 +612,6 @@ exports.getDealerVans = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error getting dealer vans:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching dealer vans',
@@ -678,7 +666,6 @@ exports.getFilterOptions = async (req, res) => {
     return res.json(result);
 
   } catch (error) {
-    console.error('[Van Controller] Error in getFilterOptions:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching filter options',
@@ -797,7 +784,6 @@ exports.searchVans = async (req, res) => {
         } else {
         }
       } catch (err) {
-        console.warn('[Van Controller] Could not calculate distances:', err.message);
         // Continue without distance calculation
         vans = vans.map(van => ({ ...van, distance: 0 }));
       }
@@ -857,7 +843,6 @@ exports.searchVans = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[Van Controller] Error in searchVans:', error);
     return res.status(500).json({
       success: false,
       error: error.message || 'Failed to search vans',
@@ -909,7 +894,6 @@ exports.basicVanLookup = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('[Van Controller] Basic lookup error:', error);
     return res.status(500).json({
       success: false,
       error: 'Internal server error during van lookup',

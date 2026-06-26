@@ -32,7 +32,6 @@ const validateAndNormalizeVehicle = (req, res, next) => {
     
     next();
   } catch (error) {
-    console.error('Validation middleware error:', error);
     return res.status(500).json({
       success: false,
       message: 'Error validating vehicle data',
@@ -78,7 +77,6 @@ const checkDuplicateRegistration = async (req, res, next) => {
     
     next();
   } catch (error) {
-    console.error('Duplicate check middleware error:', error);
     return res.status(500).json({
       success: false,
       message: 'Error checking for duplicates',

@@ -99,7 +99,6 @@ exports.getBikes = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching bikes:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching bikes',
@@ -183,7 +182,6 @@ exports.getBikeById = async (req, res) => {
       data: bike
     });
   } catch (error) {
-    console.error('Error fetching bike:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching bike',
@@ -213,7 +211,6 @@ exports.getBikeByAdvertId = async (req, res) => {
       data: bike
     });
   } catch (error) {
-    console.error('Error fetching bike by advertId:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching bike',
@@ -429,8 +426,6 @@ exports.createBike = async (req, res) => {
       message: 'Bike created successfully'
     });
   } catch (error) {
-    console.error('Error creating bike:', error);
-    
     if (error.name === 'ValidationError') {
       const validationErrors = Object.values(error.errors).map(err => err.message);
       return res.status(400).json({
@@ -477,7 +472,6 @@ exports.updateBike = async (req, res) => {
       message: 'Bike updated successfully'
     });
   } catch (error) {
-    console.error('Error updating bike:', error);
     res.status(400).json({
       success: false,
       message: 'Error updating bike',
@@ -529,7 +523,6 @@ exports.patchBikeDetails = async (req, res) => {
       message: 'Bike details updated successfully'
     });
   } catch (error) {
-    console.error('❌ Error patching bike details:', error);
     res.status(500).json({ 
       success: false,
       message: 'Server error',
@@ -567,7 +560,6 @@ exports.deleteBike = async (req, res) => {
         } else {
         }
       } catch (cacheError) {
-        console.error('⚠️  Error deleting VehicleHistory cache:', cacheError.message);
         // Don't fail the bike deletion if cache deletion fails
       }
     }
@@ -582,7 +574,6 @@ exports.deleteBike = async (req, res) => {
       message: 'Bike deleted successfully'
     });
   } catch (error) {
-    console.error('Error deleting bike:', error);
     res.status(500).json({
       success: false,
       message: 'Error deleting bike',
@@ -643,7 +634,6 @@ exports.markBikeAsSold = async (req, res) => {
       bike
     });
   } catch (error) {
-    console.error('Error marking bike as sold:', error);
     res.status(500).json({
       success: false,
       message: 'Error marking bike as sold',
@@ -760,7 +750,6 @@ exports.searchByPostcode = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error searching bikes by postcode:', error);
     res.status(500).json({
       success: false,
       message: 'Error searching bikes',
@@ -783,7 +772,6 @@ exports.getBikeCount = async (req, res) => {
       count
     });
   } catch (error) {
-    console.error('Error getting bike count:', error);
     res.status(500).json({
       success: false,
       message: 'Error getting bike count',
@@ -879,7 +867,6 @@ exports.publishBike = async (req, res) => {
           coordinates: [postcodeData.longitude, postcodeData.latitude]
         };
       } catch (error) {
-        console.warn('[Bike Publish] Could not geocode postcode:', error.message);
       }
     }
     
@@ -908,7 +895,6 @@ exports.publishBike = async (req, res) => {
           }
         }
       } catch (error) {
-        console.warn('[Bike Publish] Could not fetch API data:', error.message);
         // Don't fail publish if API call fails
       }
     }
@@ -923,8 +909,6 @@ exports.publishBike = async (req, res) => {
       message: 'Bike published successfully'
     });
   } catch (error) {
-    console.error('[Bike Publish] ========== PUBLISH ERROR ==========');
-    console.error('[Bike Publish] Error:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to publish bike',
@@ -971,7 +955,6 @@ exports.getDealerBikes = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error getting dealer bikes:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching dealer bikes',
@@ -1026,7 +1009,6 @@ exports.getFilterOptions = async (req, res) => {
     return res.json(result);
 
   } catch (error) {
-    console.error('[Bike Controller] Error in getFilterOptions:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching filter options',
@@ -1137,7 +1119,6 @@ exports.searchBikes = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[Bike Controller] Error in searchBikes:', error);
     return res.status(500).json({
       success: false,
       error: error.message || 'Failed to search bikes',
@@ -1259,7 +1240,6 @@ exports.enhancedBikeLookup = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Enhanced bike lookup error:', error);
     res.status(500).json({
       success: false,
       message: 'Enhanced bike lookup failed',
@@ -1322,8 +1302,6 @@ exports.basicBikeLookup = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('[Bike Controller] Basic lookup error:', error);
-    
     // FALLBACK: Generate mock data even on error
     try {
       const { registration } = req.params;
@@ -1398,7 +1376,6 @@ exports.completeBikeLookup = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('[Bike Controller] Complete lookup error:', error);
     return res.status(500).json({
       success: false,
       error: 'Internal server error during complete bike lookup',
@@ -1610,7 +1587,6 @@ exports.activateBikeFromPayment = async (req, res) => {
         longitude = postcodeData.longitude;
         locationName = postcodeData.locationName;
       } catch (error) {
-        console.warn(`⚠️  Could not geocode postcode: ${error.message}`);
       }
     }
 
@@ -1692,7 +1668,6 @@ exports.activateBikeFromPayment = async (req, res) => {
         await bike.populate('historyCheckId');
         
       } catch (error) {
-        console.error(`❌ Error fetching complete vehicle data:`, error.message);
       }
     }
 
@@ -1708,7 +1683,6 @@ exports.activateBikeFromPayment = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error activating bike:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to activate bike',
