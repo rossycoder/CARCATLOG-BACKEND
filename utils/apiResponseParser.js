@@ -191,8 +191,36 @@ function parseCheckCarDetailsResponse(data) {
     extraUrbanMpg: extractNumber(smmtDetails.ExtraUrbanMpg || fuelEconomy.ExtraUrbanMpg),
     combinedMpg: extractNumber(smmtDetails.CombinedMpg || fuelEconomy.CombinedMpg),
     co2Emissions: extractNumber(smmtDetails.Co2 || emissions.ManufacturerCo2 || vehicleId.DvlaCo2),
-    insuranceGroup: smmtDetails.InsuranceGroup || modelData.InsuranceGroup || null,
-    annualTax: extractNumber(modelData.AnnualTax || modelData.VehicleTax),
+    insuranceGroup: (() => {
+      // Try SMMT first, then ModelData, then estimate from engine size + year
+      const apiGroup = smmtDetails.InsuranceGroup || modelData.InsuranceGroup || null;
+      if (apiGroup) return String(apiGroup);
+      
+      // Estimate from engine size and year if not provided
+      const engineSize = dataItems.DvlaTechnicalDetails?.EngineCapacityCc 
+        ? dataItems.DvlaTechnicalDetails.EngineCapacityCc / 1000 
+        : null;
+      const year = dataItems.VehicleIdentification?.YearOfManufacture || null;
+      
+      if (engineSize && year) {
+        const age = new Date().getFullYear() - year;
+        let group = 15;
+        if (engineSize <= 1.0)      group = age > 10 ? 5  : 8;
+        else if (engineSize <= 1.4) group = age > 10 ? 8  : 12;
+        else if (engineSize <= 1.6) group = age > 10 ? 10 : 15;
+        else if (engineSize <= 2.0) group = age > 10 ? 15 : 20;
+        else if (engineSize <= 3.0) group = age > 10 ? 20 : 28;
+        else                        group = age > 10 ? 25 : 35;
+        return String(group);
+      }
+      return null;
+    })(),
+    // annualTax: try modelData first, then VehicleExciseDutyDetails (most reliable source)
+    annualTax: extractNumber(
+      modelData.AnnualTax ||
+      modelData.VehicleTax ||
+      dataItems.VehicleExciseDutyDetails?.VedRate?.Standard?.TwelveMonths
+    ),
     
     // Performance
     power: extractNumber(performance.Power && performance.Power.Bhp ? performance.Power.Bhp : (smmtDetails.PowerBhp || null)),

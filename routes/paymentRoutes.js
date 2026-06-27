@@ -5,8 +5,8 @@ const bikePaymentController = require('../controllers/bikePaymentController');
 const vanPaymentController = require('../controllers/vanPaymentController');
 const { protect, requireEmailVerifiedForAccess } = require('../middleware/authMiddleware');
 
-// POST /api/payments/create-checkout-session - Create Stripe checkout session
-router.post('/create-checkout-session', protect, requireEmailVerifiedForAccess, paymentController.createCheckoutSession);
+// POST /api/payments/create-checkout-session - Create Stripe checkout session (vehicle history check - no auth required)
+router.post('/create-checkout-session', paymentController.createCheckoutSession);
 
 // POST /api/payments/create-advert-checkout-session - Create Stripe checkout session for advertising packages
 router.post('/create-advert-checkout-session', protect, requireEmailVerifiedForAccess, paymentController.createAdvertCheckoutSession);

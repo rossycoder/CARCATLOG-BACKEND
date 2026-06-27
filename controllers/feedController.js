@@ -72,18 +72,9 @@ exports.importFeed = async (req, res) => {
         message: 'Feed URL is required'
       });
     }
-    // ── Get dealer settings to check if API enrichment is enabled ──
-    const TradeDealer = require('../models/TradeDealer');
-    const dealer = await TradeDealer.findById(dealerId).select('settings');
-    
-    // ✅ DEFAULT TO ENABLED - only disable if explicitly set to false
-    const enableAPIEnrichment = dealer?.settings?.enableAPIEnrichment !== false;
-    
-    if (enableAPIEnrichment) {
-      console.log('✅ API Enrichment ENABLED for this dealer (default)');
-    } else {
-      console.log('⏭️  API Enrichment DISABLED (explicitly disabled by dealer)');
-    }
+    // ✅ Specs API (£0.02) enabled — needed for running costs (MPG, tax, insurance group)
+    // History API (£1.82) is ALWAYS disabled in enrichVehicleDataFromAPIs (needsHistory = false)
+    const enableAPIEnrichment = true;
 
     // ALWAYS use enhanced import with Cloudinary upload
     // Enhanced import properly downloads images from any source and uploads to Cloudinary
@@ -370,26 +361,15 @@ exports.syncFeed = async (req, res) => {
     const TradeDealer = require('../models/TradeDealer');
     const dealer = await TradeDealer.findById(dealerId).select('settings');
     
-    // ✅ DEFAULT TO ENABLED - only disable if explicitly set to false
-    const dealerHasAPIEnabled = dealer?.settings?.enableAPIEnrichment !== false;
-    
-    // ✅ Enable API enrichment for NEW cars during sync (if dealer has it enabled)
-    const enableAPIEnrichmentForSync = dealerHasAPIEnabled;
-    
-    if (enableAPIEnrichmentForSync) {
-      console.log('✅ [Sync Now] API Enrichment ENABLED for NEW cars (default)');
-      console.log('   💡 Existing cars: price/status update only (no API)');
-      console.log('   💡 New cars: full API enrichment (specs, MOT, history)');
-    } else {
-      console.log('⏭️  [Sync Now] API Enrichment DISABLED (explicitly disabled by dealer)');
-    }
+    // ✅ Specs API (£0.02) enabled for new cars — needed for running costs
+    // History API (£1.82) is ALWAYS disabled in enrichVehicleDataFromAPIs (needsHistory = false)
     const result = await feedImportService.importFeedEnhanced(dealerId, feed.feedUrl, {
       removeSoldVehicles: false, // ← ← ← YE MOST IMPORTANT — cars DELETE nahi honge
       importImages: feed.importImages !== false,
       useUnsplashFallback: feed.useUnsplashFallback === true,
       createCarListings: true,
       isFirstImport: false, // 🔄 SYNC mode: update status of existing sold cars, don't skip them
-      enableAPIEnrichment: enableAPIEnrichmentForSync, // ✅ Smart: only for NEW cars
+      enableAPIEnrichment: true, // ✅ Specs only (history disabled in enrichVehicleDataFromAPIs)
       onlyEnrichNewCars: true // 🆕 Flag to only enrich new imports, not existing
     });
     console.log(`   Stats:`, JSON.stringify(result.stats, null, 2));

@@ -16,6 +16,7 @@ class StripeService {
     this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     this.webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     this.isDemoMode = false; // Using live Stripe integration
+    console.log('✅ Stripe initialized with key:', process.env.STRIPE_SECRET_KEY?.substring(0, 12) + '...');
   }
 
   /**

@@ -1,6 +1,7 @@
 const { verifyToken } = require('../utils/jwtUtils');
 const User = require('../models/User');
 const TradeDealer = require('../models/TradeDealer');
+const mongoose = require('mongoose');
 
 /**
  * Protect routes - require authentication
@@ -152,30 +153,64 @@ const verifyVehicleOwnership = async (req, res, next) => {
     const Car = require('../models/Car');
     const vehicleId = req.params.id;
     
-    // Find the vehicle
-    const vehicle = await Car.findById(vehicleId);
+    console.log('🔐 [Ownership Check] Vehicle ID:', vehicleId);
+    console.log('🔐 [Ownership Check] req.user exists:', !!req.user);
+    console.log('🔐 [Ownership Check] req.dealer exists:', !!req.dealer);
+    
+    // Find the vehicle by advertId (UUID) OR MongoDB _id (ObjectId)
+    // Try advertId first (most common case for edit URLs)
+    let vehicle = await Car.findOne({ advertId: vehicleId });
+    
+    // If not found by advertId, try MongoDB _id (if valid ObjectId format)
+    if (!vehicle && mongoose.Types.ObjectId.isValid(vehicleId)) {
+      vehicle = await Car.findById(vehicleId);
+    }
     
     if (!vehicle) {
+      console.log('❌ [Ownership Check] Vehicle not found');
       return res.status(404).json({
         success: false,
         message: 'Vehicle not found'
       });
     }
     
+    console.log('🔐 [Ownership Check] Vehicle found:', {
+      _id: vehicle._id.toString(),
+      advertId: vehicle.advertId,
+      userId: vehicle.userId?.toString(),
+      dealerId: vehicle.dealerId?.toString(),
+      isDealerListing: vehicle.isDealerListing
+    });
+    
     // Admin can edit any car
     if (req.user?.isAdmin || req.user?.role === 'admin') {
+      console.log('✅ [Ownership Check] Admin access granted');
       return next();
     }
     
     // For trade dealers - check if vehicle belongs to their dealer account
     if (req.user?.isTradeDealer || req.user?.role === 'trade') {
       const vehicleDealerId = vehicle.dealerId?._id?.toString() || vehicle.dealerId?.toString();
-      const currentDealerId = req.dealer?._id?.toString() || req.user?.dealer?._id?.toString();
+      const currentDealerId = req.dealer?._id?.toString() || req.user?.dealer?._id?.toString() || req.user?._id?.toString();
+      
+      console.log('🔍 [Ownership Check] Trade Dealer Check:', {
+        vehicleDealerId,
+        currentDealerId,
+        match: vehicleDealerId === currentDealerId
+      });
       
       if (vehicleDealerId && currentDealerId && vehicleDealerId === currentDealerId) {
+        console.log('✅ [Ownership Check] Trade dealer owns this car');
         return next();
       }
       
+      // Allow if car has no dealerId (new car being added by dealer)
+      if (!vehicleDealerId) {
+        console.log('✅ [Ownership Check] Car has no dealerId - allowing trade dealer to edit');
+        return next();
+      }
+      
+      console.log('❌ [Ownership Check] Trade dealer does not own this car');
       return res.status(403).json({
         success: false,
         message: 'You do not have permission to edit this vehicle'
@@ -186,19 +221,35 @@ const verifyVehicleOwnership = async (req, res, next) => {
     const vehicleUserId = vehicle.userId?._id?.toString() || vehicle.userId?.toString();
     const currentUserId = req.user?._id?.toString() || req.user?.id?.toString();
     
+    console.log('🔍 [Ownership Check] Regular User Check:', {
+      vehicleUserId,
+      currentUserId,
+      match: vehicleUserId === currentUserId
+    });
+    
     if (vehicleUserId && currentUserId && vehicleUserId === currentUserId) {
+      console.log('✅ [Ownership Check] User owns this car');
       return next();
     }
     
+    // Allow if car has no userId (new car being added)
+    if (!vehicleUserId) {
+      console.log('✅ [Ownership Check] Car has no userId - allowing user to edit');
+      return next();
+    }
+    
+    console.log('❌ [Ownership Check] User does not own this car');
     return res.status(403).json({
       success: false,
       message: 'You do not have permission to edit this vehicle'
     });
     
   } catch (error) {
+    console.error('❌ [Ownership Check] Exception:', error);
     return res.status(500).json({
       success: false,
-      message: 'Error verifying vehicle ownership'
+      message: 'Error verifying vehicle ownership',
+      error: error.message
     });
   }
 };

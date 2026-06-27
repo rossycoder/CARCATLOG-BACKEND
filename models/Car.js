@@ -529,18 +529,59 @@ carSchema.pre('save', async function(next) {
       return next(err);
     }
 
-    // ── STEP 2: Duplicate active advert check ──────────────────────────────
-    // Allow same dealer to update their own car (feed re-import)
-    if (reg && this.advertStatus === 'active') {
-      const duplicate = await this.constructor.findOne({
+    // ── STEP 2: Duplicate advert check (ALL statuses) ──────────────────────
+    // ✅ CRITICAL: Prevent duplicate cars for same registration
+    // - If ACTIVE advert exists: Block new car creation completely
+    // - If PENDING_PAYMENT exists: Allow only if same user (updating own pending car)
+    // - Allow same dealer to update their own car (feed re-import)
+    if (reg && this.isNew) {
+      // Check for ACTIVE duplicate (highest priority - always block)
+      const activeDuplicate = await this.constructor.findOne({
         registrationNumber: reg,
         advertStatus: 'active',
         _id: { $ne: this._id },
-        // ✅ CRITICAL: Only block if DIFFERENT dealer has active advert
+        // ✅ Only block if DIFFERENT dealer has active advert
         // Same dealer can update their own cars via feed import
         dealerId: { $ne: this.dealerId }
       });
-      if (duplicate) {
+      
+      if (activeDuplicate) {
+        const err = new Error(`Active advert already exists for registration ${reg}`);
+        err.code = 'DUPLICATE_REGISTRATION';
+        return next(err);
+      }
+      
+      // Check for PENDING_PAYMENT duplicate (allow same user, block different users)
+      const pendingDuplicate = await this.constructor.findOne({
+        registrationNumber: reg,
+        advertStatus: { $in: ['pending_payment', 'draft'] },
+        _id: { $ne: this._id }
+      });
+      
+      if (pendingDuplicate) {
+        // Allow if same user is updating their own pending car
+        const isSameUser = this.userId && pendingDuplicate.userId && 
+                          this.userId.toString() === pendingDuplicate.userId.toString();
+        
+        if (!isSameUser) {
+          console.log(`⚠️  Preventing duplicate: ${reg} already has pending_payment record (userId: ${pendingDuplicate.userId})`);
+          const err = new Error(`A pending advert already exists for registration ${reg}. Please complete payment for that advert first, or contact support.`);
+          err.code = 'DUPLICATE_PENDING_REGISTRATION';
+          return next(err);
+        }
+      }
+    }
+    
+    // ✅ Also check when updating status to ACTIVE
+    if (reg && !this.isNew && this.isModified('advertStatus') && this.advertStatus === 'active') {
+      const activeDuplicate = await this.constructor.findOne({
+        registrationNumber: reg,
+        advertStatus: 'active',
+        _id: { $ne: this._id },
+        dealerId: { $ne: this.dealerId }
+      });
+      
+      if (activeDuplicate) {
         const err = new Error(`Active advert already exists for registration ${reg}`);
         err.code = 'DUPLICATE_REGISTRATION';
         return next(err);

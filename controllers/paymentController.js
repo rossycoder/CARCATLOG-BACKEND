@@ -636,6 +636,59 @@ async function handlePaymentSuccess(paymentIntent) {
       }
     }
 
+    // ✅ CRITICAL: Check for existing ACTIVE car first
+    // If an active car exists, don't use pending_payment record
+    // This prevents duplicates when one user completes payment while another has pending
+    let existingActiveCar = null;
+    if (vehicleData.registrationNumber && !car) {
+      existingActiveCar = await Car.findOne({
+        registrationNumber: vehicleData.registrationNumber.toUpperCase().replace(/\s/g, ''),
+        advertStatus: 'active'
+      });
+
+      if (existingActiveCar) {
+        console.log(`⚠️ Active car already exists for ${vehicleData.registrationNumber}`);
+        console.log(`   Active car userId: ${existingActiveCar.userId}`);
+        console.log(`   Payment user: ${resolvedUserId}`);
+        
+        // Check if payment user is the same as active car owner
+        const activeCarUserId = existingActiveCar.userId?._id?.toString() || existingActiveCar.userId?.toString();
+        const paymentUserId = resolvedUserId?.toString();
+        
+        if (activeCarUserId === paymentUserId) {
+          console.log(`   ✅ Same user - updating existing active car`);
+          car = existingActiveCar;
+        } else {
+          console.log(`   ❌ Different user owns active car - cannot create duplicate`);
+          // Skip this payment - active car already exists by different user
+          // Return early to prevent duplicate creation
+          await purchase.updateOne({ 
+            paymentStatus: 'failed',
+            failureReason: 'Car already active under different user'
+          });
+          console.log(`   Payment marked as failed - car already exists`);
+          return; // Exit without creating duplicate
+        }
+      }
+    }
+    
+    // ✅ CRITICAL: Check for existing pending_payment record ONLY if no active car found
+    // If found, reuse that record instead of creating a new one
+    // This prevents duplicate records when multiple users try to add same car
+    let existingPendingCar = null;
+    if (vehicleData.registrationNumber && !car && !existingActiveCar) {
+      existingPendingCar = await Car.findOne({
+        registrationNumber: vehicleData.registrationNumber.toUpperCase().replace(/\s/g, ''),
+        advertStatus: { $in: ['pending_payment', 'draft'] },
+        // Don't filter by userId - allow takeover from any pending payment
+      }).sort({ createdAt: 1 }); // Get oldest pending record
+
+      if (existingPendingCar) {
+        console.log(`✅ Found existing pending_payment car for ${vehicleData.registrationNumber}, will reuse it`);
+        car = existingPendingCar;
+      }
+    }
+
     // Normalise data from frontend
     const normalizedEngineSize    = vehicleData.engineSize
       ? parseFloat(String(vehicleData.engineSize).replace(/[^0-9.]/g, ''))
@@ -669,9 +722,13 @@ async function handlePaymentSuccess(paymentIntent) {
       0;
 
     if (car) {
-      // ── UPDATE existing car ─────────────────────────────────────────────
+      // ── UPDATE existing car (including pending_payment takeover) ────────────
 
-      if (resolvedUserId && !car.userId) car.userId = resolvedUserId;
+      if (resolvedUserId) {
+        const previousOwner = car.userId?.toString(); // PEHLE save karo
+        car.userId = resolvedUserId;
+        console.log(`✅ Ownership: ${previousOwner} → ${resolvedUserId}`);
+      }
 
       car.price          = carPrice;
       car.description    = advertData.description || car.description;

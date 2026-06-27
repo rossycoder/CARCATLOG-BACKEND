@@ -29,30 +29,78 @@ const createAdvert = async (req, res) => {
     const registration = vehicleData.registration || vehicleData.registrationNumber;
     if (registration) {
       const cleanReg = registration.toUpperCase().replace(/\s/g, '');
+      
+      // 🔥 FIX: Check for ACTIVE car first - active cars block all other attempts
+      const activeCar = await Car.findOne({ 
+        registrationNumber: cleanReg,
+        advertStatus: 'active'
+      });
+      
+      if (activeCar) {
+        console.log(`❌ [createAdvert] Active car ${cleanReg} already exists (User: ${activeCar.userId})`);
+        
+        // Check if current user owns this active car
+        const currentUserId = req.user?._id?.toString() || req.user?.id?.toString();
+        const carUserId = activeCar.userId?._id?.toString() || activeCar.userId?.toString();
+        const isOwnedByCurrentUser = (carUserId && currentUserId && carUserId === currentUserId) || req.user?.isAdmin;
+        
+        if (!isOwnedByCurrentUser) {
+          // Different user owns active car - block completely
+          return res.status(409).json({
+            success: false,
+            message: `This car (${registration}) is already listed as ACTIVE by another user. You cannot create a new listing.`,
+            error: 'ACTIVE_CAR_EXISTS'
+          });
+        }
+        
+        // Current user owns active car - let them edit it
+        console.log(`   User owns this active car - returning existing data`);
+      }
+      
       // Find ANY existing car with this registration (any status)
-      const existing = await Car.findOne({ 
+      const existing = activeCar || await Car.findOne({ 
         registrationNumber: cleanReg 
-      }).sort({ createdAt: -1 }); // Get most recent one
+      }).sort({ createdAt: 1 }); // oldest = canonical
       
       if (existing) {
         console.log(`✅ [createAdvert] Car ${cleanReg} already exists in database (Status: ${existing.advertStatus})`);
         
-        // 🔒 CRITICAL: Check ownership FIRST before blocking
-        let isOwnedByCurrentUser = false;
+        // KEY FIX: pending_payment car ko koi bhi user le sakta hai
+        const isPending = existing.advertStatus === 'pending_payment' || existing.advertStatus === 'draft';
+        const currentUserId = req.user?._id?.toString() || req.user?.id?.toString();
+        const carUserId = existing.userId?._id?.toString() || existing.userId?.toString();
+        const isOwnedByCurrentUser = (carUserId && currentUserId && carUserId === currentUserId) || req.user?.isAdmin;
         
-        if (req.user) {
-          const currentUserId = req.user._id?.toString() || req.user.id?.toString();
-          const carUserId = existing.userId?._id?.toString() || existing.userId?.toString();
-          const currentDealerId = req.dealer?._id?.toString() || req.user?.dealer?._id?.toString();
-          const carDealerId = existing.dealerId?._id?.toString() || existing.dealerId?.toString();
-          
-          // Check if car belongs to current user or dealer
-          isOwnedByCurrentUser = (carUserId && currentUserId && carUserId === currentUserId) ||
-                                  (carDealerId && currentDealerId && carDealerId === currentDealerId) ||
-                                  req.user.isAdmin;
+        if (isPending && !isOwnedByCurrentUser) {
+          // Dusre user ka pending record hai — same data return karo takeover ke liye
+          return res.status(200).json({
+            success: true,
+            data: {
+              id: existing._id.toString(),
+              advertId: existing.advertId,
+              vehicleData: { ...vehicleData, make: existing.make, model: existing.model, year: existing.year, color: existing.color, mileage: existing.mileage, fuelType: existing.fuelType, transmission: existing.transmission, engineSize: existing.engineSize, bodyType: existing.bodyType, doors: existing.doors, seats: existing.seats, registrationNumber: existing.registrationNumber, motDue: existing.motDue, motExpiry: existing.motExpiry, motStatus: existing.motStatus, motHistory: existing.motHistory },
+              advertData: { price: existing.price, description: existing.description || '', photos: (existing.images || []).map(url => ({ url })), features: existing.features || [], videoUrl: existing.videoUrl || '' },
+              status: existing.advertStatus,
+              createdAt: existing.createdAt,
+              _existingCar: true,
+              _isOwnedByUser: false,
+              _pendingTakeover: true,
+              _message: 'Using existing pending listing — complete payment to activate'
+            }
+          });
         }
+        
+        // 🔒 CRITICAL: Check ownership FIRST before blocking
+        const currentDealerId = req.dealer?._id?.toString() || req.user?.dealer?._id?.toString();
+        const carDealerId = existing.dealerId?._id?.toString() || existing.dealerId?.toString();
+        
+        // Check if car belongs to current user or dealer
+        const isOwnedByUserOrDealer = (carUserId && currentUserId && carUserId === currentUserId) ||
+                                (carDealerId && currentDealerId && carDealerId === currentDealerId) ||
+                                req.user?.isAdmin;
+        
         // ⚠️ ONLY block if this is a DIFFERENT dealer's car (from feed import)
-        if (existing.dealerId && !existing.advertId && !isOwnedByCurrentUser) {
+        if (existing.dealerId && !existing.advertId && !isOwnedByUserOrDealer) {
           return res.status(409).json({
             success: false,
             message: `Registration ${registration} is already listed by another dealer. You cannot list the same vehicle.`,
@@ -62,7 +110,7 @@ const createAdvert = async (req, res) => {
         console.log(`   Car advertId (UUID): ${existing.advertId}`);
         
         // CRITICAL: If car is ACTIVE and owned by DIFFERENT user, return special response
-        if (existing.advertStatus === 'active' && !isOwnedByCurrentUser) {
+        if (existing.advertStatus === 'active' && !isOwnedByUserOrDealer) {
           return res.status(200).json({
             success: true,
             data: {
@@ -98,7 +146,15 @@ const createAdvert = async (req, res) => {
               bodyType: existing.bodyType,
               doors: existing.doors,
               seats: existing.seats,
-              registrationNumber: existing.registrationNumber
+              registrationNumber: existing.registrationNumber,
+              // Running costs from DB
+              co2Emissions: existing.co2Emissions || vehicleData.co2Emissions,
+              annualTax: existing.annualTax || vehicleData.annualTax,
+              insuranceGroup: existing.insuranceGroup || vehicleData.insuranceGroup,
+              urbanMpg: existing.urbanMpg || existing.fuelEconomyUrban || vehicleData.urbanMpg,
+              extraUrbanMpg: existing.extraUrbanMpg || existing.fuelEconomyExtraUrban || vehicleData.extraUrbanMpg,
+              combinedMpg: existing.combinedMpg || existing.fuelEconomyCombined || vehicleData.combinedMpg,
+              runningCosts: existing.runningCosts || vehicleData.runningCosts
             },
             advertData: { 
               price: existing.price, 
@@ -110,7 +166,7 @@ const createAdvert = async (req, res) => {
             status: existing.advertStatus,
             createdAt: existing.createdAt,
             _existingCar: true, // Flag to indicate this is existing data
-            _isOwnedByUser: isOwnedByCurrentUser, // 🔒 CRITICAL: Ownership flag for frontend
+            _isOwnedByUser: isOwnedByUserOrDealer, // 🔒 CRITICAL: Ownership flag for frontend
             _message: 'Car already exists in database - using cached data'
           }
         });
@@ -212,7 +268,14 @@ const createAdvert = async (req, res) => {
       electricMotorTorque: carDataToSave.electricMotorTorque || undefined,
       chargingPortType: carDataToSave.chargingPortType || undefined,
       fastChargingCapability: carDataToSave.fastChargingCapability || undefined,
-      runningCosts: carDataToSave.runningCosts || undefined
+      runningCosts: carDataToSave.runningCosts || undefined,
+      // Running costs top-level fields (from vehicleSpecs API via basicVehicleLookup)
+      co2Emissions: carDataToSave.co2Emissions || undefined,
+      annualTax: carDataToSave.annualTax || undefined,
+      insuranceGroup: carDataToSave.insuranceGroup || undefined,
+      fuelEconomyUrban: carDataToSave.urbanMpg || carDataToSave.fuelEconomyUrban || undefined,
+      fuelEconomyExtraUrban: carDataToSave.extraUrbanMpg || carDataToSave.fuelEconomyExtraUrban || undefined,
+      fuelEconomyCombined: carDataToSave.combinedMpg || carDataToSave.fuelEconomyCombined || undefined,
     });
     
     

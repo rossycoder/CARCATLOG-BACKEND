@@ -622,10 +622,10 @@ class VehicleController {
         const motBaseUrl = process.env.CHECKCARD_API_BASE_URL || process.env.HISTORY_API_BASE_URL;
         const motClient  = new HistoryAPIClient(motApiKey, motBaseUrl, false);
 
-        // Call DVLA, CheckCarDetails history, AND MOT all in parallel
-        const [dvlaResult, historyResult, motResult] = await Promise.allSettled([
+        // Call DVLA and MOT in parallel
+        // NOTE: History API (£1.82) is NOT called here — only after payment in paymentController
+        const [dvlaResult, motResult] = await Promise.allSettled([
           dvlaService.lookupVehicle(registrationNumber),
-          historyService.checkVehicleHistory(registrationNumber, false),
           motClient.getMOTHistory(registrationNumber)
         ]);
         
@@ -636,12 +636,8 @@ class VehicleController {
         } else {
         }
         
-        // Process CheckCarDetails result
+        // History API not called here — historyData always null at this stage
         let historyData = null;
-        if (historyResult.status === 'fulfilled') {
-          historyData = historyResult.value;
-        } else {
-        }
 
         // Process MOT result
         let motDueDate  = null;
@@ -705,7 +701,7 @@ class VehicleController {
           // Metadata
           _sources: {
             dvla: dvlaResult.status === 'fulfilled',
-            checkCarDetails: historyResult.status === 'fulfilled',
+            checkCarDetails: false, // History API only called after payment
             mot: motResult.status === 'fulfilled'
           },
           // If we fell through from an existing car (motDue was missing), include its ID
@@ -938,24 +934,20 @@ class VehicleController {
       }
       
       // CRITICAL FIX: Ensure runningCosts is properly structured for frontend
-      // Frontend expects: runningCosts.fuelEconomy.urban/extraUrban/combined
-      // But database might have legacy fields: fuelEconomyUrban, fuelEconomyExtraUrban, fuelEconomyCombined
-      if (!carData.runningCosts || !carData.runningCosts.fuelEconomy) {
-        carData.runningCosts = {
-          fuelEconomy: {
-            urban: carData.fuelEconomyUrban || carData.urbanMpg || '',
-            extraUrban: carData.fuelEconomyExtraUrban || carData.extraUrbanMpg || '',
-            combined: carData.fuelEconomyCombined || carData.combinedMpg || ''
-          },
-          co2Emissions: carData.co2Emissions || '',
-          insuranceGroup: carData.insuranceGroup || '',
-          annualTax: carData.annualTax || ''
-        };
-      }
+      // Always rebuild from all possible field sources
+      carData.runningCosts = {
+        fuelEconomy: {
+          urban: carData.runningCosts?.fuelEconomy?.urban || carData.fuelEconomyUrban || carData.urbanMpg || '',
+          extraUrban: carData.runningCosts?.fuelEconomy?.extraUrban || carData.fuelEconomyExtraUrban || carData.extraUrbanMpg || '',
+          combined: carData.runningCosts?.fuelEconomy?.combined || carData.fuelEconomyCombined || carData.combinedMpg || ''
+        },
+        co2Emissions: carData.runningCosts?.co2Emissions || carData.co2Emissions || '',
+        insuranceGroup: carData.runningCosts?.insuranceGroup || carData.insuranceGroup || '',
+        annualTax: carData.runningCosts?.annualTax || carData.annualTax || ''
+      };
       
-      // CRITICAL FIX: Auto-sync running costs from VehicleHistory if missing
-      // This ensures running costs are ALWAYS displayed on frontend
-      if (car.registrationNumber && (!carData.runningCosts?.fuelEconomy?.combined || !carData.runningCosts?.co2Emissions)) {
+      // Auto-sync running costs from VehicleHistory ONLY if Car has no MPG data at all
+      if (car.registrationNumber && !carData.runningCosts?.fuelEconomy?.combined && !carData.fuelEconomyCombined && !carData.combinedMpg) {
         try {
           const VehicleHistory = require('../models/VehicleHistory');
           const history = await VehicleHistory.findOne({ vrm: car.registrationNumber }).sort({ checkDate: -1 });
@@ -2215,6 +2207,7 @@ class VehicleController {
           const transmission = rawApiData.Transmission || {};
           const dvlaTech = rawApiData.DvlaTechnicalDetails || {};
           const emissions = rawApiData.Emissions || {};
+          const smmt = rawApiData.SmmtDetails || {}; // SMMT has MPG as fallback
           
           const apiData = {
             make: vehicleId.DvlaMake || modelData.Make,
@@ -2228,10 +2221,11 @@ class VehicleController {
             doors: bodyDetails.NumberOfDoors,
             seats: bodyDetails.NumberOfSeats || dvlaTech.SeatCountIncludingDriver,
             color: null, // Will be fetched from DVLA below
-            urbanMpg: fuelEconomy.UrbanColdMpg,
-            extraUrbanMpg: fuelEconomy.ExtraUrbanMpg,
-            combinedMpg: fuelEconomy.CombinedMpg,
-            co2Emissions: emissions.ManufacturerCo2 || vehicleId.DvlaCo2,
+            // MPG: try Performance.FuelEconomy first, fallback to SmmtDetails
+            urbanMpg: fuelEconomy.UrbanColdMpg || smmt.UrbanColdMpg || null,
+            extraUrbanMpg: fuelEconomy.ExtraUrbanMpg || smmt.ExtraUrbanMpg || null,
+            combinedMpg: fuelEconomy.CombinedMpg || smmt.CombinedMpg || null,
+            co2Emissions: emissions.ManufacturerCo2 || vehicleId.DvlaCo2 || smmt.Co2 || null,
             power: performance.Power && performance.Power.Bhp ? performance.Power.Bhp : null,
           };
           
@@ -2306,34 +2300,9 @@ class VehicleController {
             throw new Error('Vehicle not found in API');
           }
           
-          // Cache the data in VehicleHistory for next time
-          await VehicleHistory.findOneAndUpdate(
-            { vrm: cleanedReg },
-            {
-              vrm: cleanedReg,
-              make: apiData.make,
-              model: apiData.model,
-              variant: apiData.variant,
-              yearOfManufacture: apiData.year,
-              fuelType: apiData.fuelType,
-              transmission: apiData.transmission,
-              bodyType: apiData.bodyType,
-              engineCapacity: apiData.engineSize,
-              doors: apiData.doors,
-              seats: apiData.seats,
-              colour: apiData.color,
-              urbanMpg: apiData.urbanMpg,
-              extraUrbanMpg: apiData.extraUrbanMpg,
-              combinedMpg: apiData.combinedMpg,
-              co2Emissions: apiData.co2Emissions,
-              annualTax: apiData.annualTax,
-              insuranceGroup: apiData.insuranceGroup,
-              estimatedValue: apiData.estimatedValue || apiData.privatePrice,
-              lastUpdated: new Date()
-            },
-            { upsert: true, new: true }
-          );
-          
+          // NOTE: Do NOT save specs data to VehicleHistory collection.
+          // VehicleHistory is reserved for actual history checks (£1.82) done after payment.
+          // basicVehicleLookup only calls vehicleSpecs (£0.05) — not a history check.
           
           result = {
             success: true,
@@ -2909,11 +2878,15 @@ class VehicleController {
     try {
       const { id } = req.params;
 
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ success: false, error: 'Invalid vehicle ID' });
+      // Find vehicle by advertId (UUID) OR MongoDB _id (ObjectId)
+      // Try advertId first (most common case for edit URLs)
+      let car = await Car.findOne({ advertId: id });
+      
+      // If not found by advertId, try MongoDB _id (if valid ObjectId format)
+      if (!car && mongoose.Types.ObjectId.isValid(id)) {
+        car = await Car.findById(id);
       }
-
-      const car = await Car.findById(id);
+      
       if (!car) {
         return res.status(404).json({ success: false, error: 'Vehicle not found' });
       }
@@ -2946,14 +2919,27 @@ class VehicleController {
 
       ALLOWED.forEach(field => {
         if (req.body[field] !== undefined) {
-          car[field] = req.body[field];
+          // Special handling for motHistory - only allow if it's a valid array with proper data
+          if (field === 'motHistory') {
+            if (Array.isArray(req.body[field]) && req.body[field].length > 0) {
+              // Filter out invalid MOT history entries
+              const validMotHistory = req.body[field].filter(entry => 
+                entry && entry.testDate && entry.testResult
+              );
+              if (validMotHistory.length > 0) {
+                car[field] = validMotHistory;
+              }
+            }
+          } else {
+            car[field] = req.body[field];
+          }
         }
       });
 
       // Skip expensive pre-save logic (DVLA/variant fetch) for simple field updates
       car.$locals.skipPreSave = true;
 
-      await car.save();
+      await car.save({ validateBeforeSave: false });
 
       return res.json({
         success: true,
