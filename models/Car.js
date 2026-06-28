@@ -619,11 +619,17 @@ carSchema.pre('save', async function(next) {
     // ── STEP 5: DVLA — color, MOT expiry, tax status ────────────────────────
     // Only called when specific fields are genuinely missing.
     // NEVER saves the document inside — just sets fields on `this`.
-    // SKIP if this is a RELIST (car already existed and has data)
+    // SKIP if this is a RELIST that already has valid data (no need to re-fetch)
     // SKIP if this is a FEED IMPORT (skipAPIFetch flag set)
+
+    // isRelist = existing car going active/pending_payment AND already has MOT + History data
+    // If data is missing (e.g. car was draft and never fetched), treat as fresh → allow API calls
+    const hasExistingMOT     = this.motHistory && this.motHistory.length > 0;
+    const hasExistingHistory = !!this.historyCheckId;
     const isRelist = !this.isNew && 
                      this.isModified('advertStatus') && 
-                     (this.advertStatus === 'active' || this.advertStatus === 'pending_payment');
+                     (this.advertStatus === 'active' || this.advertStatus === 'pending_payment') &&
+                     hasExistingMOT && hasExistingHistory;  // only skip if data already present
     
     const isFeedImport = this.$locals.skipAPIFetch === true;
     
@@ -671,11 +677,35 @@ carSchema.pre('save', async function(next) {
       if (formatted) this.color = formatted;
     }
 
-    // ── STEP 7: Variant fetch (only when missing) ───────────────────────────
+    // ── STEP 6b: History + MOT API — fetch when going ACTIVE and data is missing ──
+    // Runs for: new car only when BOTH motHistory AND historyCheckId are absent
+    // SKIP if: car already has motHistory OR historyCheckId (relist/draft with existing data)
+    // SKIP if: feed import
+    const goingActive = this.advertStatus === 'active' &&
+                        (this.isNew || this.isModified('advertStatus'));
+
+    // Agar koi bhi data already hai — API call skip karo (relist case)
+    const alreadyHasData = hasExistingMOT || hasExistingHistory;
+
+    if (reg && goingActive && !isFeedImport && !alreadyHasData) {
+      try {
+        const { fetchVehicleAPIs, applyAPIDataToVehicle } = require('../utils/fetchVehicleAPIs');
+        const apiData = await fetchVehicleAPIs(reg, false); // use cache — never force-refresh here
+        if (apiData && Object.keys(apiData).length) {
+          applyAPIDataToVehicle(this, apiData);
+        }
+      } catch (err) {
+        console.warn(`⚠️  [Pre-Save] History/MOT fetch failed for ${reg}:`, err.message);
+        // Non-fatal — car still saves without API data
+      }
+    }
+
+    // ── STEP 7: Variant fetch (only for NEW cars when missing) ─────────────
     // Uses updateOne() pattern internally — no nested save() calls.
     // SKIP if this is a RELIST (car already existed and has data)
     // SKIP if this is a FEED IMPORT (skipAPIFetch flag set)
-    if (reg && (!this.variant || this.variant === 'null' || this.variant === 'undefined' || this.variant.trim() === '') && !isRelist && !isFeedImport) {
+    // SKIP if this is an existing car (isNew = false) — variant already in DB
+    if (reg && (!this.variant || this.variant === 'null' || this.variant === 'undefined' || this.variant.trim() === '') && this.isNew && !isRelist && !isFeedImport) {
       try {
         const variantOnlyService = require('../services/variantOnlyService');
 
@@ -788,8 +818,12 @@ carSchema.pre('save', async function(next) {
     // ── STEP 13: Valuation (new listings only) ──────────────────────────────
     // SKIP if this is a RELIST (car already existed and has valuation data)
     // SKIP if this is a FEED IMPORT (skipAPIFetch flag set)
+    // SKIP if price/estimatedValue already set (valuation already done)
     if (this.isNew && reg && this.mileage && !isRelist && !isFeedImport) {
-      const needsVal = !this.valuation?.privatePrice || !this.price || this.price === 0;
+      const hasValuationInDB = this.valuation?.privatePrice ||
+                               (this.estimatedValue && this.estimatedValue > 0) ||
+                               (this.price && this.price > 0 && this.price !== 10000);
+      const needsVal = !hasValuationInDB;
       if (needsVal) {
         try {
           const ValuationService = require('../services/valuationService');
@@ -805,6 +839,7 @@ carSchema.pre('save', async function(next) {
           this.price          = val.estimatedValue.private;
           this.estimatedValue = val.estimatedValue.private;
         } catch (err) {
+          console.warn('⚠️ Valuation failed (will use default price):', err.message);
         }
       }
     }

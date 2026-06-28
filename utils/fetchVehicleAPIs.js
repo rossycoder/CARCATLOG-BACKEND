@@ -5,7 +5,35 @@
  *
  * Cost: ~£1.84 per registration (History £1.82 + MOT £0.02)
  * Always uses VehicleHistory cache — never double-charges for same reg.
+ *
+ * API call logging controlled by ENABLE_API_CALL_LOGGING=true in .env
  */
+
+const COSTS = {
+  mothistory:     0.02,
+  vehiclehistory: 1.82,
+};
+
+/**
+ * Log an API call to APICallLog collection — only if ENABLE_API_CALL_LOGGING=true
+ */
+async function logAPICall({ endpoint, vrm, cost, success, errorMessage, responseTime, cacheHit = false }) {
+  if (process.env.ENABLE_API_CALL_LOGGING !== 'true') return;
+  try {
+    const APICallLog = require('../models/APICallLog');
+    await APICallLog.create({
+      endpoint,
+      vrm:          vrm.toUpperCase(),
+      cost,
+      success,
+      errorMessage: errorMessage || undefined,
+      responseTime,
+      cacheHit,
+    });
+  } catch (err) {
+    // Non-blocking — never fail main flow for logging
+  }
+}
 
 /**
  * Fetch MOT history + vehicle history for a registration number.
@@ -26,11 +54,14 @@ async function fetchVehicleAPIs(registrationNumber, forceRefresh = false) {
   const historyService    = new HistoryService();
   const motHistoryService = new MOTHistoryService();
 
+  const startTime = Date.now();
+
   const [motResult, histResult] = await Promise.allSettled([
     motHistoryService.getMOTHistory(registrationNumber),
     historyService.checkVehicleHistory(registrationNumber, !forceRefresh) // true = use cache
   ]);
 
+  const elapsed = Date.now() - startTime;
   const out = {};
 
   // ── MOT ──────────────────────────────────────────────────────────────────
@@ -46,7 +77,9 @@ async function fetchVehicleAPIs(registrationNumber, forceRefresh = false) {
         out.motStatus = latest.testResult === 'PASSED' ? 'Valid' : 'Expired';
       }
     }
-  } else {
+    logAPICall({ endpoint: 'mothistory', vrm: registrationNumber, cost: COSTS.mothistory, success: true, responseTime: elapsed, cacheHit: false });
+  } else if (motResult.status === 'rejected') {
+    logAPICall({ endpoint: 'mothistory', vrm: registrationNumber, cost: 0, success: false, errorMessage: motResult.reason?.message, responseTime: elapsed });
   }
 
   // ── History ───────────────────────────────────────────────────────────────
@@ -60,7 +93,11 @@ async function fetchVehicleAPIs(registrationNumber, forceRefresh = false) {
     if (h.previousOwners !== undefined) out.previousOwners = h.previousOwners;
     if (h.colourChanges  !== undefined) out.colourChanges  = h.colourChanges;
     if (h.plateChanges   !== undefined) out.plateChanges   = h.plateChanges;
-  } else {
+
+    const wasCache = !forceRefresh;
+    logAPICall({ endpoint: 'vehiclehistory', vrm: registrationNumber, cost: wasCache ? 0 : COSTS.vehiclehistory, success: true, responseTime: elapsed, cacheHit: wasCache });
+  } else if (histResult.status === 'rejected') {
+    logAPICall({ endpoint: 'vehiclehistory', vrm: registrationNumber, cost: 0, success: false, errorMessage: histResult.reason?.message, responseTime: elapsed });
   }
 
   return out;

@@ -483,37 +483,9 @@ exports.createVehicle = async (req, res) => {
     }
     
     await vehicle.save();
-
-    // ── Fetch MOT + History for trade dealer cars (no individual payment) ──
-    // Same pattern as paymentController's fetchVehicleAPIs for normal users
-    const regNumber = vehicle.registrationNumber || req.body.registrationNumber || req.body.registration;
-    if (regNumber) {
-      try {
-        const { fetchVehicleAPIs, applyAPIDataToVehicle } = require('../utils/fetchVehicleAPIs');
-        const apiData = await fetchVehicleAPIs(regNumber, true); // forceRefresh=true (first time)
-
-        if (Object.keys(apiData).length > 0) {
-          await require('../models/Car').findByIdAndUpdate(
-            vehicle._id,
-            { $set: {
-              ...(apiData.motHistory?.length  && { motHistory: apiData.motHistory }),
-              ...(apiData.motDue              && { motDue:     apiData.motDue }),
-              ...(apiData.motExpiry           && { motExpiry:  apiData.motExpiry }),
-              ...(apiData.motStatus           && { motStatus:  apiData.motStatus }),
-              ...(apiData.historyCheckId      && { historyCheckId:     apiData.historyCheckId,
-                                                   historyCheckStatus: apiData.historyCheckStatus,
-                                                   historyCheckDate:   apiData.historyCheckDate }),
-              ...(apiData.previousOwners !== undefined && { previousOwners: apiData.previousOwners }),
-              ...(apiData.colourChanges  !== undefined && { colourChanges:  apiData.colourChanges }),
-              ...(apiData.plateChanges   !== undefined && { plateChanges:   apiData.plateChanges }),
-            }}
-          );
-        } else {
-        }
-      } catch (apiErr) {
-      }
-    } else {
-    }
+    // NOTE: MOT + History API handled by Car.js pre-save hook (Step 6b)
+    // when advertStatus = 'active' and motHistory/historyCheckId missing.
+    // No duplicate call needed here.
 
     // Increment subscription usage
     await req.subscription.incrementListingCount();

@@ -759,6 +759,7 @@ class VehicleController {
    */
   async motLookup(req, res, next) {
     try {
+      const startTime = Date.now();
       const { registrationNumber, vehicleId } = req.body;
 
       if (!registrationNumber) {
@@ -791,8 +792,10 @@ class VehicleController {
       }));
 
       // If vehicleId provided, save to DB directly
+      // vehicleId can be MongoDB _id OR UUID advertId — handle both
       if (vehicleId) {
         const Car = require('../models/Car');
+        const mongoose = require('mongoose');
         const updateData = {};
         if (motDueDate) {
           updateData.motDue    = new Date(motDueDate);
@@ -802,8 +805,29 @@ class VehicleController {
         if (motHistory.length > 0) updateData.motHistory = motHistory;
 
         if (Object.keys(updateData).length > 0) {
-          await Car.updateOne({ _id: vehicleId }, { $set: updateData });
+          // Try MongoDB _id first, fallback to advertId (UUID)
+          const isObjectId = mongoose.Types.ObjectId.isValid(vehicleId) && vehicleId.length === 24;
+          if (isObjectId) {
+            await Car.updateOne({ _id: vehicleId }, { $set: updateData });
+          } else {
+            await Car.updateOne({ advertId: vehicleId }, { $set: updateData });
+          }
         }
+      }
+
+      // Log this API call if logging enabled
+      if (process.env.ENABLE_API_CALL_LOGGING === 'true') {
+        try {
+          const APICallLog = require('../models/APICallLog');
+          await APICallLog.create({
+            endpoint:     'mothistory',
+            vrm:          reg,
+            cost:         0.02,
+            success:      true,
+            responseTime: Date.now() - startTime,
+            cacheHit:     false,
+          });
+        } catch (_) {}
       }
 
       return res.json({

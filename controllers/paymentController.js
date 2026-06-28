@@ -467,7 +467,6 @@ async function handlePaymentSuccess(paymentIntent) {
         if (bike.status === 'active' && bike.advertisingPackage?.stripePaymentIntentId === paymentIntent.id) {
         } else {
           // Update existing
-          const isRelistBike = bike.status === 'draft' || bike.status === 'expired';
           
           Object.assign(bike, {
             make:   vehicleData.make  || bike.make,
@@ -488,12 +487,7 @@ async function handlePaymentSuccess(paymentIntent) {
 
           if (advertData.runningCosts) bike.runningCosts = advertData.runningCosts;
 
-          // ── ONE API call for this bike (skip if relist) ────────────────────
-          if (bike.registrationNumber && !isRelistBike) {
-            const apiData = await fetchVehicleAPIs(bike.registrationNumber, true);
-            applyAPIDataToVehicle(bike, apiData);
-          } else if (isRelistBike) {
-          }
+          // API calls bike model ke pre-save hook mein hongi
 
           bike._skipAPICallsInHooks = true;
           await bike.save();
@@ -524,11 +518,7 @@ async function handlePaymentSuccess(paymentIntent) {
           publishedAt: new Date()
         });
 
-        // ── ONE API call for new bike ─────────────────────────────────────
-        if (bike.registrationNumber) {
-          const apiData = await fetchVehicleAPIs(bike.registrationNumber, true);
-          applyAPIDataToVehicle(bike, apiData);
-        }
+        // API calls bike model ke pre-save hook mein hongi
 
         bike._skipAPICallsInHooks = true;
         await bike.save();
@@ -548,7 +538,7 @@ async function handlePaymentSuccess(paymentIntent) {
       if (van) {
         if (van.status === 'active' && van.advertisingPackage?.stripePaymentIntentId === paymentIntent.id) {
         } else {
-          const isRelistVan = van.status === 'draft' || van.status === 'expired';
+          const isRelistVan = van.status === 'draft' || van.status === 'expired'; // kept for future use if needed
           
           Object.assign(van, {
             price:       advertData.price || van.price,
@@ -564,12 +554,7 @@ async function handlePaymentSuccess(paymentIntent) {
           if (advertData.runningCosts)  van.runningCosts = advertData.runningCosts;
           if (advertData.features)      van.features     = advertData.features;
 
-          // ── ONE API call for this van (skip if relist) ─────────────────────
-          if (van.registrationNumber && !isRelistVan) {
-            const apiData = await fetchVehicleAPIs(van.registrationNumber, true);
-            applyAPIDataToVehicle(van, apiData);
-          } else if (isRelistVan) {
-          }
+          // API calls van model ke pre-save hook mein hongi
 
           van._skipAPICallsInHooks = true;
           await van.save();
@@ -600,11 +585,7 @@ async function handlePaymentSuccess(paymentIntent) {
           publishedAt: new Date()
         });
 
-        // ── ONE API call for new van ──────────────────────────────────────
-        if (van.registrationNumber) {
-          const apiData = await fetchVehicleAPIs(van.registrationNumber, true);
-          applyAPIDataToVehicle(van, apiData);
-        }
+        // API calls van model ke pre-save hook mein hongi
 
         van._skipAPICallsInHooks = true;
         await van.save();
@@ -696,21 +677,8 @@ async function handlePaymentSuccess(paymentIntent) {
     const normalizedTransmission  = normalizeTransmission(vehicleData.transmission);
     const normalizedFuelType      = normalizeFuelType(vehicleData.fuelType);
 
-    // ── FETCH MOT + History API (£1.84) ──────────────────────────────────────
-    // Car.js pre-save hook does NOT call History/MOT APIs (Step 12 & 13 removed)
-    // Payment controller must call fetchVehicleAPIs() to get MOT + History data
-    // SKIP API calls if this is a RELIST (car already exists with data)
-    let apiData = {};
-    const isRelist = car && (car.advertStatus === 'draft' || car.advertStatus === 'expired');
-    
-    if (vehicleData.registrationNumber && !isRelist) {
-      try {
-        apiData = await fetchVehicleAPIs(vehicleData.registrationNumber, false); // use cache
-      } catch (error) {
-        // Continue without API data - car will still be created
-      }
-    } else if (isRelist) {
-    }
+    // API calls Car.js pre-save hook mein hongi jab advertStatus 'active' ho
+    const apiData = {};
 
     // Build the base price
     const carPrice =
@@ -750,10 +718,7 @@ async function handlePaymentSuccess(paymentIntent) {
       car.markModified('sellerContact');
 
       // Apply MOT + History data from fetchVehicleAPIs()
-      applyAPIDataToVehicle(car, apiData);
-
-      // Car.js pre-save hook will handle DVLA, variant, coordinates
-      // History/MOT already fetched above via fetchVehicleAPIs()
+      // (Car.js pre-save hook will handle API calls when advertStatus is 'active')
       await car.save();
 
     } else {
@@ -1073,6 +1038,8 @@ async function autoCompletePurchase(req, res) {
 module.exports = {
   createCheckoutSession,
   createAdvertCheckoutSession,
+  fetchVehicleAPIs,       // Car.js pre-save hook ke liye
+  applyAPIDataToVehicle,  // Car.js pre-save hook ke liye
   createCreditCheckoutSession,
   getSessionDetails,
   getPurchaseDetails,
