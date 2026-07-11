@@ -896,7 +896,6 @@ class UniversalAutoCompleteService {
         if (rangeValue) {
           // Use Range as the base model name - it's always the short, clean model name
           parsed.model = rangeValue;
-          console.log(`✅ Using Range as model: "${rangeValue}" (was: "${rawModel}")`);
         } else if (makeLower === 'aston martin' || makeLower === 'aston-martin') {
           // Aston Martin models: DB9, DB11, DBS, Vantage, Rapide, Vanquish, etc.
           const astonModelMatch = rawModel.match(/^(DB\d+|DBS|Vantage|Rapide|Vanquish|Virage|V\d+)/i);

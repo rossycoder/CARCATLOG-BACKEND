@@ -946,6 +946,17 @@ exports.publishVehicle = async (req, res) => {
       }
     }
     
+    // ✅ CRITICAL: Set price from valuation if exists (PRIORITY fix)
+    // Use valuation privatePrice if available, else keep existing price
+    if (car.valuation?.privatePrice && car.valuation.privatePrice > 0) {
+      updateData.price = car.valuation.privatePrice;
+    } else if (car.allValuations?.private && car.allValuations.private > 0) {
+      updateData.price = car.allValuations.private;
+    } else if (car.estimatedValue && car.estimatedValue > 0 && car.estimatedValue !== 10000) {
+      updateData.price = car.estimatedValue;
+    }
+    // else: keep existing car.price (don't update if no valuation)
+    
     // CRITICAL: Enhance with electric vehicle data if it's an EV or hybrid
     
     // Merge car data with updateData to get complete vehicle data
@@ -984,7 +995,6 @@ exports.publishVehicle = async (req, res) => {
       { $set: updateData },
       { runValidators: false }
     );
-    
     
     res.json({
       success: true,

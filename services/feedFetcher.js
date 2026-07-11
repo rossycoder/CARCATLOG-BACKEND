@@ -102,7 +102,6 @@ class FeedFetcher {
         }
         try {
           const content = fs.readFileSync(filePath, 'utf8');
-          console.log(`✅ File loaded successfully (${content.length} bytes)`);
           
           return {
             success: true,
@@ -129,11 +128,6 @@ class FeedFetcher {
       // 🔥 Add cache-busting timestamp parameter
       const cacheBuster = `_t=${Date.now()}`;
       urlUsed = urlUsed.includes('?') ? `${urlUsed}&${cacheBuster}` : `${urlUsed}?${cacheBuster}`;
-      
-      console.log(`Fetching feed from: ${urlUsed.split('?')[0]}`); // Log without timestamp
-      if (rawUrl !== url) {
-        console.log(`  (converted from: ${url})`);
-      }
 
       const response = await axios.get(urlUsed, {
         timeout: this.timeout,
@@ -188,10 +182,8 @@ class FeedFetcher {
    * Strips BOM before detection to handle Excel exports
    */
   detectFormat(data, contentType) {
-    // Log for debugging
     let dataStr = typeof data === 'string' ? data.trim() : JSON.stringify(data);
     dataStr = dataStr.replace(/^\uFEFF/, ''); // Strip BOM (Byte Order Mark) common in Excel/Windows exports
-    console.log('Data preview (first 200 chars):', dataStr.substring(0, 200));
     
     // PRIORITY 1: Check actual data structure (most reliable)
     const start = dataStr.substring(0, 100).toLowerCase();

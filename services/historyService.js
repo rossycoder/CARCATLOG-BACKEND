@@ -202,8 +202,6 @@ class HistoryService {
       return stored.toObject();
 
     } catch (error) {
-      console.error(`❌ [HistoryService] History API failed after ${Date.now() - startTime}ms:`, error.message);
-
       const isNetworkError = error.code === 'ENOTFOUND' ||
                              error.details?.code === 'ENOTFOUND' ||
                              error.originalError?.code === 'ENOTFOUND';

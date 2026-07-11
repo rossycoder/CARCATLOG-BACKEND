@@ -4,10 +4,9 @@
  * Payment Controller
  * Handles HTTP requests for payment processing
  *
- * KEY RULE: fetchVehicleAPIs() is the ONE place that calls HistoryService and
- * MOTHistoryService.  Every code path that needs vehicle data must go through
- * this single helper — never call those services directly anywhere else in this
- * file.
+ * KEY RULE: History/MOT APIs are called by Car.js pre-save hook (STEP 6b)
+ * when car.advertStatus changes to 'active'. Payment controller just sets
+ * advertStatus='active' and lets Car.js handle all API calls automatically.
  */
 
 const mongoose  = require('mongoose');
@@ -15,66 +14,6 @@ const StripeService                = require('../services/stripeService');
 const EmailService                 = require('../services/emailService');
 const AdvertisingPackagePurchase   = require('../models/AdvertisingPackagePurchase');
 const { formatErrorResponse }      = require('../utils/errorHandlers');
-
-// ─── ONE-TIME vehicle API helper ────────────────────────────────────────────
-/**
- * Calls MOT history + vehicle history APIs exactly once for a registration.
- * Returns { motHistory, motDue, motExpiry, motStatus,
- *           historyCheckId, historyCheckStatus, historyCheckDate,
- *           previousOwners, colourChanges, plateChanges }
- *
- * All errors are caught internally — caller never needs try/catch.
- * Pass forceRefresh=true only on first payment (not on retries / auto-complete).
- */
-async function fetchVehicleAPIs(registrationNumber, forceRefresh = false) {
-  if (!registrationNumber) return {};
-
-
-  const HistoryService    = require('../services/historyService');
-  const MOTHistoryService = require('../services/motHistoryService');
-
-  const historyService    = new HistoryService();
-  const motHistoryService = new MOTHistoryService();
-
-  const [motResult, histResult] = await Promise.allSettled([
-    motHistoryService.getMOTHistory(registrationNumber),
-    historyService.checkVehicleHistory(registrationNumber, !forceRefresh) // true = use cache
-  ]);
-
-  const out = {};
-
-  // ── MOT ──────────────────────────────────────────────────────────────────
-  if (motResult.status === 'fulfilled' && motResult.value) {
-    const motData = motResult.value;
-    const tests   = motData.motTests || motData.motHistory || [];
-    if (tests.length > 0) {
-      out.motHistory = tests;
-      const latest  = tests[0];
-      if (latest.expiryDate) {
-        out.motDue    = latest.expiryDate;
-        out.motExpiry = latest.expiryDate;
-        out.motStatus = latest.testResult === 'PASSED' ? 'Valid' : 'Expired';
-      }
-    }
-  } else {
-  }
-
-  // ── History ───────────────────────────────────────────────────────────────
-  if (histResult.status === 'fulfilled' && histResult.value) {
-    const h = histResult.value;
-    if (h._id) {
-      out.historyCheckId     = h._id.toString();
-      out.historyCheckStatus = 'verified';
-      out.historyCheckDate   = h.checkDate || new Date();
-    }
-    if (h.previousOwners  !== undefined) out.previousOwners  = h.previousOwners;
-    if (h.colourChanges   !== undefined) out.colourChanges   = h.colourChanges;
-    if (h.plateChanges    !== undefined) out.plateChanges    = h.plateChanges;
-  } else {
-  }
-
-  return out;
-}
 
 // ─── Utility helpers ─────────────────────────────────────────────────────────
 function calculateExpiryDate(duration) {
@@ -137,27 +76,6 @@ function calculatePriceRangeForValidation(valuation, isTradeType) {
   if (v <= 16999) return '13000-16999';
   if (v <= 24999) return '17000-24999';
   return 'over-24995';
-}
-
-// ─── Merge API data into a vehicle document ──────────────────────────────────
-// Shared between car / bike / van update paths
-function applyAPIDataToVehicle(vehicle, apiData) {
-  if (!apiData || !Object.keys(apiData).length) return;
-
-  if (apiData.motHistory?.length) {
-    vehicle.motHistory = apiData.motHistory;
-    vehicle.motDue     = apiData.motDue    || vehicle.motDue;
-    vehicle.motExpiry  = apiData.motExpiry || vehicle.motExpiry;
-    vehicle.motStatus  = apiData.motStatus || vehicle.motStatus;
-  }
-  if (apiData.historyCheckId) {
-    vehicle.historyCheckId     = apiData.historyCheckId;
-    vehicle.historyCheckStatus = apiData.historyCheckStatus;
-    vehicle.historyCheckDate   = apiData.historyCheckDate;
-  }
-  if (apiData.previousOwners !== undefined) vehicle.previousOwners = apiData.previousOwners;
-  if (apiData.colourChanges  !== undefined) vehicle.colourChanges  = apiData.colourChanges;
-  if (apiData.plateChanges   !== undefined) vehicle.plateChanges   = apiData.plateChanges;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -379,9 +297,11 @@ async function handlePaymentSuccess(paymentIntent) {
     // ── Vehicle history report purchase ──────────────────────────────────────
     if (paymentData.type === 'vehicle_history_report' && paymentData.vrm) {
       try {
-        // fetchVehicleAPIs is the ONLY place we call these services
-        await fetchVehicleAPIs(paymentData.vrm, false);
+        // Import utils function for history report purchase
+        const { fetchVehicleAPIs } = require('../utils/fetchVehicleAPIs');
+        await fetchVehicleAPIs(paymentData.vrm, 0, false); // vrm, mileage=0, useCache=true
       } catch (err) {
+        console.error('Vehicle history API error:', err.message);
       }
       return;
     }
@@ -628,26 +548,19 @@ async function handlePaymentSuccess(paymentIntent) {
       });
 
       if (existingActiveCar) {
-        console.log(`⚠️ Active car already exists for ${vehicleData.registrationNumber}`);
-        console.log(`   Active car userId: ${existingActiveCar.userId}`);
-        console.log(`   Payment user: ${resolvedUserId}`);
-        
         // Check if payment user is the same as active car owner
         const activeCarUserId = existingActiveCar.userId?._id?.toString() || existingActiveCar.userId?.toString();
         const paymentUserId = resolvedUserId?.toString();
         
         if (activeCarUserId === paymentUserId) {
-          console.log(`   ✅ Same user - updating existing active car`);
           car = existingActiveCar;
         } else {
-          console.log(`   ❌ Different user owns active car - cannot create duplicate`);
           // Skip this payment - active car already exists by different user
           // Return early to prevent duplicate creation
           await purchase.updateOne({ 
             paymentStatus: 'failed',
             failureReason: 'Car already active under different user'
           });
-          console.log(`   Payment marked as failed - car already exists`);
           return; // Exit without creating duplicate
         }
       }
@@ -665,7 +578,6 @@ async function handlePaymentSuccess(paymentIntent) {
       }).sort({ createdAt: 1 }); // Get oldest pending record
 
       if (existingPendingCar) {
-        console.log(`✅ Found existing pending_payment car for ${vehicleData.registrationNumber}, will reuse it`);
         car = existingPendingCar;
       }
     }
@@ -693,9 +605,7 @@ async function handlePaymentSuccess(paymentIntent) {
       // ── UPDATE existing car (including pending_payment takeover) ────────────
 
       if (resolvedUserId) {
-        const previousOwner = car.userId?.toString(); // PEHLE save karo
         car.userId = resolvedUserId;
-        console.log(`✅ Ownership: ${previousOwner} → ${resolvedUserId}`);
       }
 
       car.price          = carPrice;
@@ -717,8 +627,8 @@ async function handlePaymentSuccess(paymentIntent) {
       car.sellerContact  = sc;
       car.markModified('sellerContact');
 
-      // Apply MOT + History data from fetchVehicleAPIs()
-      // (Car.js pre-save hook will handle API calls when advertStatus is 'active')
+      // ✅ Car.js pre-save hook will automatically fetch MOT + History APIs when car goes active
+      // No need to call APIs here - let Car.js STEP 6b handle it
       await car.save();
 
     } else {
@@ -787,6 +697,8 @@ async function handlePaymentSuccess(paymentIntent) {
         car = new Car(cleanedData);
       }
 
+      // ✅ Car.js pre-save hook will automatically fetch MOT + History APIs when car goes active
+      // No need to call APIs here - let Car.js STEP 6b handle it
       await car.save();
     }
 
@@ -1038,8 +950,6 @@ async function autoCompletePurchase(req, res) {
 module.exports = {
   createCheckoutSession,
   createAdvertCheckoutSession,
-  fetchVehicleAPIs,       // Car.js pre-save hook ke liye
-  applyAPIDataToVehicle,  // Car.js pre-save hook ke liye
   createCreditCheckoutSession,
   getSessionDetails,
   getPurchaseDetails,

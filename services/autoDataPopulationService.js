@@ -469,7 +469,7 @@ class AutoDataPopulationService {
         carData.co2Emissions = 30; // Typical PHEV CO2 emissions
       }
       
-      console.log(`✅ [AutoDataPopulation] Added hybrid vehicle data for ${carData.make} ${carData.model} (${fuelType})`);
+
     }
     
     return carData;

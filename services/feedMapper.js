@@ -35,13 +35,6 @@ class FeedMapper {
    * Extract vehicles array from parsed data
    */
   extractVehiclesArray(data, format, provider) {
-    console.log('🔍 [extractVehiclesArray] Input data structure:', {
-      format,
-      provider,
-      dataKeys: typeof data === 'object' && data ? Object.keys(data) : 'not an object',
-      dataType: typeof data,
-      isArray: Array.isArray(data)
-    });
 
     if (format === 'csv') {
       return data; // CSV is already an array of objects
@@ -91,7 +84,6 @@ class FeedMapper {
     }
 
     if (format === 'xml') {
-      console.log('🔍 [extractVehiclesArray] XML data structure:', JSON.stringify(data, null, 2).substring(0, 500));
       
       // Handle dealerInventory wrapper (common in dealer feeds)
       if (data.dealerinventory?.vehicles?.vehicle) {
@@ -366,7 +358,6 @@ class FeedMapper {
           ]);
           if (doorsValue) {
             const parsed = parseInt(doorsValue, 10);
-            console.log(`   → parsed: ${parsed}, isNaN: ${isNaN(parsed)}`);
             if (!isNaN(parsed)) return parsed;
           }
           // ✅ Description fallback
@@ -491,32 +482,8 @@ class FeedMapper {
         raw_data: rawVehicle
       };
 
-      // ✅ Enhanced logging for debugging
-      console.log(`🔍 [mapVehicle] Vehicle #${index}:`, {
-        stock_id: mapped.stock_id,
-        registration: mapped.registration,
-        vrm: rawVehicle.vrm,
-        make: mapped.make,
-        model: mapped.model,
-        year: mapped.year,
-        mileage: mapped.mileage,
-        fuel_type: mapped.fuel_type,
-        transmission: mapped.transmission,
-        colour: mapped.colour,
-        body_type: mapped.body_type,
-        postcode: mapped.postcode, // 🆕 LOG POSTCODE
-        seller_location: mapped.seller_location, // 🆕 LOG LOCATION
-        rawStatus: rawStatus,
-        normalizedStatus: mapped.status,
-        rawVehicleKeys: Object.keys(rawVehicle),
-        hasFeatures: !!rawVehicle.features,
-        featuresKeys: rawVehicle.features ? Object.keys(rawVehicle.features) : []
-      });
-
       // Validate minimum required fields
       if (!mapped.make) {
-        console.warn(`   Available fields:`, Object.keys(rawVehicle));
-        console.warn(`   Raw vehicle:`, JSON.stringify(rawVehicle, null, 2).substring(0, 500));
         return null;
       }
 
@@ -665,8 +632,6 @@ class FeedMapper {
     if (fuel.includes('petrol') || fuel.includes('gasoline')) return 'Petrol';
     if (fuel.includes('hydrogen') || fuel.includes('fuel cell')) return 'Hydrogen';
 
-    // 🚫 REMOVED DEFAULT "Petrol" - if fuel type is unknown, return null instead
-    console.log(`⚠️  [normalizeFuelType] Unknown fuel type: "${rawFuelType}" — returning null (no default)`);
     return null;
   }
 

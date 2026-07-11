@@ -86,13 +86,11 @@ class FeedImportService {
         const isSold = normalizedStatus === 'sold';
         
         if (isSold) {
-          console.log(`⏭️  Skipping sold vehicle on import: ${vehicle.make} ${vehicle.model} (${vehicle.stock_id})`);
         }
         
         return !isSold; // Only keep non-sold vehicles
       });
       
-      console.log(`📊 Import filter: ${mappedVehicles.length} total vehicles, ${activeVehicles.length} active vehicles (skipped ${mappedVehicles.length - activeVehicles.length} sold vehicles)`);
       stats.vehicles_skipped_sold = mappedVehicles.length - activeVehicles.length;
 
       let dealerFeed = await DealerFeed.findOne({ dealerId, feedUrl });
@@ -173,7 +171,6 @@ class FeedImportService {
         ? options.isFirstImport   // syncFeed explicitly false pass karta hai
         : !existingFeed;          // naya URL = true, pehle se exist = false
       
-      console.log(`🔍 [Feed] Mode: ${isFirstImport ? 'FIRST IMPORT (sold skip)' : 'SYNC (sold update)'}`);
 
       const subscription = await this.checkSubscriptionLimits(dealerId);
 
@@ -215,8 +212,6 @@ class FeedImportService {
 
         if (availableSlots < originalFeedCount) {
           const carsToIgnore = originalFeedCount - availableSlots; // Calculate BEFORE slicing
-          console.log(`📊 [Feed Import] Current database count: ${currentUsage} cars (active + sold + draft)`);
-          console.log(`🚫 [Feed Import] ${carsToIgnore} cars will be IGNORED (exceed limit)`);
           
           mappedVehicles = options.limitVehicles
             ? this.applyVehicleSelection(mappedVehicles, availableSlots, options.selectionMode)
@@ -266,7 +261,6 @@ class FeedImportService {
                   { $set: { status: 'sold' } }
                 );
                 stats.vehicles_updated++;
-                console.log(`✅ [SOLD] Marked sold: ${mappedVehicle.make} ${mappedVehicle.model} (stockId: ${mappedVehicle.stock_id})`);
               } else {
                 stats.vehicles_skipped++;
               }
@@ -285,8 +279,6 @@ class FeedImportService {
             const currentUsage = await this.getCurrentListingUsage(dealerId);
             
             if (currentUsage >= subscription.listingsLimit) {
-              console.log(`📊 [Feed Import] Current count: ${currentUsage} cars (active + sold + draft)`);
-              console.log(`⏭️  [Feed Import] Remaining ${mappedVehicles.indexOf(mappedVehicle) - mappedVehicles.length} cars will NOT be added to database`);
               
               stats.errors.push({
                 stockId: mappedVehicle.stock_id,
@@ -302,7 +294,6 @@ class FeedImportService {
           else if (result.action === 'updated') stats.vehicles_updated++;
           else if (result.action === 'skipped') {
             stats.vehicles_skipped++;
-            console.log(`⏭️  [Feed Import] Skipped: ${mappedVehicle.make} ${mappedVehicle.model} (${mappedVehicle.stock_id})`);
           }
 
           if (result.images) stats.images_imported += result.images;
@@ -384,9 +375,6 @@ class FeedImportService {
    */
   async processVehicleEnhanced(dealerId, feedId, mappedVehicle, options = {}) {
     try {
-      console.log('\n' + '═'.repeat(80));
-      console.log('═'.repeat(80));
-      console.log('═'.repeat(80) + '\n');
 
       // ── Step 1: Save/update FeedVehicle record ─────────────────────────────
       const feedVehicleData = {
@@ -512,7 +500,6 @@ class FeedImportService {
       } else if (options.useUnsplashFallback) {
         // ⚠️ DEPRECATED: source.unsplash.com/SIZE/?query no longer works
         // Don't use fallback - better to have no images than broken images
-        console.log(`⚠️  [processVehicleEnhanced] No images in feed - skipping Unsplash fallback (deprecated)`);
       }
 
       return {
@@ -572,7 +559,6 @@ class FeedImportService {
         advertStatus: { $in: ['active', 'sold', 'draft'] } // All statuses count towards limit
       });
       
-      console.log(`📊 [getCurrentListingUsage] Dealer ${dealerId}: ${count} cars (active + sold + draft)`);
       return count;
     } catch (error) {
       return 0;
@@ -793,7 +779,6 @@ class FeedImportService {
       status: 'active'
     });
 
-    console.log(`🗑️  [ARCHIVE] Found ${missingVehicles.length} cars to delete (not in feed)`);
 
     let count = 0;
     for (const vehicle of missingVehicles) {
@@ -804,7 +789,6 @@ class FeedImportService {
         if (vehicle.carId) {
           const deletedCar = await Car.findByIdAndDelete(vehicle.carId);
           if (deletedCar) {
-            console.log(`✅ [ARCHIVE] Deleted Car: ${deletedCar.make} ${deletedCar.model} (${deletedCar.registrationNumber})`);
             
             // Also delete associated VehicleHistory if exists
             if (deletedCar.vehicleHistory) {
@@ -927,7 +911,6 @@ class FeedImportService {
         if (!cachedData.hasSpecs) {
           reasons.push('No cached specs');
         }
-        console.log(`   🔍 ${reasons.join(' | ')}`);
       }
       
       // MOT: sirf tab call ho jab MOT history feed mein nahi hai
@@ -962,7 +945,6 @@ class FeedImportService {
           const cached = await VehicleHistory.findOne({ vrm: registration.toUpperCase() }).sort({ checkDate: -1 });
           if (cached) {
             enrichment.history = cached;
-            console.log(`   📋 Using cached history (${cachedData.cacheAge})`);
           }
         }
         
@@ -995,14 +977,6 @@ class FeedImportService {
         
         return Object.keys(enrichment).length > 0 ? enrichment : null;
       }
-
-      console.log(`📞 [API] ${registration} ke liye calls:`, {
-        specs: needsSpecs ? '£0.02' : '✓ skip',
-        mot: needsMOT ? '£0.02' : '✓ skip',
-        history: needsHistory ? '£1.82' : '✓ skip (cached)',
-        valuation: needsValuation ? '£0.02' : '✓ skip',
-        totalCost: `£${totalCost.toFixed(2)}`
-      });
 
       // ── Step 3: Parallel API calls — sirf jo zaroori hain ────────────────────
       const apiCalls = [];
@@ -1291,13 +1265,11 @@ class FeedImportService {
         
         if (isFromFeed) {
           // This car is from feed → SAFE to update (expected behavior)
-          console.log(`🔄 [createOrUpdateCarListing] Updating feed car: ${mappedVehicle.make} ${mappedVehicle.model} (Stock: ${car.stockId})`);
         } else {
           // This car was manually created → PROTECT from overwrite
           const wasManuallyCreated = car.dataSource === 'DVLA' || car.userId;
           
           if (wasManuallyCreated) {
-            console.log(`🚫 [createOrUpdateCarListing] Skipping manually created car: ${car.make} ${car.model} (${car.registrationNumber})`);
             return { action: 'skipped', car, reason: 'Manually created - protected from feed overwrite' };
           }
         }
@@ -1356,11 +1328,9 @@ class FeedImportService {
       }
       if (imageUrls.length > 0) {
         imageUrls.slice(0, 3).forEach((img, i) => {
-          console.log(`   ${i + 1}. ${img.substring(0, 100)}`);
         });
       } else {
         if (mappedVehicle.images && mappedVehicle.images.length > 0) {
-          console.log('   Sample mappedVehicle image:', JSON.stringify(mappedVehicle.images[0]));
         }
       }
 
@@ -1501,7 +1471,6 @@ class FeedImportService {
         
         // 🔍 DEBUG: Log vehiclePostcode calculation
         ...(() => {
-          console.log(`   vehiclePostcode (final): "${vehiclePostcode}"`);
           return {};
         })(),
         
@@ -1539,7 +1508,6 @@ class FeedImportService {
         // 🔍 DEBUG: Log seller fields
         ...(() => {
           if (mappedVehicle.features) {
-            console.log(`   features: ${JSON.stringify(mappedVehicle.features)}`);
           }
           return {};
         })(),
@@ -1561,8 +1529,6 @@ class FeedImportService {
         doors: (() => {
           const feedDoors = mappedVehicle.doors;
           const apiDoors = specs.doors;
-          console.log(`   mappedVehicle.doors: ${feedDoors} (type: ${typeof feedDoors})`);
-          console.log(`   specs.doors: ${apiDoors} (type: ${typeof apiDoors})`);
           return feedDoors || apiDoors;
         })(),
         seats: mappedVehicle.seats || specs.seats,
@@ -1676,7 +1642,6 @@ class FeedImportService {
         car.$locals = skipAPIFetchFlag;
         
         // 🔍 DEBUG: Log postcode before sync
-        console.log(`   car.postcode (before): "${car.postcode}"`);
         
         // ── Auto-populate missing data for Electric/Hybrid vehicles ────────
         const AutoDataPopulationService = require('./autoDataPopulationService');
@@ -1748,12 +1713,10 @@ class FeedImportService {
             if (isNewValid) {
               // New value valid hai - update karo
               if (oldVal !== newVal) {
-                console.log(`✅ [${key} Update] "${oldVal}" → "${newVal}"`);
               }
               car[key] = newVal;
             } else if (isOldValid) {
               // New value invalid hai LEKIN old value valid hai - keep old value
-              console.log(`⏭️  [${key} Protection] Keeping existing: "${oldVal}" (feed value invalid: "${newVal}")`);
               // Don't update - keep existing value
             } else {
               // Dono invalid hain - try newVal (null se better)
@@ -1789,7 +1752,6 @@ class FeedImportService {
                 coordinates: [postcodeData.longitude, postcodeData.latitude]
               };
               await car.save();
-              console.log(`✅ [SYNC] Updated location: "${postcodeData.locationName}" (from postcode "${car.postcode}")`);
             } else {
             }
           } catch (err) {
@@ -1799,7 +1761,6 @@ class FeedImportService {
       } else {
         // Car doesn't exist - create new
         try {
-          console.log(`🔍 [DEBUG carData.fuelType] ${mappedVehicle.registration}: "${carData.fuelType}" (apiFuelType was "${apiFuelType}")`);
           
           // ── Auto-populate missing data for Electric/Hybrid vehicles ────────
           const AutoDataPopulationService = require('./autoDataPopulationService');

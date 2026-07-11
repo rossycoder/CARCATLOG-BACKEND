@@ -13,7 +13,6 @@ const createAdvert = async (req, res) => {
   try {
     
     const { vehicleData } = req.body;
-    console.log('   Vehicle Data:', JSON.stringify(vehicleData, null, 2));
     
     if (!vehicleData) {
       return res.status(400).json({
@@ -37,24 +36,26 @@ const createAdvert = async (req, res) => {
       });
       
       if (activeCar) {
-        console.log(`❌ [createAdvert] Active car ${cleanReg} already exists (User: ${activeCar.userId})`);
-        
         // Check if current user owns this active car
         const currentUserId = req.user?._id?.toString() || req.user?.id?.toString();
         const carUserId = activeCar.userId?._id?.toString() || activeCar.userId?.toString();
         const isOwnedByCurrentUser = (carUserId && currentUserId && carUserId === currentUserId) || req.user?.isAdmin;
-        
-        if (!isOwnedByCurrentUser) {
-          // Different user owns active car - block completely
-          return res.status(409).json({
-            success: false,
-            message: `This car (${registration}) is already listed as ACTIVE by another user. You cannot create a new listing.`,
-            error: 'ACTIVE_CAR_EXISTS'
-          });
-        }
+if (!isOwnedByCurrentUser) {
+  // Different user owns active car — redirect to public listing
+  return res.status(200).json({
+    success: true,
+    data: {
+      id: activeCar._id.toString(),
+      advertId: activeCar.advertId,
+      status: 'active',
+      _existingCar: true,
+      _isOwnedByUser: false,
+      _message: 'Car already active under different user'
+    }
+  });
+}
         
         // Current user owns active car - let them edit it
-        console.log(`   User owns this active car - returning existing data`);
       }
       
       // Find ANY existing car with this registration (any status)
@@ -63,8 +64,6 @@ const createAdvert = async (req, res) => {
       }).sort({ createdAt: 1 }); // oldest = canonical
       
       if (existing) {
-        console.log(`✅ [createAdvert] Car ${cleanReg} already exists in database (Status: ${existing.advertStatus})`);
-        
         // KEY FIX: pending_payment car ko koi bhi user le sakta hai
         const isPending = existing.advertStatus === 'pending_payment' || existing.advertStatus === 'draft';
         const currentUserId = req.user?._id?.toString() || req.user?.id?.toString();
@@ -107,7 +106,6 @@ const createAdvert = async (req, res) => {
             error: 'DEALER_CAR_EXISTS'
           });
         }
-        console.log(`   Car advertId (UUID): ${existing.advertId}`);
         
         // CRITICAL: If car is ACTIVE and owned by DIFFERENT user, return special response
         if (existing.advertStatus === 'active' && !isOwnedByUserOrDealer) {
@@ -123,7 +121,6 @@ const createAdvert = async (req, res) => {
             }
           });
         }
-        console.log(`   Will use MongoDB _id: ${existing._id.toString()} for routing`);
         
         // Return existing car data to frontend
         // CRITICAL: Use MongoDB _id (not advertId) for routing to work properly

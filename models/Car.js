@@ -297,6 +297,7 @@ carSchema.index({ dealerId: 1, stockId: 1 }); // Non-unique index for performanc
 carSchema.index({ isDealerListing: 1 });
 carSchema.index({ vehicleType: 1 });
 carSchema.index({ vehicleType: 1, condition: 1 });
+carSchema.index({ registrationNumber: 1 });
 
 // ─── Helper: build AutoTrader-style displayTitle ─────────────────────────────
 function buildDisplayTitle(doc) {
@@ -496,7 +497,6 @@ carSchema.pre('save', async function(next) {
   // If skipNormalization flag is set (via $locals), skip all normalization logic
   // NOTE: this.skipNormalization is stripped by Mongoose strict mode — use $locals instead
   if (this.$locals?.skipNormalization || this.skipNormalization) {
-    console.log(`Skipping normalization for ${this.registrationNumber} (flag set)`);
     return next();
   }
 
@@ -564,7 +564,6 @@ carSchema.pre('save', async function(next) {
                           this.userId.toString() === pendingDuplicate.userId.toString();
         
         if (!isSameUser) {
-          console.log(`⚠️  Preventing duplicate: ${reg} already has pending_payment record (userId: ${pendingDuplicate.userId})`);
           const err = new Error(`A pending advert already exists for registration ${reg}. Please complete payment for that advert first, or contact support.`);
           err.code = 'DUPLICATE_PENDING_REGISTRATION';
           return next(err);
@@ -678,24 +677,26 @@ carSchema.pre('save', async function(next) {
     }
 
     // ── STEP 6b: History + MOT API — fetch when going ACTIVE and data is missing ──
-    // Runs for: new car only when BOTH motHistory AND historyCheckId are absent
-    // SKIP if: car already has motHistory OR historyCheckId (relist/draft with existing data)
+    // Fetch INDIVIDUALLY: MOT if missing, History if missing
     // SKIP if: feed import
+    // SKIP if: payment controller already fetched data (skipAPICallsInHooks flag)
     const goingActive = this.advertStatus === 'active' &&
                         (this.isNew || this.isModified('advertStatus'));
 
-    // Agar koi bhi data already hai — API call skip karo (relist case)
-    const alreadyHasData = hasExistingMOT || hasExistingHistory;
+    const skipAPIFetch = this.$locals?.skipAPICallsInHooks || false;
+    
+    // Check individually what's missing
+    const needsMOT = !hasExistingMOT;
+    const needsHistory = !hasExistingHistory;
 
-    if (reg && goingActive && !isFeedImport && !alreadyHasData) {
+    if (reg && goingActive && !isFeedImport && !skipAPIFetch && (needsMOT || needsHistory)) {
       try {
         const { fetchVehicleAPIs, applyAPIDataToVehicle } = require('../utils/fetchVehicleAPIs');
-        const apiData = await fetchVehicleAPIs(reg, false); // use cache — never force-refresh here
+        const apiData = await fetchVehicleAPIs(reg, this.mileage, false); // use cache
         if (apiData && Object.keys(apiData).length) {
           applyAPIDataToVehicle(this, apiData);
         }
       } catch (err) {
-        console.warn(`⚠️  [Pre-Save] History/MOT fetch failed for ${reg}:`, err.message);
         // Non-fatal — car still saves without API data
       }
     }
@@ -839,7 +840,6 @@ carSchema.pre('save', async function(next) {
           this.price          = val.estimatedValue.private;
           this.estimatedValue = val.estimatedValue.private;
         } catch (err) {
-          console.warn('⚠️ Valuation failed (will use default price):', err.message);
         }
       }
     }
@@ -859,7 +859,7 @@ carSchema.pre('save', async function(next) {
         } catch (err) {
         }
       } else if (!this.userId) {
-        console.warn(`⚠️  [Pre-Save] No userId and no email — car won't appear in My Listings (id=${this._id})`);
+        // car won't appear in My Listings
       }
     }
 
@@ -897,7 +897,6 @@ carSchema.pre(['deleteOne', 'findOneAndDelete', 'findByIdAndDelete'], async func
       });
       
       if (deletedCount.deletedCount > 0) {
-        console.log(`🗑️  [Pre-Delete] Deleted ${deletedCount.deletedCount} VehicleHistory record(s) for ${car.registrationNumber}`);
       }
     }
   } catch (err) {
@@ -934,7 +933,6 @@ carSchema.statics.deleteCarWithCleanup = async function(carId) {
     });
     
     if (deletedHistory.deletedCount > 0) {
-      console.log(`🗑️  [Cleanup] Deleted ${deletedHistory.deletedCount} VehicleHistory record(s) for ${car.registrationNumber}`);
     }
     
     // ═══════════════════════════════════════════════════════════════════════

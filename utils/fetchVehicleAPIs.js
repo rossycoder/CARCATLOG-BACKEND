@@ -6,6 +6,8 @@
  * Cost: ~£1.84 per registration (History £1.82 + MOT £0.02)
  * Always uses VehicleHistory cache — never double-charges for same reg.
  *
+ * Valuation API is NOT included here - it's fetched separately on CarAdvertEditPage
+ *
  * API call logging controlled by ENABLE_API_CALL_LOGGING=true in .env
  */
 
@@ -39,13 +41,16 @@ async function logAPICall({ endpoint, vrm, cost, success, errorMessage, response
  * Fetch MOT history + vehicle history for a registration number.
  * Returns structured data ready to apply to a Car/Bike/Van document.
  *
+ * Valuation is NOT fetched here - it's handled separately on CarAdvertEditPage
+ *
  * @param {string} registrationNumber
+ * @param {number} mileage - Not used (kept for compatibility)
  * @param {boolean} forceRefresh - true = skip cache (first-time payment)
  * @returns {Promise<Object>} { motHistory, motDue, motExpiry, motStatus,
  *                              historyCheckId, historyCheckStatus, historyCheckDate,
  *                              previousOwners, colourChanges, plateChanges }
  */
-async function fetchVehicleAPIs(registrationNumber, forceRefresh = false) {
+async function fetchVehicleAPIs(registrationNumber, mileage = null, forceRefresh = false) {
   if (!registrationNumber) return {};
 
   const HistoryService    = require('../services/historyService');
@@ -56,6 +61,7 @@ async function fetchVehicleAPIs(registrationNumber, forceRefresh = false) {
 
   const startTime = Date.now();
 
+  // Call MOT + History APIs in parallel (NO valuation)
   const [motResult, histResult] = await Promise.allSettled([
     motHistoryService.getMOTHistory(registrationNumber),
     historyService.checkVehicleHistory(registrationNumber, !forceRefresh) // true = use cache

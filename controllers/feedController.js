@@ -37,15 +37,6 @@ exports.importFeed = async (req, res) => {
   let dealerId;
   let result;
   try {
-    // ═══════════════════════════════════════════════════════════════════════
-    // 🔍 DIAGNOSTIC LOGGING - Track frontend requests
-    // ═══════════════════════════════════════════════════════════════════════
-    console.log('\n' + '═'.repeat(80));
-    console.log('═'.repeat(80));
-    console.log('⏰ Timestamp:', new Date().toISOString());
-    console.log('📋 Request Body:', JSON.stringify(req.body, null, 2));
-    console.log('═'.repeat(80) + '\n');
-    
     // Get dealerId from authenticated session
     dealerId = req.dealerId || req.dealer?.id;
     
@@ -91,11 +82,6 @@ exports.importFeed = async (req, res) => {
       isFirstImport: true // ✅ Flag for first import
     });
     
-    console.log('\n' + '─'.repeat(80));
-    console.log('─'.repeat(80));
-    console.log('📈 Stats:', JSON.stringify(result.stats, null, 2));
-    console.log('─'.repeat(80) + '\n');
-
     const response = {
       success: true,
       message: result.stats.vehicles_imported > 0 || result.stats.vehicles_updated > 0 
@@ -324,11 +310,6 @@ exports.getFeedLogs = async (req, res) => {
  * Manually trigger feed sync
  */
 exports.syncFeed = async (req, res) => {
-  console.log('\n' + '═'.repeat(80));
-  console.log('═'.repeat(80));
-  console.log('⏰ Timestamp:', new Date().toISOString());
-  console.log('═'.repeat(80) + '\n');
-  
   try {
     const dealerId = req.dealerId || req.dealer?.id;
     
@@ -364,15 +345,14 @@ exports.syncFeed = async (req, res) => {
     // ✅ Specs API (£0.02) enabled for new cars — needed for running costs
     // History API (£1.82) is ALWAYS disabled in enrichVehicleDataFromAPIs (needsHistory = false)
     const result = await feedImportService.importFeedEnhanced(dealerId, feed.feedUrl, {
-      removeSoldVehicles: false, // ← ← ← YE MOST IMPORTANT — cars DELETE nahi honge
+      removeSoldVehicles: false,
       importImages: feed.importImages !== false,
       useUnsplashFallback: feed.useUnsplashFallback === true,
       createCarListings: true,
-      isFirstImport: false, // 🔄 SYNC mode: update status of existing sold cars, don't skip them
-      enableAPIEnrichment: true, // ✅ Specs only (history disabled in enrichVehicleDataFromAPIs)
-      onlyEnrichNewCars: true // 🆕 Flag to only enrich new imports, not existing
+      isFirstImport: false,
+      enableAPIEnrichment: true,
+      onlyEnrichNewCars: true
     });
-    console.log(`   Stats:`, JSON.stringify(result.stats, null, 2));
 
     const imported = result.stats.vehicles_imported || 0;
     const updated = result.stats.vehicles_updated || 0;
@@ -388,11 +368,6 @@ exports.syncFeed = async (req, res) => {
           : 'No changes — feed already up to date',
       stats: result.stats
     };
-
-    console.log('\n' + '═'.repeat(80));
-    console.log('═'.repeat(80));
-    console.log(JSON.stringify(responseData, null, 2));
-    console.log('═'.repeat(80) + '\n');
 
     res.json(responseData);
 
