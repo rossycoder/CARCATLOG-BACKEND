@@ -246,8 +246,6 @@ class HistoryAPIClient {
       isTestMode: this.isTestMode,
     };
 
-    console.error(`CheckCarDetails API call failed (${datapoint}):`, errorDetails);
-    
     // Check for 403 Forbidden (daily limit exceeded)
     if (error.response?.status === 403) {
       const apiMessage = error.response?.data?.message || '';
