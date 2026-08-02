@@ -68,19 +68,22 @@ const getAllListings = async (req, res) => {
         ...car,
         vehicleType: 'car',
         ownerEmail: car.userId?.email || car.dealerId?.email || 'N/A',
-        ownerName: car.userId?.name || car.dealerId?.businessName || 'N/A'
+        ownerName: car.userId?.name || car.dealerId?.businessName || 'N/A',
+        ownerType: car.dealerId ? 'trade' : 'private'  // Add owner type for filtering
       })),
       ...bikes.map(bike => ({
         ...bike,
         vehicleType: 'bike',
         ownerEmail: bike.userId?.email || 'N/A',
-        ownerName: bike.userId?.name || 'N/A'
+        ownerName: bike.userId?.name || 'N/A',
+        ownerType: 'private'  // Bikes are always private
       })),
       ...vans.map(van => ({
         ...van,
         vehicleType: 'van',
         ownerEmail: van.userId?.email || 'N/A',
-        ownerName: van.userId?.name || 'N/A'
+        ownerName: van.userId?.name || 'N/A',
+        ownerType: 'private'  // Vans are always private
       }))
     ];
 
@@ -188,6 +191,9 @@ const updateListing = async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
 
+    console.log('[Admin] Updating listing:', id);
+    console.log('[Admin] Updates:', updates);
+
     // Remove fields that shouldn't be updated directly
     delete updates._id;
     delete updates.__v;
@@ -195,17 +201,18 @@ const updateListing = async (req, res) => {
     delete updates.vehicleType;
 
     // Try to find and update in all vehicle types
+    // Use { runValidators: false } to skip Mongoose pre-save hooks for admin updates
     let vehicle = await Car.findByIdAndUpdate(
       id,
       { $set: updates },
-      { new: true, runValidators: true }
+      { new: true, runValidators: false }
     );
 
     if (!vehicle) {
       vehicle = await Bike.findByIdAndUpdate(
         id,
         { $set: updates },
-        { new: true, runValidators: true }
+        { new: true, runValidators: false }
       );
     }
 
@@ -213,17 +220,19 @@ const updateListing = async (req, res) => {
       vehicle = await Van.findByIdAndUpdate(
         id,
         { $set: updates },
-        { new: true, runValidators: true }
+        { new: true, runValidators: false }
       );
     }
 
     if (!vehicle) {
+      console.log('[Admin] Listing not found:', id);
       return res.status(404).json({
         success: false,
         message: 'Listing not found'
       });
     }
 
+    console.log('[Admin] Listing updated successfully:', vehicle._id);
     res.json({
       success: true,
       data: vehicle,
@@ -231,6 +240,7 @@ const updateListing = async (req, res) => {
     });
 
   } catch (error) {
+    console.error('[Admin] Error updating listing:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to update listing',

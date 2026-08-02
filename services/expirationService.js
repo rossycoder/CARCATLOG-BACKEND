@@ -41,9 +41,9 @@ class ExpirationService {
             );
           }
 
-          // Move to draft instead of deleting - keeps all data including API info
+          // Move to expired status instead of draft - keeps all data including API info
           await Car.findByIdAndUpdate(car._id, {
-            advertStatus: 'draft',
+            advertStatus: 'expired',
             // Keep all other data intact for relisting
           });
           results.movedToDraft++;
